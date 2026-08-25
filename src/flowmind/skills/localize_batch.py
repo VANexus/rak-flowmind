@@ -2,6 +2,7 @@
 
 对一组视频做预检（确定性，不调 HTTP）+ 调 video-localizer HTTP API 提交批量任务。
 包上 FlowMind 信封：四段式推理链 / trace_id / 结构化错误 / config 化阈值。
+HTTP 层统一走 VLClient（vl_client.py），本文件不直接发请求。
 
 支持的源语言/目标语言通过 `LocalizerConfig.supported_*_langs` 配置；
 阈值类（批量上限 / 成本分界 / TTS 默认 / 允许扩展名 / 服务地址）同样走 config，
@@ -11,14 +12,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import requests
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from flowmind.config import LocalizerConfig, load_config
 from flowmind.contracts import Evidence, ReasoningChain, SkillOutput
-from flowmind.errors import _classify_exception, is_retriable
+from flowmind.errors import is_retriable
 from flowmind.rules import Rule, evaluate_rules
 from flowmind.skill import skill
+from flowmind.vl_client import VLAPIError, VLClient
 
 _VERSION = "0.1.0"
 
@@ -388,21 +390,12 @@ def localize_batch(inp: LocalizerInput) -> SkillOutput[LocalizerReport]:
 
     # fail-fast：先 GET /health 探活。VL 挂了立刻返回 degraded SkillOutput（不调 POST）。
     # 注意：不能 raise（SkillError 不带 category 字段——契约层不变量），
-    # 而是在技能体内 catch + 分类后直接返回 degraded SkillOutput。
-    # status_code 在请求返回后再判断（503/4xx 不会走 raise_for_status，自动拿到 resp），
-    # 这样 fake helper 即使不挂 .response 也能正确分类。
-    health_url = f"{cfg.api_base.rstrip('/')}{cfg.api_prefix}/health"
+    # 而是在技能体内 catch VLAPIError（已带分类）后直接返回 degraded SkillOutput。
+    client = VLClient(cfg)
     try:
-        health_resp = requests.get(health_url, timeout=cfg.health_timeout)
-    except requests.exceptions.RequestException as exc:
-        cat = _classify_exception(exc)
-        return _health_failure_report(inp, cfg, health_url, exc, cat)
-
-    if health_resp.status_code >= 500:
-        return _health_failure_report(inp, cfg, health_url, Exception(f"{health_resp.status_code} HTTPError"), "transient")
-    if health_resp.status_code >= 400:
-        return _health_failure_report(inp, cfg, health_url, Exception(f"{health_resp.status_code} HTTPError"), "video")
-    health_resp.raise_for_status()
+        client.health_check()
+    except VLAPIError as exc:
+        return _health_failure_report(inp, cfg, str(client.base_url), exc, exc.category)
 
     # 预检（扩展名分桶）；model_validator 已保证 accepted 非空，此处不再兜底。
     accepted, rejected = _split_paths(inp.video_paths, cfg.allowed_extensions)
@@ -434,7 +427,6 @@ def localize_batch(inp: LocalizerInput) -> SkillOutput[LocalizerReport]:
     )
 
     # HTTP 提交：自动分批。中途失败 → degraded SkillOutput（partial success 在 data 里）。
-    url = f"{cfg.api_base.rstrip('/')}{cfg.api_prefix}/batch"
     max_per_batch = max(1, cfg.max_videos_per_batch)
     chunks = [accepted[i:i + max_per_batch] for i in range(0, len(accepted), max_per_batch)]
     batch_ids: list[str] = []
@@ -451,27 +443,15 @@ def localize_batch(inp: LocalizerInput) -> SkillOutput[LocalizerReport]:
             "remove_subtitles_strategy": effective_strategy,
         }
         try:
-            resp = requests.post(url, json=payload, timeout=cfg.http_timeout)
-        except requests.exceptions.RequestException as exc:
+            body = client.post("/batch", payload)
+        except VLAPIError as exc:
+            # VLAPIError 已带分类（environment/transient/video），partial success 照旧透出
             return _chunk_failure_output(
                 inp, cfg, accepted, rejected, batch_ids, all_job_ids,
                 chunks, idx, hits, evidence, cost_band, time_band,
                 effective_tts, effective_remove_subtitles, effective_strategy,
-                batch_size_warning, exc, _classify_exception(exc),
+                batch_size_warning, exc, exc.category,
             )
-
-        # 显式按 status_code 分类（不依赖 raise_for_status 抛错时不挂 response 的场景）
-        if resp.status_code >= 400:
-            return _chunk_failure_output(
-                inp, cfg, accepted, rejected, batch_ids, all_job_ids,
-                chunks, idx, hits, evidence, cost_band, time_band,
-                effective_tts, effective_remove_subtitles, effective_strategy,
-                batch_size_warning,
-                Exception(f"{resp.status_code} HTTPError"),
-                "transient" if resp.status_code >= 500 else "video",
-            )
-        resp.raise_for_status()
-        body = resp.json()
 
         batch_ids.append(str(body.get("batch_id", "")))
         all_job_ids.extend(list(body.get("job_ids", [])))

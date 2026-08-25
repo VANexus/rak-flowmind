@@ -1,18 +1,21 @@
 """localize_cancel 技能：取消一个正在 queued/running 的 VL 任务。
 
 薄包装 VL `DELETE /api/v1/tasks/{task_id}`；不在此重排或重提。
-v0.3：错误在技能体内分类后以 degraded SkillOutput 返回，failure_category 字段告诉
-Agent 是 video / transient / environment 中的哪一类。
+HTTP 层统一走 VLClient（vl_client.py）。v0.3：错误在技能体内以 degraded
+SkillOutput 返回，failure_category 字段告诉 Agent 是 video / transient /
+environment 中的哪一类。
 """
 from __future__ import annotations
 
-import requests
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
+
 from pydantic import BaseModel, Field
 
 from flowmind.config import load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
-from flowmind.errors import _classify_exception, is_retriable
+from flowmind.errors import is_retriable
 from flowmind.skill import skill
+from flowmind.vl_client import VLAPIError, VLClient
 
 _VERSION = "0.1.0"
 
@@ -48,22 +51,13 @@ def localize_cancel(inp: CancelInput) -> SkillOutput[CancelReport]:
     - ConnectionError / Timeout → environment（先查网络）
     """
     cfg = load_config().localizer
-    url = f"{cfg.api_base.rstrip('/')}{cfg.api_prefix}/tasks/{inp.task_id}"
+    client = VLClient(cfg)
 
     try:
-        resp = requests.delete(url, timeout=cfg.http_timeout)
-    except requests.exceptions.RequestException as exc:
-        cat = _classify_exception(exc)
-        return _failure_output(inp.task_id, exc, cat)
+        body = client.delete(f"/tasks/{inp.task_id}")
+    except VLAPIError as exc:
+        return _failure_output(inp.task_id, exc, exc.category)
 
-    # 显式按 status_code 分类（不依赖 raise_for_status 抛错时不挂 response 的场景）
-    if resp.status_code >= 500:
-        return _failure_output(inp.task_id, Exception(f"{resp.status_code} HTTPError"), "transient")
-    if resp.status_code >= 400:
-        return _failure_output(inp.task_id, Exception(f"{resp.status_code} HTTPError"), "video")
-    resp.raise_for_status()
-
-    body = resp.json()
     message = str(body.get("message", ""))
 
     report = CancelReport(task_id=inp.task_id, cancelled=True, message=message)

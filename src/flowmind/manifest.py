@@ -1,4 +1,4 @@
-"""能力清单：由注册表生成机器可读描述，供龙虾/Agent 发现与挂载。
+"""能力清单：由注册表生成机器可读描述，供 Agent 发现与挂载。
 
 设计原则（v0.3.2 起）：**完整 schema 暴露**——同时返回 input_schema 与 output_schema，
 外加从函数 docstring 提取的 description。Agent 拿到 manifest 后无需读源码即可：

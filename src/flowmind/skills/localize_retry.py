@@ -1,17 +1,20 @@
 """localize_retry 技能：用同样的入参重新提交一个失败/取消的任务。
 
 内部走两步：GET /tasks/{id} 拿原参数 → POST /tasks（单条）重提。
+HTTP 层统一走 VLClient（vl_client.py）。
 对 Agent 来说一次调用就行，不用自己拿 source_video 再调 batch。
 """
 from __future__ import annotations
 
-import requests
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
+
 from pydantic import BaseModel, Field
 
 from flowmind.config import LocalizerConfig, load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
-from flowmind.errors import _classify_exception, is_retriable
+from flowmind.errors import is_retriable
 from flowmind.skill import skill
+from flowmind.vl_client import VLAPIError, VLClient
 
 _VERSION = "0.1.0"
 
@@ -53,21 +56,13 @@ def localize_retry(inp: RetryInput) -> SkillOutput[RetryReport]:
     - 连接错 / 超时 → environment（先查网络）
     """
     cfg: LocalizerConfig = load_config().localizer
-    base = cfg.api_base.rstrip("/") + cfg.api_prefix
+    client = VLClient(cfg)
 
     # 1) GET 原 task 拿参数
-    get_url = f"{base}/tasks/{inp.task_id}"
     try:
-        resp = requests.get(get_url, timeout=cfg.http_timeout)
-    except requests.exceptions.RequestException as exc:
-        return _fail_output(inp.task_id, exc, _classify_exception(exc))
-
-    if resp.status_code == 404:
-        return _fail_output(inp.task_id, Exception(f"404 Task {inp.task_id} not found"), "video")
-    if resp.status_code >= 500:
-        return _fail_output(inp.task_id, Exception(f"{resp.status_code} HTTPError"), "transient")
-    resp.raise_for_status()
-    original = resp.json()
+        original = client.get(f"/tasks/{inp.task_id}")
+    except VLAPIError as exc:
+        return _fail_output(inp.task_id, exc, exc.category)
     original_status = original.get("status")
 
     source_video = original.get("source_video")
@@ -83,7 +78,6 @@ def localize_retry(inp: RetryInput) -> SkillOutput[RetryReport]:
         )
 
     # 2) POST /tasks 单条重提
-    post_url = f"{base}/tasks"
     payload = {
         "video_path": source_video,
         "target_lang": target_lang,
@@ -94,16 +88,9 @@ def localize_retry(inp: RetryInput) -> SkillOutput[RetryReport]:
     if original.get("chat_id"):
         payload["chat_id"] = original["chat_id"]
     try:
-        resp2 = requests.post(post_url, json=payload, timeout=cfg.http_timeout)
-    except requests.exceptions.RequestException as exc:
-        return _fail_output(inp.task_id, exc, _classify_exception(exc))
-
-    if resp2.status_code >= 500:
-        return _fail_output(inp.task_id, Exception(f"{resp2.status_code} HTTPError"), "transient")
-    if resp2.status_code >= 400:
-        return _fail_output(inp.task_id, Exception(f"{resp2.status_code} HTTPError"), "video")
-    resp2.raise_for_status()
-    new_body = resp2.json()
+        new_body = client.post("/tasks", payload)
+    except VLAPIError as exc:
+        return _fail_output(inp.task_id, exc, exc.category)
     new_task_id = new_body.get("task_id") or new_body.get("job_id") or ""
 
     report = RetryReport(

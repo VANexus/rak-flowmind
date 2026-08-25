@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-`rak-flowmind` 是一个**对龙虾(OpenClaw)及任意 Agent 友好**的 Python Skill SDK，通过 MCP 暴露。它是竞赛作品「龙虾×FlowMind」的**技能底座** —— 不实现 OpenClaw 引擎本身，只提供「能被 OpenClaw 优雅调度的技能」的框架契约。
+`rak-flowmind` 是一个**对任意 Agent 友好**的 Python Skill SDK，通过 MCP 暴露，提供「能被任意 Agent 优雅调度的技能」的框架契约。
 
 **核心不变量**：**新增一个技能 = 写一个 `@skill` 函数**。注册 / JSON schema / MCP tool / manifest / discover() 自动暴露全自动。加技能**不改动** `server.py` / `contracts.py` / `skill.py` / `rules.py` / `__init__.py` 之外的契约 / 框架层 —— 这条约束改前务必确认。
 
@@ -26,7 +26,7 @@ uv run flowmind-init                                   # 9 步对话式初始化
 
 ## 架构（大图）
 
-数据流：`Agent/龙虾 → (MCP tool call) server.py → invoke() → skill 函数 → SkillResult → 业务结果 / 错误信封`。
+数据流：`Agent → (MCP tool call) server.py → invoke() → skill 函数 → SkillResult → 业务结果 / 错误信封`。
 
 分层（`src/flowmind/`，传输无关核心 + 薄 MCP 层）：
 
@@ -45,7 +45,7 @@ uv run flowmind-init                                   # 9 步对话式初始化
 - **113 条企业 FAQ seed**（`feishu_kb_seed.json`，覆盖 8 份企业 docx 解析产物）—— 由 `scripts/build_seed_from_docx.py` 一次性重建，**不进入运行时依赖**。
 - **Hard-gate 防话题外**：中文 query 走"意图分类置信度=0" + `FeishuKbConfig.min_top1_score`（默认 0.015）双门；EN/TH 跳过关键词 gate（跨语言关键词不适用），仅走分数 gate。任何 path 下 `top_k=[]` → `metrics.degraded=True` + `agent_reply_hint` 透传"暂未收录"文案。
 - **中英泰三语支持（zero-LLM）**：`_detect_language()` 基于 Unicode 范围判 `zh/en/th/other`；`_CROSS_LANG_SYNONYMS`（~200 项）把 EN/TH 领域词桥接到中文 FAQ；`_phrase_match_bonus` 解决 BM25 长 answer bias。
-- **OpenClaw 结构化字段**（无 API key 时下游 agent 也能读）：`user_language` / `translation_required` / `translation_directive`（`{source, target, rule}`）。`agent_reply_hint` 末尾追加 `[Language-MANDATORY]` 强约束翻译层。
+- **Agent 结构化字段**（无 API key 时下游 agent 也能读）：`user_language` / `translation_required` / `translation_directive`（`{source, target, rule}`）。`agent_reply_hint` 末尾追加 `[Language-MANDATORY]` 强约束翻译层。
 - **严格忠于 KB**：`_agent_reply_hint` 改为"直接引用 Top-1 原文"，禁止 LLM 整合 / 补充 / 推测。
 
 ## 关键约定

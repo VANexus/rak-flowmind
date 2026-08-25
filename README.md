@@ -1,6 +1,6 @@
 # FlowMind Skill SDK
 
-对龙虾(OpenClaw)及任意 Agent 友好的技能底座。技能一次定义即成为 MCP 工具，
+对任意 Agent 友好的技能底座。技能一次定义即成为 MCP 工具，
 自带四段式因果推理链、可靠性指标与 trace_id，并可由终端用户对话初始化个性化配置。
 
 ---

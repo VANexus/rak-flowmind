@@ -128,12 +128,40 @@ class LocalizerConfig(BaseModel):
     output_filename_suffix: str = "sub"     # 输出文件名后缀
 
 
+class LocalizeVideoConfig(BaseModel):
+    """单条视频本地化技能 (localize_video) 的可配置参数 (附通用默认值)。
+
+    跟既有 5 个 HTTP localize_* 不共用 (那是 HTTP wrapper, 这个是 in-process 同步)。
+    字段名 `*_backend_default` / `*_default` 都是「Agent 不传时」回落值。
+    """
+    # 语言默认
+    target_lang_default: str = "en"
+    source_lang_default: str = "zh"
+
+    # backend 默认 (映射到 VLE PipelineConfig 字段名)
+    translator_backend_default: str = "mock"
+    renderer_backend_default: str = "opencv"
+    tts_backend_default: str = "mock"
+    inpaint_backend_default: str = "opencv"
+
+    # mask 扩张 (P9/P10)
+    mask_dilation_x_default: int = 12
+    mask_dilation_y_default: int = 20
+
+    # 文件预检
+    allowed_extensions: list[str] = Field(default_factory=lambda: [".mp4"])
+
+    # TTS 默认
+    tts_default: bool = True
+
+
 class FlowmindConfig(BaseModel):
     """FlowMind 总配置：每技能一段。"""
     inventory: InventoryConfig = Field(default_factory=InventoryConfig)
     feishu_kb: FeishuKbConfig = Field(default_factory=FeishuKbConfig)
     marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
+    localize_video: LocalizeVideoConfig = Field(default_factory=LocalizeVideoConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:

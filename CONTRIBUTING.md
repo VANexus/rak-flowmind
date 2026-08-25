@@ -83,6 +83,6 @@ from flowmind.skills import your_skill  # noqa: F401
 - [ ] 无 `# TODO` 遗留给下游开发者；可调项已走 config
 - [ ] 提交信息符合 `<type>: <中文描述>`
 
-## 对外契约（供龙虾/任意 Agent 消费）
+## 对外契约（供任意 Agent 消费）
 
 每次技能调用返回统一的 `SkillResult` 信封：`ok` / `skill` / `version` / `trace`（含 `trace_id`）/ `data`（业务载荷）/ `reasoning`（四段式因果推理链）/ `metrics`（可靠性指标）/ `error`（结构化错误）。这正是「对 Agent 友好」的来源 —— 保持它稳定。

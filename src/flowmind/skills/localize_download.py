@@ -3,18 +3,21 @@
 不把二进制塞进 SkillResult（破坏 JSON 信封）；让 Agent 按 URL 自行拉取。
 小文件路径同时返回本地路径，Agent 可用 Read 等工具直接读。
 
-v0.3：错误分类（environment / video / transient）在技能体内完成，
-通过 degraded SkillOutput 返回；failure_category 在 DownloadReport 字段里。
+HTTP 层统一走 VLClient（vl_client.py）。错误分类（environment / video /
+transient）经 VLAPIError.category 获得，通过 degraded SkillOutput 返回；
+failure_category 在 DownloadReport 字段里。
 """
 from __future__ import annotations
 
-import requests
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
+
 from pydantic import BaseModel, Field
 
 from flowmind.config import load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
-from flowmind.errors import _classify_exception, is_retriable
+from flowmind.errors import is_retriable
 from flowmind.skill import skill
+from flowmind.vl_client import VLAPIError, VLClient
 
 _VERSION = "0.1.0"
 
@@ -57,18 +60,11 @@ def localize_download(inp: DownloadInput) -> SkillOutput[DownloadReport]:
     网络错误 → degraded + environment；5xx → degraded + transient。
     """
     cfg = load_config().localizer
-    url = f"{cfg.api_base.rstrip('/')}{cfg.api_prefix}/tasks/{inp.task_id}"
+    client = VLClient(cfg)
     try:
-        resp = requests.get(url, timeout=cfg.http_timeout)
-    except requests.exceptions.RequestException as exc:
-        return _failure_output(inp.task_id, exc, _classify_exception(exc))
-
-    if resp.status_code == 404:
-        return _failure_output(inp.task_id, Exception(f"404 Task {inp.task_id} not found"), "video")
-    if resp.status_code >= 500:
-        return _failure_output(inp.task_id, Exception(f"{resp.status_code} HTTPError"), "transient")
-    resp.raise_for_status()
-    body = resp.json()
+        body = client.get(f"/tasks/{inp.task_id}")
+    except VLAPIError as exc:
+        return _failure_output(inp.task_id, exc, exc.category)
 
     status = body.get("status", "unknown")
     if status != "completed":
