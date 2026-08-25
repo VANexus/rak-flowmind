@@ -33,18 +33,18 @@ def install_mock_pipeline() -> None:
                   zip(segs, ["Hi everyone, welcome", "Today: engine maintenance"])]
     from pathlib import Path
 
-    lv.resolve_api_key = lambda env: "mock-key"
-    lv._media.extract_audio = lambda v, o, sample_rate=16000: o
-    lv._media.probe_duration = lambda p: 4.8
+    lv.get_api_key = lambda env: "mock-key"
+    lv._media.extract_audio = lambda v, o, **kw: o
+    lv._media.probe_media = lambda p: (4.8, 640, 360)
     lv._media.extract_frame = lambda v, t, o: (Path(o).write_bytes(b"") or o)
     lv._media.burn_subtitles = lambda vp, op, ass, erase_regions=None: (
         Path(op).write_bytes(b"x") or op)
     lv._media.mix_audio = lambda vp, d, op, keep_background=False: op
-    lv._cloud_asr.transcribe_local = lambda wav, api_key: segs
-    lv._locate_region = lambda src, dur, wd, key, cfg: {"x": 120, "y": 900, "w": 640, "h": 70}
+    lv._cloud_asr.transcribe_local = lambda wav, api_key, **kw: segs
+    lv._locate_region = lambda src, dur, wd, key, cfg, **kw: {"x": 120, "y": 900, "w": 640, "h": 70}
     lv._llm_translate.translate_segments = lambda s, **kw: translated
     lv._cloud_tts.synthesize_segments = lambda segments, **kw: [
-        f"{kw['out_dir']}/seg_{x['index']:04d}.wav" for x in segments]
+        f"{kw['out_dir']}/seg_{x['index']:04d}.mp3" for x in segments]
     lv._concat_wavs = lambda wavs, out: out
 
 
@@ -73,14 +73,14 @@ def main() -> None:
     print(f"  推理结论        : {r.reasoning[0].conclusion}")
 
     section("2) 无 key：显式 degraded，不静默降级")
-    lv.resolve_api_key = lambda env: None
+    lv.get_api_key = lambda env: None
     r = invoke("localize_video", {"video_path": "/tmp/demo.mp4"})
     print(f"  degraded        : {r.metrics.degraded}")
     print(f"  failure_category: {r.data.failure_category}（environment → 先配 key）")
     print(f"  warning         : {r.data.warning}")
 
     section("3) 文件不存在：video 类（修输入）")
-    lv.resolve_api_key = lambda env: "k"
+    lv.get_api_key = lambda env: "k"
     r = invoke("localize_video", {"video_path": "/no/such/file.mp4"})
     print(f"  failure_category: {r.data.failure_category}（video）")
     print(f"  retriable       : {r.data.retriable}")

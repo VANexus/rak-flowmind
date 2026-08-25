@@ -69,16 +69,16 @@ def test_localize_video_full_pipeline_mocked(no_keys, asr_local_ok, tmp_path, mo
     translated = [{**s, "text": f"EN{s['index']}"} for s in segs]
 
     monkeypatch.setattr(lv, "get_api_key", lambda env: "k-test")
-    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
-    monkeypatch.setattr(lv._media, "probe_duration", lambda p: 4.0)
+    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, **kw: o)
+    monkeypatch.setattr(lv._media, "probe_media", lambda p: (4.0, 640, 360))
     monkeypatch.setattr(lv._media, "extract_frame",
                         lambda v, t, o: open(o, "wb").close() or o)
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
     monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
-    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key: segs)
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key, **kw: segs)
     monkeypatch.setattr(lv, "_locate_region",
-                        lambda src, dur, wd, key, cfg: {"x": 100, "y": 800, "w": 600, "h": 80})
+                        lambda src, dur, wd, key, cfg, **kw: {"x": 100, "y": 800, "w": 600, "h": 80})
     # extract_frame 不再被 _locate_region 调用，但保留桩防其他路径
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda segs, **kw: translated)
@@ -117,9 +117,9 @@ def test_localize_video_asr_failure_degraded(no_keys, asr_local_ok, tmp_path, mo
 
     import flowmind.skills.localize_video as lv
     monkeypatch.setattr(lv, "get_api_key", lambda env: "k")
-    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
+    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, **kw: o)
     monkeypatch.setattr(lv._cloud_asr, "transcribe_local",
-                        lambda wav, api_key: (_ for _ in ()).throw(
+                        lambda wav, api_key, **kw: (_ for _ in ()).throw(
                             ASRError("限流", category="transient", retriable=True)))
 
     r = invoke("localize_video", {"video_path": str(src)})
@@ -137,14 +137,14 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, m
     segs = [{"index": 0, "begin": 0.0, "end": 2.0, "text": "ASR文本"}]
 
     monkeypatch.setattr(lv, "get_api_key", lambda env: "k")
-    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
-    monkeypatch.setattr(lv._media, "probe_duration", lambda p: 2.0)
+    monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, **kw: o)
+    monkeypatch.setattr(lv._media, "probe_media", lambda p: (2.0, 640, 360))
     monkeypatch.setattr(lv._media, "extract_frame",
                         lambda v, t, o: open(o, "wb").close() or o)
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
     monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
-    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key: segs)
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key, **kw: segs)
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda s, **kw: [{**x, "text": "T"} for x in s])
     monkeypatch.setattr(lv._cloud_tts, "synthesize_segments",
@@ -158,7 +158,7 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, m
     monkeypatch.setattr(lv._media, "burn_subtitles", fake_burn)
     # OCR 只用于定位 bbox，文本不进翻译源（ASR 为准）
     monkeypatch.setattr(lv, "_locate_region",
-                        lambda src, dur, wd, key, cfg: {"x": 0, "y": 900, "w": 500, "h": 60})
+                        lambda src, dur, wd, key, cfg, **kw: {"x": 0, "y": 900, "w": 500, "h": 60})
 
     r = invoke("localize_video", {"video_path": str(src), "target_lang": "en"})
     assert r.ok is True

@@ -3,7 +3,7 @@
 覆盖：
 - 命令拼装正确（不真跑 ffmpeg，monkeypatch 注入 fake runner）
 - extract_audio：输入输出路径、采样率参数
-- probe_duration：解析 ffprobe JSON
+- probe_media：解析 ffprobe JSON（时长+分辨率）
 - burn_subtitles / erase_region：滤镜串拼装
 - 真 ffmpeg 冒烟（生成 2s 测试视频 → 提取音轨 → 探时长）
 """
@@ -45,12 +45,17 @@ def test_extract_audio_raises_on_failure(monkeypatch):
         _media.extract_audio("/in/v.mp4", "/out/v.wav")
 
 
-def test_probe_duration_parses_ffprobe_json(monkeypatch):
+def test_probe_media_parses_ffprobe_json(monkeypatch):
+    payload = {"format": {"duration": "12.5"},
+               "streams": [{"width": 1920, "height": 1080}]}
+
     def fake_run(cmd, **_kw):
-        return 0, json.dumps({"format": {"duration": "12.5"}}), ""
+        return 0, json.dumps(payload), ""
 
     monkeypatch.setattr(_media, "run_ffprobe", fake_run)
-    assert _media.probe_duration("/v.mp4") == pytest.approx(12.5)
+    duration, w, h = _media.probe_media("/v.mp4")
+    assert duration == pytest.approx(12.5)
+    assert (w, h) == (1920, 1080)
 
 
 def test_burn_subtitles_includes_filter_and_output(monkeypatch):
@@ -113,6 +118,6 @@ def test_real_ffmpeg_smoke(tmp_path):
         "-shortest", str(src),
     ])
     assert rc == 0, err[:200]
-    assert _media.probe_duration(str(src)) == pytest.approx(2.0, abs=0.3)
+    assert _media.probe_media(str(src))[0] == pytest.approx(2.0, abs=0.3)
     out = _media.extract_audio(str(src), str(wav), sample_rate=16000)
     assert out == str(wav) and wav.exists()

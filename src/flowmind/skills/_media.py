@@ -40,33 +40,21 @@ def extract_audio(video_path: str, out_path: str, sample_rate: int = 16000) -> s
     return out_path
 
 
-def probe_duration(media_path: str) -> float:
-    """ffprobe 探媒体时长（秒）。"""
+def probe_media(media_path: str) -> tuple[float, int, int]:
+    """ffprobe 一次拿时长(秒)与分辨率 (width, height)。"""
     rc, out, err = run_ffprobe([
         "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_format", media_path,
+        "-show_format", "-show_streams", "-select_streams", "v:0", media_path,
     ])
     if rc != 0:
-        raise MediaError(f"探测时长失败: {err[-200:]}")
-    duration = json.loads(out).get("format", {}).get("duration")
+        raise MediaError(f"探测媒体信息失败: {err[-200:]}")
+    data = json.loads(out)
+    duration = (data.get("format") or {}).get("duration")
+    streams = data.get("streams") or [{}]
+    w, h = streams[0].get("width"), streams[0].get("height")
     if duration is None:
         raise MediaError("ffprobe 未返回时长")
-    return float(duration)
-
-
-def probe_resolution(media_path: str) -> tuple[int, int]:
-    """ffprobe 探视频分辨率 (width, height)。"""
-    rc, out, err = run_ffprobe([
-        "ffprobe", "-v", "quiet", "-print_format", "json",
-        "-show_streams", "-select_streams", "v:0", media_path,
-    ])
-    if rc != 0:
-        raise MediaError(f"探测分辨率失败: {err[-200:]}")
-    stream = (json.loads(out).get("streams") or [{}])[0]
-    w, h = stream.get("width"), stream.get("height")
-    if not w or not h:
-        raise MediaError("ffprobe 未返回分辨率")
-    return int(w), int(h)
+    return float(duration), int(w or 0), int(h or 0)
 
 
 def extract_frame(video_path: str, timestamp_s: float, out_path: str) -> str:
