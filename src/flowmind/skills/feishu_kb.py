@@ -476,19 +476,14 @@ class _Candidate:
     bm25_score: float
     vector_score: float
     rrf_score: float
-    title_score: float = 0.0  # 预留:title-only BM25,本轮未启用三路融合
 
 
 def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidate]:
     """BM25 + TF-IDF 双路召回 + RRF 融合。
 
-    长 answer bias 防御(标题加权 + BM25 长度归一参数调整):
+    长 answer bias 防御（标题加权 + 中文短语匹配 bonus）：
     1) title 在 BM25 语料里复制 2 遍 —— 让 title token 在长文档里占比更高
-    2) BM25 b 参数调到 0.3 —— 弱化文档长度归一化(默认 0.75 会让长 answer 文档被低估)
-    3) 给每个 FAQ 显式 title_score 字段,RRF 加权时单独加 TITLE_WEIGHT 贡献
-
-    这三招组合后,长 answer FAQ(如 FAQ-0029 燃料里程 30 车型表)的 title 命中
-    能压过短 answer FAQ 的密集匹配,有效消除 zero-LLM bias。
+    2) 给每个候选按 title 命中算中文短语匹配 bonus（见 _phrase_match_bonus）
     """
     if not faqs or not cleaned.strip():
         return []
@@ -534,7 +529,6 @@ def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidat
             answer=faqs[i].get("answer", ""),
             source_url=faqs[i].get("source_url", ""),
             bm25_score=0.0, vector_score=0.0, rrf_score=0.0,
-            title_score=0.0,
         ))
         c.bm25_score = raw
         c.rrf_score += 1.0 / (60 + rank)
@@ -546,7 +540,6 @@ def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidat
             answer=faqs[i].get("answer", ""),
             source_url=faqs[i].get("source_url", ""),
             bm25_score=0.0, vector_score=0.0, rrf_score=0.0,
-            title_score=0.0,
         ))
         c.vector_score = raw
         c.rrf_score += 1.0 / (60 + rank)

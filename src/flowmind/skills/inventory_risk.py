@@ -22,7 +22,6 @@ class InventoryItem(BaseModel):
     on_hand: int = Field(ge=0)          # 在库数量
     unit_cost: float = Field(ge=0)      # 单位成本
     sales_30d: int = Field(ge=0)        # 近30天销量
-    in_transit: int = Field(default=0, ge=0)  # 在途数量
     price: float | None = None
     category: str | None = None
 

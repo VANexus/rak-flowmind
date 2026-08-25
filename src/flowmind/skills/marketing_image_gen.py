@@ -14,7 +14,6 @@
 """
 from __future__ import annotations
 
-import hashlib
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -52,18 +51,7 @@ Style = Literal[
     "warm",
     "auto",
 ]
-Backend = Literal[
-    "mock",
-    "allin_api",
-    "auto",
-    # 历史值保留(旧版本注册的第三方后端),保留对老 config 兼容性:
-    "doubao_seedream",
-    "volc_jimeng",
-    "tongyi_wanxiang",
-    "midjourney_api",
-    "openai_gpt_image",
-    "sdxl_local",
-]
+Backend = Literal["mock", "allin_api", "auto"]
 AspectRatio = Literal["1:1", "3:4", "9:16", "4:3", "16:9", "21:9", "2:3", "3:2", "auto"]
 
 _VALID_ASPECT_RATIOS = {"1:1", "3:4", "9:16", "4:3", "16:9", "21:9", "2:3", "3:2"}
@@ -152,14 +140,6 @@ def _platform_label(p: str) -> str:
         "generic": "通用",
     }
     return table.get(p, p)
-
-
-def _hash_id(*parts: object) -> str:
-    h = hashlib.sha256()
-    for p in parts:
-        h.update(str(p).encode("utf-8"))
-        h.update(b"|")
-    return h.hexdigest()[:12]
 
 
 def _sanitize_final_prompt(text: str, *, max_len: int = 2000) -> str:
