@@ -54,6 +54,21 @@ def probe_duration(media_path: str) -> float:
     return float(duration)
 
 
+def probe_resolution(media_path: str) -> tuple[int, int]:
+    """ffprobe 探视频分辨率 (width, height)。"""
+    rc, out, err = run_ffprobe([
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_streams", "-select_streams", "v:0", media_path,
+    ])
+    if rc != 0:
+        raise MediaError(f"探测分辨率失败: {err[-200:]}")
+    stream = (json.loads(out).get("streams") or [{}])[0]
+    w, h = stream.get("width"), stream.get("height")
+    if not w or not h:
+        raise MediaError("ffprobe 未返回分辨率")
+    return int(w), int(h)
+
+
 def extract_frame(video_path: str, timestamp_s: float, out_path: str) -> str:
     """抽取指定时间点的一帧 PNG。"""
     rc, _, err = run_ffmpeg([
