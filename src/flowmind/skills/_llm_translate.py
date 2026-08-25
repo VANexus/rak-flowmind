@@ -106,12 +106,17 @@ def _translate_batch(
         raise LLMTtranslateError(f"LLM HTTP {resp.status_code}", category="video")
 
     data = resp.json()
-    try:
-        content = data["content"][0]["text"]
-    except (KeyError, IndexError, TypeError):
+    # Anthropic 兼容协议：content 是块数组；推理模型的 thinking 块在前，
+    # 取第一个 type=text 的块（无则结构异常）
+    text = next(
+        (blk.get("text") for blk in data.get("content", [])
+         if isinstance(blk, dict) and blk.get("type") == "text"),
+        None,
+    )
+    if not text:
         raise LLMTtranslateError("LLM 返回结构异常")
 
-    return _parse_reply(content, batch)
+    return _parse_reply(text, batch)
 
 
 def _parse_reply(content: str, batch: list[dict]) -> list[dict]:
