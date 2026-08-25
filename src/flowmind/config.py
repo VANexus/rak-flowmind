@@ -127,9 +127,8 @@ class LocalizerConfig(BaseModel):
 
     # ── 全云流水线（localize_video / voice_clone_enroll） ──
     asr_sample_rate: int = 16000        # 提取音轨采样率（Paraformer 要求 ≥16k）
-    asr_poll_interval_s: float = 2.0    # ASR 异步任务轮询间隔
-    asr_upload_base: str = ""           # 本地文件场景的音频公网前缀（OSS 等）；空=仅支持 URL 输入
     video_height_hint: int = 1080       # OCR 底部区域先验用的画面高度提示
+    ocr_frame_count: int = 5            # 字幕定位离线抽帧数（均匀取样，非逐帧）
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
 
 
