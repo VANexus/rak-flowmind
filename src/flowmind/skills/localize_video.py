@@ -99,19 +99,25 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         # ── 1) 提取音轨 ──
         audio_path = _media.extract_audio(
             src, str(workdir / "audio.wav"),
-            sample_rate=int(getattr(cfg, "asr_sample_rate", 16000)),
+            sample_rate=cfg.asr_sample_rate,
         )
 
         # ── 2) ASR（句级时间戳；本地 wav 经 WS 流式直推云端，无需公网 URL）──
-        segments = _cloud_asr.transcribe_local(audio_path, api_key=dashscope_key)
+        segments = _cloud_asr.transcribe_local(audio_path, api_key=dashscope_key,
+                                    sample_rate=cfg.asr_sample_rate)
+        duration_s, width, height = (None, None, None)
+        if not is_url:
+            duration_s, width, height = _media.probe_media(src)
         if not segments:
-            return _ok_shell(inp, workdir, duration=_media.probe_duration(src),
+            return _ok_shell(inp, workdir, duration=duration_s or 0.0,
                              msg="ASR 未识别到任何语音（可能无人声）",
                              erased=False, voice=None)
-        duration_s = _media.probe_duration(src) if not is_url else segments[-1]["end"]
+        if duration_s is None:
+            duration_s = segments[-1]["end"]
 
         # ── 3) OCR 定位原字幕区（离线抽样 N 帧，非逐帧实时——见 _locate_region）──
-        region = _locate_region(src, duration_s, workdir, dashscope_key, cfg)
+        region = _locate_region(src, duration_s, workdir, dashscope_key, cfg,
+                                width=width, height=height)
 
         # ── 4) LongCat 翻译 ──
         translated = _llm_translate.translate_segments(
@@ -133,12 +139,13 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
 
         # ── 6) TTS 逐句配音（可选：入参或 config 提供音色时才启用）──
         voice_used = None
-        eff_voice = inp.voice_id or getattr(cfg, "localize_voice", "") or ""
+        eff_voice = inp.voice_id or cfg.localize_voice or ""
         if eff_voice:
             inp.voice_id = eff_voice
             dubs = _cloud_tts.synthesize_segments(
                 translated, voice_id=inp.voice_id,
                 out_dir=str(workdir / "dubs"), api_key=dashscope_key,
+                target_model=cfg.localize_tts_model,
             )
             dub_track = _concat_wavs(dubs, str(workdir / "dub.wav"))
             _media.mix_audio(erased_video, dub_track,
@@ -186,12 +193,13 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
 
 
 def _locate_region(src: str, duration_s: float, workdir: Path,
-                   key: str, cfg) -> dict | None:
+                   key: str, cfg, *, width: int | None = None,
+                   height: int | None = None) -> dict | None:
     """离线抽样 N 帧（均匀铺开，非逐帧实时）→ 云 OCR → 聚合底部字幕 bbox。
 
     字幕条位置整部片子通常固定，抽样即可定位区域；帧数走 cfg.ocr_frame_count。
     """
-    n = max(1, int(getattr(cfg, "ocr_frame_count", 5)))
+    n = max(1, cfg.ocr_frame_count)
     frames = []
     for i in range(n):
         frac = (i + 0.5) / n  # 均匀取中点，避开片头片尾黑屏
@@ -202,11 +210,6 @@ def _locate_region(src: str, duration_s: float, workdir: Path,
             continue
     if not frames:
         return None
-    # 用真实分辨率做先验（不猜高度）；探不到则跳过先验只做 bbox 合法性过滤
-    try:
-        width, height = _media.probe_resolution(src)
-    except _media.MediaError:
-        width = height = None
     return _cloud_ocr.locate_subtitle_region(frames, api_key=key,
                                              frame_width=width,
                                              frame_height=height)
