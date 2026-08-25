@@ -17,6 +17,7 @@ dependencies = [
     "requests>=2.34.2",
     # PR #5: allin-api gpt-image-2 + chat completions
     "httpx>=0.27",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.optional-dependencies]

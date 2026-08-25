@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 from flowmind.contracts import ReasoningChain, SkillOutput
 from flowmind.skill import skill
 from flowmind.skills._cloud_tts import TTSError
-from flowmind.skills._image_backend import resolve_api_key  # noqa: F401 复用 env 读取
+from flowmind.skills._secrets import get_api_key  # noqa: F401 进程 env 优先，回落项目 .env
 
 _VERSION = "0.1.0"
 
@@ -55,7 +55,7 @@ def voice_clone_enroll(inp: EnrollInput) -> SkillOutput[EnrollReport]:
     create：上传样音 → 返回 voice_id（供 localize_video 的 voice_id 入参使用）。
     注册免费；样音要求 10~20 秒连续清晰朗读、≥16kHz。
     """
-    api_key = resolve_api_key(KEY_ENV)
+    api_key = get_api_key(KEY_ENV)
 
     # 无 key：显式 degraded（云优先，不静默降级）
     if not api_key:

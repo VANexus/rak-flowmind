@@ -41,7 +41,7 @@ def test_enroll_create_no_key_degraded(monkeypatch):
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
 
     import flowmind.skills.voice_clone_enroll as ve
-    monkeypatch.setattr(ve, "resolve_api_key", lambda env: None)
+    monkeypatch.setattr(ve, "get_api_key", lambda env: None)
     r = invoke("voice_clone_enroll", {
         "action": "create",
         "sample_audio_url": "https://oss/s.wav",
@@ -55,7 +55,7 @@ def test_enroll_create_no_key_degraded(monkeypatch):
 def test_enroll_create_happy(monkeypatch):
     import flowmind.skills.voice_clone_enroll as ve
 
-    monkeypatch.setattr("flowmind.skills.voice_clone_enroll.resolve_api_key",
+    monkeypatch.setattr("flowmind.skills.voice_clone_enroll.get_api_key",
                         lambda env: "k-ds")
     monkeypatch.setattr(
         ve, "_do_create",
@@ -91,7 +91,7 @@ def asr_local_ok(monkeypatch):
 
 def test_localize_video_no_keys_degraded(no_keys, monkeypatch):
     """无任何 key → degraded + environment + 提示配 key，不静默降级 mock。"""
-    monkeypatch.setattr("flowmind.skills.localize_video.resolve_api_key", lambda env: None)
+    monkeypatch.setattr("flowmind.skills.localize_video.get_api_key", lambda env: None)
     r = invoke("localize_video", {"video_path": "/nonexistent/v.mp4"})
     # 文件预检在前：不存在文件 → video；这里用真文件测 key 检查顺序
     assert r.metrics.degraded is True
@@ -117,7 +117,7 @@ def test_localize_video_full_pipeline_mocked(no_keys, asr_local_ok, tmp_path, mo
     ]
     translated = [{**s, "text": f"EN{s['index']}"} for s in segs]
 
-    monkeypatch.setattr(lv, "resolve_api_key", lambda env: "k-test")
+    monkeypatch.setattr(lv, "get_api_key", lambda env: "k-test")
     monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
     monkeypatch.setattr(lv._media, "probe_duration", lambda p: 4.0)
     monkeypatch.setattr(lv._media, "extract_frame",
@@ -165,7 +165,7 @@ def test_localize_video_asr_failure_degraded(no_keys, asr_local_ok, tmp_path, mo
     src.write_bytes(b"x")
 
     import flowmind.skills.localize_video as lv
-    monkeypatch.setattr(lv, "resolve_api_key", lambda env: "k")
+    monkeypatch.setattr(lv, "get_api_key", lambda env: "k")
     monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
     monkeypatch.setattr(lv._cloud_asr, "transcribe_local",
                         lambda wav, api_key: (_ for _ in ()).throw(
@@ -185,7 +185,7 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, m
     src.write_bytes(b"x")
     segs = [{"index": 0, "begin": 0.0, "end": 2.0, "text": "ASR文本"}]
 
-    monkeypatch.setattr(lv, "resolve_api_key", lambda env: "k")
+    monkeypatch.setattr(lv, "get_api_key", lambda env: "k")
     monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
     monkeypatch.setattr(lv._media, "probe_duration", lambda p: 2.0)
     monkeypatch.setattr(lv._media, "extract_frame",
