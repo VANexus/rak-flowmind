@@ -50,6 +50,7 @@ uv run flowmind-init                                   # 9 步对话式初始化
 
 ## 关键约定
 
+- **云优先（一切皆 API，最高原则）**：**不做任何本地 AI 处理**。ASR / TTS / 翻译 / OCR / 生图 / LLM 等全部走云端 API，禁止引入本地模型推理（不装 torch / paddleocr / 本地 TTS 引擎等）。确定性 mock 后端仅作测试基建（须显式指定 `backend="mock"`），生产路径无 API key 时必须显式报错，**绝不静默降级到 mock 出假结果**。
 - **语言**：注释 / 文档字符串 / 日志 / 提交信息用**中文**；标识符（变量/函数/类）用**英文**。
 - **提交格式**：`<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`。
 - **错误永不静默**：所有失败经 `SkillResult(ok=False, error=...)` 或 `degraded=True` 返回结构化结果，绝不吞异常、不返回半成品。`invoke()` 是这条铁律的统一执行点。

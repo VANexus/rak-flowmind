@@ -226,9 +226,10 @@ def select_backend(
 ) -> ImageBackend:
     """根据 cfg 与入参 backend 选择后端。
 
-    - ``backend="mock"`` → MockBackend
+    - ``backend="mock"`` → MockBackend（仅显式指定时可用，供测试/离线开发）
     - ``backend="allin_api"`` → AllInApiBackend(必须有 key,否则抛错)
-    - ``backend="auto"`` 或 None → 有 key 用 allin_api,否则 mock
+    - ``backend="auto"`` 或 None → 有 key 用 allin_api；**无 key 直接抛错**，
+      不再静默降级 mock（云优先原则：一切真实出图必须走云 API）
     """
     chosen = (requested or "auto").lower()
 
@@ -246,13 +247,16 @@ def select_backend(
 
     if chosen == "auto":
         api_key = resolve_api_key(cfg_allin_key_env)
-        if api_key:
-            return AllInApiBackend(
-                api_base=cfg_allin_base,
-                api_key=api_key,
-                model=cfg_allin_model,
-                timeout_s=cfg_allin_timeout_s,
+        if not api_key:
+            raise ValueError(
+                f"backend=auto 但未设置环境变量 {cfg_allin_key_env}。"
+                f"云优先原则：真实出图必须走云 API；如需离线测试请显式传 backend='mock'。"
             )
-        return MockBackend()
+        return AllInApiBackend(
+            api_base=cfg_allin_base,
+            api_key=api_key,
+            model=cfg_allin_model,
+            timeout_s=cfg_allin_timeout_s,
+        )
 
     raise ValueError(f"未知 backend：{requested}")

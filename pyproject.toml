@@ -45,5 +45,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# VLE 是上游 video-localizer 库的整包复制;不在本仓 lint 范围
-extend-exclude = ["src/video_localization_engine"]

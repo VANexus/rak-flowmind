@@ -34,7 +34,8 @@ from flowmind.skills._scene_extractor import (
 # ---------- 工具 ----------
 
 def _args(**over):
-    base = {"prompt": "白瓷盘, 蒸汽升腾, 自然光, 电商产品摄影"}
+    # 云优先原则：默认显式走 mock 后端（仅测试用）；不传 key 时 backend=auto 报错。
+    base = {"prompt": "白瓷盘, 蒸汽升腾, 自然光, 电商产品摄影", "backend": "mock"}
     base.update(over)
     return base
 
@@ -117,9 +118,14 @@ def test_marketing_copy_alone_yields_extracted_from_copy(tmp_path, monkeypatch):
     """只给 marketing_copy、不给 prompt → prompt_source=extracted_from_copy。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    save_config(
+        FlowmindConfig(marketing_image=MarketingImageConfig(extractor_mode="passthrough")),
+        path=tmp_path / "flowmind.config.toml",
+    )
 
     result = invoke("marketing_image_gen", {
         "prompt": "",
+        "backend": "mock",
         "marketing_copy": "酸菜鱼预制菜, 山野到家, 一口酸爽",
     })
     assert result.ok is True
@@ -294,18 +300,17 @@ def test_allin_api_backend_handles_b64_fallback():
 # 4. select_backend 路由 + key 安全
 # =========================================================================
 
-def test_select_backend_auto_falls_back_to_mock_without_key(monkeypatch):
-    """auto + 无 ALLIN_API_KEY → MockBackend。"""
+def test_select_backend_auto_raises_without_key(monkeypatch):
+    """云优先：auto + 无 ALLIN_API_KEY → 显式 ValueError，不再静默降级 mock。"""
     monkeypatch.delenv("ALLIN_API_KEY", raising=False)
-    backend = select_backend(
-        requested=None,
-        cfg_allin_key_env="ALLIN_API_KEY",
-        cfg_allin_base="https://allin-api.com",
-        cfg_allin_model="gpt-image-2",
-        cfg_allin_timeout_s=60.0,
-    )
-    assert isinstance(backend, MockBackend)
-    assert backend.name == "mock"
+    with pytest.raises(ValueError, match="ALLIN_API_KEY"):
+        select_backend(
+            requested=None,
+            cfg_allin_key_env="ALLIN_API_KEY",
+            cfg_allin_base="https://allin-api.com",
+            cfg_allin_model="gpt-image-2",
+            cfg_allin_timeout_s=60.0,
+        )
 
 
 def test_select_backend_auto_uses_allin_api_with_key(monkeypatch):
@@ -444,14 +449,14 @@ def test_end_to_end_with_real_backend_and_passthrough(tmp_path, monkeypatch):
     assert img_captured["body"]["model"] == "gpt-image-2"
 
 
-def test_end_to_end_no_key_uses_mock_everywhere(tmp_path, monkeypatch):
-    """无 ALLIN_API_KEY → 全程 mock,零 HTTP。"""
+def test_end_to_end_explicit_mock_uses_mock_everywhere(tmp_path, monkeypatch):
+    """显式 backend=mock + passthrough 抽取 → 全程 mock,零 HTTP（离线测试路径）。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ALLIN_API_KEY", raising=False)
-
-    # 若 helper 被误改成走 ChatExtractor 会立刻抛 INTERNAL;
-    # 正确的回落路径:auto + 无 key → MockBackend + PassthroughExtractor,
-    # 全程零 HTTP。
+    save_config(
+        FlowmindConfig(marketing_image=MarketingImageConfig(extractor_mode="passthrough")),
+        path=tmp_path / "flowmind.config.toml",
+    )
     result = invoke("marketing_image_gen", _args(
         marketing_copy="酸菜鱼预制菜, 一口酸爽",
     ))

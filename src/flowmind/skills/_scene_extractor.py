@@ -150,8 +150,9 @@ def select_extractor(
 ) -> SceneExtractor:
     """按 config.extractor_mode 选择提取器。
 
-    - ``passthrough`` → 永远 Passthrough(零网络)
-    - ``auto`` → 有 key 走 ChatExtractor,无 key 回落 Passthrough(与 backend 对称)
+    - ``passthrough`` → 永远 Passthrough(零网络,仅显式指定时可用)
+    - ``auto`` → 有 key 走 ChatExtractor;**无 key 直接抛错**，
+      不再静默降级 passthrough（云优先原则：文案改写必须走云 LLM）
     - ``chat`` → 永远 ChatExtractor(无 key 时 extract 时报错)
     """
     from flowmind.skills._image_backend import resolve_api_key  # 复用 env 读取
@@ -161,14 +162,18 @@ def select_extractor(
         return PassthroughExtractor()
     if mode == "auto":
         api_key = resolve_api_key(cfg_api_key_env)
-        if api_key:
-            return ChatExtractor(
-                api_base=cfg_api_base,
-                api_key=api_key,
-                model=cfg_extractor_model,
-                timeout_s=cfg_extractor_timeout_s,
+        if not api_key:
+            raise ValueError(
+                f"extractor_mode=auto 但未设置环境变量 {cfg_api_key_env}。"
+                f"云优先原则：画面描述提取必须走云 LLM；"
+                f"如需离线测试请显式配置 extractor_mode='passthrough'。"
             )
-        return PassthroughExtractor()
+        return ChatExtractor(
+            api_base=cfg_api_base,
+            api_key=api_key,
+            model=cfg_extractor_model,
+            timeout_s=cfg_extractor_timeout_s,
+        )
     if mode == "chat":
         api_key = resolve_api_key(cfg_api_key_env) or ""
         return ChatExtractor(
