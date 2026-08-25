@@ -23,7 +23,7 @@ from flowmind.errors import is_retriable
 from flowmind.skill import skill
 from flowmind.skills import _cloud_asr, _cloud_ocr, _cloud_tts, _llm_translate
 from flowmind.skills import _media
-from flowmind.skills._image_backend import resolve_api_key  # noqa: F401
+from flowmind.skills._secrets import get_api_key  # noqa: F401 进程 env 优先，回落项目 .env
 
 _VERSION = "0.1.0"
 
@@ -74,8 +74,8 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     双匹配策略：OCR 负责定位原字幕区域（供擦除）；翻译文本一律以 ASR 为准。
     """
     cfg = load_config().localizer
-    dashscope_key = resolve_api_key(KEY_DASHSCOPE)
-    longcat_key = resolve_api_key(KEY_LONGCAT)
+    dashscope_key = get_api_key(KEY_DASHSCOPE)
+    longcat_key = get_api_key(KEY_LONGCAT)
 
     # ── 预检（确定性，不调云）──
     is_url = inp.video_path.startswith(("http://", "https://"))

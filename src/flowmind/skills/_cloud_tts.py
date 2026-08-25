@@ -72,8 +72,8 @@ def create_voice(
 
 
 def list_voices(*, api_key: str, api_base: str = DEFAULT_BASE) -> list[dict]:
-    data = _customization("list_voices", {"prefix": ""}, api_key=api_key, api_base=api_base)
-    return list((data.get("output") or {}).get("voices") or [])
+    data = _customization("list_voice", {"prefix": ""}, api_key=api_key, api_base=api_base)
+    return list((data.get("output") or {}).get("voice_list") or [])
 
 
 def delete_voice(voice_id: str, *, api_key: str,
