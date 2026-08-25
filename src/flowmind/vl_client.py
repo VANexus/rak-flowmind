@@ -4,14 +4,12 @@
 requests.get/post/delete + 错误分类 + 超时管理。
 
 特性：
-- 单例 requests.Session（连接池复用）
 - 统一错误分类（environment / video / transient / unknown）
 - 统一超时 / 404 / 5xx 处理
 - 健康检查 fast-fail
+- 直接走模块级 requests（不持连接池），便于测试 monkeypatch / 并发轮询
 """
 from __future__ import annotations
-
-import json
 
 import requests
 
@@ -38,11 +36,13 @@ class VLClient:
         cfg = get_config().localizer
         client = VLClient(cfg)
         resp = client.post("/batch", payload)
+
+    直接调用模块级 requests.get/post/delete（不持有连接池），让测试可以用
+    模块级 monkeypatch 拦截，也保证 localize_status 的多线程轮询安全。
     """
 
     def __init__(self, cfg: LocalizerConfig | None = None):
         self.cfg = cfg or get_config().localizer
-        self._session = requests.Session()
 
     @property
     def base_url(self) -> str:
@@ -52,22 +52,26 @@ class VLClient:
         return f"{self.base_url}{path}"
 
     def health_check(self) -> None:
-        """fast-fail：VL 不通立刻抛 environment 错。"""
+        """fast-fail：VL 不通立刻抛带分类的 VLAPIError（environment/transient/video）。"""
         try:
-            r = self._session.get(self._url("/health"), timeout=self.cfg.health_timeout)
-            r.raise_for_status()
+            r = requests.get(self._url("/health"), timeout=self.cfg.health_timeout)
         except requests.RequestException as exc:
             raise VLAPIError(
                 code=ErrorCode.INTERNAL,
-                message=f"video-localizer 健康检查失败: {exc}",
+                message="video-localizer 健康检查失败",
                 category="environment",
                 details={"url": self.base_url},
             ) from exc
+        if r.status_code >= 500:
+            raise VLAPIError(ErrorCode.INTERNAL, "健康检查 5xx", "transient", {"status_code": r.status_code})
+        if r.status_code >= 400:
+            raise VLAPIError(ErrorCode.INTERNAL, "健康检查 4xx", "video", {"status_code": r.status_code})
+        r.raise_for_status()
 
     def post(self, path: str, payload: dict) -> dict:
         """POST 请求。失败抛 VLAPIError（带 category）。"""
         try:
-            r = self._session.post(
+            r = requests.post(
                 self._url(path), json=payload, timeout=self.cfg.http_timeout
             )
         except requests.RequestException as exc:
@@ -81,7 +85,7 @@ class VLClient:
     def get(self, path: str) -> dict:
         """GET 请求。404 → NOT_FOUND；其他 4xx/5xx → INTERNAL。"""
         try:
-            r = self._session.get(self._url(path), timeout=self.cfg.http_timeout)
+            r = requests.get(self._url(path), timeout=self.cfg.http_timeout)
         except requests.RequestException as exc:
             raise VLAPIError(
                 code=ErrorCode.INTERNAL,
@@ -98,7 +102,7 @@ class VLClient:
 
     def delete(self, path: str) -> dict:
         try:
-            r = self._session.delete(self._url(path), timeout=self.cfg.http_timeout)
+            r = requests.delete(self._url(path), timeout=self.cfg.http_timeout)
         except requests.RequestException as exc:
             raise VLAPIError(
                 code=ErrorCode.INTERNAL,
@@ -109,29 +113,29 @@ class VLClient:
 
     @staticmethod
     def _parse(r: requests.Response, path: str) -> dict:
-        """解析响应：4xx → 错误；5xx → 临时；2xx → JSON。"""
+        """解析响应：4xx → 错误（一律 video，与 errors.py 的 4xx 分类对齐）；5xx → transient；2xx → JSON。"""
         if 400 <= r.status_code < 500:
             try:
                 detail = r.json()
             except Exception:
-                detail = r.text[:200]
+                detail = str(getattr(r, "text", ""))[:200]
             raise VLAPIError(
                 code=ErrorCode.VALIDATION if r.status_code in (400, 422) else ErrorCode.INTERNAL,
                 message=f"{r.status_code} {path}: {detail}",
-                category="video" if r.status_code in (400, 404, 422) else "unknown",
+                category="video",
                 details={"status_code": r.status_code, "body": detail},
             )
         if r.status_code >= 500:
             raise VLAPIError(
                 code=ErrorCode.INTERNAL,
-                message=f"5xx {path}: {r.text[:200]}",
+                message=f"5xx {path}: {str(getattr(r, 'text', ''))[:200]}",
                 category="transient",
                 details={"status_code": r.status_code},
             )
         try:
             return r.json()
-        except json.JSONDecodeError:
-            return {"_raw": r.text}
+        except Exception:
+            return {"_raw": str(getattr(r, "text", ""))}
 
 
 def vlapi_to_skill_error(exc: VLAPIError) -> SkillError:

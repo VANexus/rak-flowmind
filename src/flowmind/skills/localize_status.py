@@ -2,22 +2,23 @@
 
 对一组 task_id 并发查 video-localizer GET /api/v1/tasks/{id}，
 判定每个任务：终态 / 卡住 / 健康；输出汇总 + 四段式推理链。
+HTTP 层统一走 VLClient（vl_client.py），本文件不直接发请求。
 
 阈值（stall_threshold_seconds / poll_max_concurrency）走 config，
 个性化由终端用户对话初始化覆盖。
 """
 from __future__ import annotations
 
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
 from datetime import datetime, timezone
 
-import requests
 from pydantic import BaseModel, Field
 
 from flowmind.config import LocalizerConfig, load_config
 from flowmind.contracts import Evidence, ReasoningChain, SkillOutput
-from flowmind.errors import _classify_exception
 from flowmind.rules import Rule, evaluate_rules
 from flowmind.skill import skill
+from flowmind.vl_client import VLAPIError, VLClient
 
 _VERSION = "0.1.0"
 
@@ -149,44 +150,30 @@ def _duration_seconds(started: str | None, finished: str | None) -> float | None
 # ── HTTP 调用 ──
 
 def _fetch_one(cfg: LocalizerConfig, task_id: str) -> TaskStatusReport:
-    """单次 GET /api/v1/tasks/{task_id}。
+    """单次 GET /api/v1/tasks/{task_id}（走 VLClient）。
 
     - 404 → 该 task 标 not_found（部分成功，不影响其他 task）
-    - 5xx → 该 task 标 unknown + error 文本（partial success）
-    - ConnectionError / Timeout → 该 task 标 unknown + error 文本（partial success）
-    - 其它 4xx → 该 task 标 unknown（不冒泡，让 batch 整体继续）
+    - 其他 HTTP / 网络错 → 该 task 标 unknown + error 文本（partial success，不冒泡）
     """
-    url = f"{cfg.api_base.rstrip('/')}{cfg.api_prefix}/tasks/{task_id}"
+    client = VLClient(cfg)
     try:
-        resp = requests.get(url, timeout=cfg.http_timeout)
-    except requests.exceptions.RequestException as exc:
-        cat = _classify_exception(exc)
+        body = client.get(f"/tasks/{task_id}")
+    except VLAPIError as exc:
+        if exc.code == "NOT_FOUND":
+            return TaskStatusReport(
+                task_id=task_id, status="not_found",
+                source_video=None, target_language=None, output_dir=None,
+                outputs={}, error="Task not found",
+                created_at=None, started_at=None, finished_at=None,
+                duration_seconds=None, is_terminal=True, is_stalled=False,
+            )
         return TaskStatusReport(
             task_id=task_id, status="unknown",
             source_video=None, target_language=None, output_dir=None,
-            outputs={}, error=f"[{cat}] {type(exc).__name__}",  # 不放完整 exc 消息（避免泄漏）
+            outputs={}, error=f"[{exc.category}] {type(exc.__cause__ or exc).__name__}",  # 不放完整消息（避免泄漏）
             created_at=None, started_at=None, finished_at=None,
             duration_seconds=None, is_terminal=False, is_stalled=False,
         )
-
-    if resp.status_code == 404:
-        return TaskStatusReport(
-            task_id=task_id, status="not_found",
-            source_video=None, target_language=None, output_dir=None,
-            outputs={}, error="Task not found",
-            created_at=None, started_at=None, finished_at=None,
-            duration_seconds=None, is_terminal=True, is_stalled=False,
-        )
-    if resp.status_code >= 400:
-        return TaskStatusReport(
-            task_id=task_id, status="unknown",
-            source_video=None, target_language=None, output_dir=None,
-            outputs={}, error=f"[{resp.status_code}] HTTPError",
-            created_at=None, started_at=None, finished_at=None,
-            duration_seconds=None, is_terminal=False, is_stalled=False,
-        )
-
-    body = resp.json()
     return _body_to_report(body)
 
 
