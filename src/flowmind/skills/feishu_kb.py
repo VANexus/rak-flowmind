@@ -120,7 +120,7 @@ class FeishuKbReport(BaseModel):
 
     字段分两类:
     - 业务字段:query / cleaned_query / intent / top_k / agent_reply_hint
-    - OpenClaw 结构化字段:user_language / translation_required / translation_directive
+    - Agent 可直接读取的结构化字段:user_language / translation_required / translation_directive
       让任何 agent(包括非 LLM)直接读懂输出语种 + 翻译规则
     """
     query: str
@@ -131,7 +131,7 @@ class FeishuKbReport(BaseModel):
     top_k: list[FaqItem] = Field(default_factory=list)
     agent_reply_hint: str = ""  # 给上层 Agent 的回复模板指引
 
-    # ====================== OpenClaw 结构化字段 ======================
+    # ====================== Agent 直接可读的结构化字段 ======================
     user_language: str = "other"                # "zh" / "en" / "th" / "other"
     translation_required: bool = False          # user_language != "zh"
     translation_directive: dict[str, str] = Field(
@@ -167,7 +167,7 @@ _FULL2HALF = {
 # 话题外防御：标准转人工文案（Agent 上层直接透传给用户）
 _OFFTOPIC_HINT = "暂未收录此类问题，请换个问法或联系人工客服。"
 
-# OpenClaw 不变性约束:翻译输出语言 = 用户语言。
+# 翻译不可变性约束:翻译输出语言 = 用户语言。
 # 所有 KB 术语输出时禁止:软化 / euphemize / replace / 同义化。
 _TRANSLATION_RULE = (
     "verbatim 翻译;不软化 / 不替换 / 不 euphemize / 不 register-shift;"
@@ -175,7 +175,7 @@ _TRANSLATION_RULE = (
 )
 
 # 三语翻译指令:KB 内容是中文 source of truth,LLM 只做语言转换,不补充信息。
-# [Language-MANDATORY] 标记为下游 agent(Claude Code / OpenClaw 等)必执行翻译。
+# [Language-MANDATORY] 标记为下游 agent(Claude Code 等)必执行翻译。
 _TRANSLATION_HINT = {
     "zh": "",  # 中文无需翻译
     "en": (
@@ -200,7 +200,7 @@ _TRANSLATION_HINT = {
 
 
 def _build_translation_directive(lang: str) -> dict[str, str]:
-    """OpenClaw 结构化翻译指令:让下游任何 agent(LLM 或 JSON-reader)
+    """结构化翻译指令:让下游任何 agent(LLM 或 JSON-reader)
     直接读懂用户语种、目标语种、翻译硬约束。
     """
     if lang == "zh" or lang == "other":

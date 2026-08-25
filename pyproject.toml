@@ -1,7 +1,7 @@
 [project]
 name = "rak-flowmind"
 version = "0.1.0"
-description = "FlowMind Skill SDK —— 对龙虾(OpenClaw)友好的技能底座"
+description = "FlowMind Skill SDK —— 对任意 Agent 友好的技能底座"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

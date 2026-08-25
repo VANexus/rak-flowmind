@@ -156,7 +156,7 @@ else:
 
 ## 项目一句话定位
 
-`rak-flowmind` = 对龙虾(OpenClaw)友好的 Python Skill SDK，通过 MCP 暴露。**技能底座**，不实现 OpenClaw 引擎本身。
+`rak-flowmind` = 对任意 Agent 友好的 Python Skill SDK，通过 MCP 暴露。**技能底座**，提供可被任意 Agent 优雅调度的技能框架。
 
 **核心不变量**：加技能 = 写 `@skill` 函数。注册 / JSON schema / MCP tool / manifest 全自动。不动 `server.py` / `contracts.py` / `manifest.py`。
 

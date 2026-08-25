@@ -14,7 +14,7 @@ class _Payload(BaseModel):
 def test_new_trace_generates_id_and_timestamp():
     tr = new_trace()
     assert tr.trace_id
-    assert tr.source == "openclaw" and tr.target == "flowmind"
+    assert tr.source == "agent" and tr.target == "flowmind"
     assert "T" in tr.timestamp  # ISO8601
 
 

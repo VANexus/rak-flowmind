@@ -1,6 +1,6 @@
-"""契约层：定义「对龙虾友好」的统一数据结构。
+"""契约层：定义「对任意 Agent 友好」的统一数据结构。
 
-这是整个 SDK 的规格核心——任何返回 SkillResult 的技能天然对龙虾友好。
+这是整个 SDK 的规格核心——任何返回 SkillResult 的技能天然对 Agent 友好。
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class ReasoningChain(BaseModel):
 
 
 class ReliabilityMetrics(BaseModel):
-    """可靠性指标：供龙虾熔断/评测模块读取。"""
+    """可靠性指标：供上层 Agent 读取，用于决策与评测。"""
     latency_ms: float
     confidence: float
     sample_size: int
@@ -52,7 +52,7 @@ class ReliabilityMetrics(BaseModel):
 class TraceContext(BaseModel):
     """全链路追踪上下文：trace_id 贯穿每次调用。"""
     trace_id: str
-    source: str = "openclaw"
+    source: str = "agent"
     target: str = "flowmind"
     timestamp: str  # ISO8601
 
@@ -76,7 +76,7 @@ class SkillOutput(BaseModel, Generic[T]):
 
 
 class SkillResult(BaseModel, Generic[T]):
-    """对外统一返回信封：龙虾/Agent 消费此结构。"""
+    """对外统一返回信封：任意 Agent 消费此结构。"""
     ok: bool
     skill: str
     version: str
@@ -88,7 +88,7 @@ class SkillResult(BaseModel, Generic[T]):
 
 
 def new_trace(
-    source: str = "openclaw",
+    source: str = "agent",
     target: str = "flowmind",
     trace_id: str | None = None,
 ) -> TraceContext:
