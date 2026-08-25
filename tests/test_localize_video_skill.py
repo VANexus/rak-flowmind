@@ -1,4 +1,4 @@
-"""voice_clone_enroll + localize_video 技能测试（全链路 mock）。
+"""localize_video 技能测试（全链路 mock）。
 
 覆盖：
 - 注册/入参校验/无 key 无 voice_id 的显式报错路径
@@ -20,56 +20,7 @@ from flowmind.skill import invoke, registry
 
 
 def test_skills_registered():
-    assert "voice_clone_enroll" in registry()
     assert "localize_video" in registry()
-
-
-# ── voice_clone_enroll ──
-
-
-def test_enroll_requires_sample_url(monkeypatch):
-    r = invoke("voice_clone_enroll", {
-        "action": "create",
-        "sample_audio_url": "",
-        "prefix": "p",
-    })
-    assert r.ok is False and r.error.code == "VALIDATION"
-
-
-def test_enroll_create_no_key_degraded(monkeypatch):
-    """无 DASHSCOPE_API_KEY → degraded + environment，不静默。"""
-    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-
-    import flowmind.skills.voice_clone_enroll as ve
-    monkeypatch.setattr(ve, "get_api_key", lambda env: None)
-    r = invoke("voice_clone_enroll", {
-        "action": "create",
-        "sample_audio_url": "https://oss/s.wav",
-        "prefix": "my",
-    })
-    assert r.ok is True and r.metrics.degraded is True
-    assert r.data.failure_category == "environment"
-    assert "DASHSCOPE_API_KEY" in (r.data.warning or "")
-
-
-def test_enroll_create_happy(monkeypatch):
-    import flowmind.skills.voice_clone_enroll as ve
-
-    monkeypatch.setattr("flowmind.skills.voice_clone_enroll.get_api_key",
-                        lambda env: "k-ds")
-    monkeypatch.setattr(
-        ve, "_do_create",
-        lambda sample_url, prefix, api_key: "cosyvoice-v3.5-plus-my-abc",
-    )
-    r = invoke("voice_clone_enroll", {
-        "action": "create",
-        "sample_audio_url": "https://oss/s.wav",
-        "prefix": "my",
-    })
-    assert r.ok is True and r.metrics.degraded is False
-    assert r.data.voice_id == "cosyvoice-v3.5-plus-my-abc"
-    chain = r.reasoning[0]
-    assert chain.conclusion and chain.causal_analysis and chain.risk_note
 
 
 # ── localize_video ──
@@ -132,7 +83,7 @@ def test_localize_video_full_pipeline_mocked(no_keys, asr_local_ok, tmp_path, mo
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda segs, **kw: translated)
     monkeypatch.setattr(lv._cloud_tts, "synthesize_segments",
-                        lambda segments, **kw: [f"{kw['out_dir']}/seg_{s['index']:04d}.wav"
+                        lambda segments, **kw: [f"{kw['out_dir']}/seg_{s['index']:04d}.mp3"
                                                 for s in segments])
     # _concat_wavs 打桩为直接返回假配音轨路径
     monkeypatch.setattr(lv, "_concat_wavs", lambda wavs, out: out)

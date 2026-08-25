@@ -25,16 +25,19 @@ def test_transcribe_local_calls_stream_adapter(monkeypatch, tmp_path):
     ]
     captured = {}
 
-    def fake_stream(wav_path: str, api_key: str, model: str):
+    def fake_stream(wav_path: str, api_key: str, model: str, sample_rate: int = 8000):
         captured["wav"] = wav_path
         captured["key"] = api_key
         captured["model"] = model
+        captured["sample_rate"] = sample_rate
         return raw_sentences
 
     monkeypatch.setattr(_cloud_asr, "_stream_recognize", fake_stream)
-    segs = _cloud_asr.transcribe_local(str(wav), api_key="k", model="paraformer-realtime-v2")
+    segs = _cloud_asr.transcribe_local(
+        str(wav), api_key="k", model="paraformer-realtime-8k-v1", sample_rate=8000)
     assert captured["wav"] == str(wav)
-    assert captured["model"] == "paraformer-realtime-v2"
+    assert captured["model"] == "paraformer-realtime-8k-v1"
+    assert captured["sample_rate"] == 8000
     assert len(segs) == 2
     assert segs[0] == {"index": 0, "begin": 0.0, "end": 2.1, "text": "大家好"}
     assert segs[1]["end"] == pytest.approx(4.8)

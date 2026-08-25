@@ -39,7 +39,8 @@ class LocalizeVideoInput(BaseModel):
     source_lang: str | None = Field(default=None, description="源语言；None=zh")
     voice_id: str | None = Field(
         default=None,
-        description="克隆音色 ID（voice_clone_enroll 注册所得）；None=不配音只换字幕",
+        description="配音音色（预设音色名，如 longanhuan_v3.6）；"
+                    "None=读 config.localize_voice，配置为空则不配音",
     )
     output_path: str | None = Field(
         default=None, description="输出 mp4 路径；None=输入同目录 <stem>_localized.mp4"
@@ -130,9 +131,11 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             erase_regions=[region] if region else None,
         )
 
-        # ── 6) 克隆 TTS 逐句配音（可选）──
+        # ── 6) TTS 逐句配音（可选：入参或 config 提供音色时才启用）──
         voice_used = None
-        if inp.voice_id:
+        eff_voice = inp.voice_id or getattr(cfg, "localize_voice", "") or ""
+        if eff_voice:
+            inp.voice_id = eff_voice
             dubs = _cloud_tts.synthesize_segments(
                 translated, voice_id=inp.voice_id,
                 out_dir=str(workdir / "dubs"), api_key=dashscope_key,
@@ -156,12 +159,9 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             triggered_rules=[], evidence=[],
             causal_analysis=(
                 f"Paraformer ASR {len(segments)} 句 → LongCat 翻译 → "
-                f"阿里云 OCR 定位 → CosyVoice 合成 → ffmpeg 合成"
+                f"qwen3.5-ocr 定位 → qwen-audio TTS 合成 → ffmpeg 合成"
             ),
-            risk_note=(
-                "译文为 LLM 生成，正式投放前建议人工抽查；"
-                "克隆音色需已通过 voice_clone_enroll 注册。"
-            ),
+            risk_note="译文为 LLM 生成，正式投放前建议人工抽查。",
         )
         return SkillOutput(
             data=LocalizeVideoReport(
@@ -202,8 +202,13 @@ def _locate_region(src: str, duration_s: float, workdir: Path,
             continue
     if not frames:
         return None
-    height = int(getattr(cfg, "video_height_hint", 1080))
+    # 用真实分辨率做先验（不猜高度）；探不到则跳过先验只做 bbox 合法性过滤
+    try:
+        width, height = _media.probe_resolution(src)
+    except _media.MediaError:
+        width = height = None
     return _cloud_ocr.locate_subtitle_region(frames, api_key=key,
+                                             frame_width=width,
                                              frame_height=height)
 
 
@@ -248,12 +253,13 @@ def _ensure_local(src: str, workdir: Path) -> str:
 
 
 def _concat_wavs(wavs: list[str], out_path: str) -> str:
-    """拼接逐句 wav 为整轨（句间静音对齐交给 ffmpeg concat）。"""
-    lst = Path(out_path).with_suffix(".txt")
-    lst.write_text("\n".join(f"file '{w}'" for w in wavs), encoding="utf-8")
+    """拼接逐句音频为整轨。全部转绝对路径：ffmpeg concat demuxer 按列表文件
+    所在目录解析相对路径，跨目录时必炸。"""
+    lst = Path(out_path).resolve().with_suffix(".txt")
+    lst.write_text("\n".join(f"file '{Path(w).resolve()}'" for w in wavs), encoding="utf-8")
     rc, _, err = _media.run_ffmpeg([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-        "-c", "copy", out_path,
+        "-c", "copy", str(Path(out_path).resolve()),
     ])
     if rc != 0:
         raise _media.MediaError(f"配音拼接失败: {err[-200:]}")

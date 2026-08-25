@@ -126,10 +126,11 @@ class LocalizerConfig(BaseModel):
     output_filename_suffix: str = "sub"     # 输出文件名后缀
 
     # ── 全云流水线（localize_video / voice_clone_enroll） ──
-    asr_sample_rate: int = 16000        # 提取音轨采样率（Paraformer 要求 ≥16k）
-    video_height_hint: int = 1080       # OCR 底部区域先验用的画面高度提示
+    asr_sample_rate: int = 8000         # 提取音轨采样率（paraformer-realtime-8k-v1 要求 8k）
     ocr_frame_count: int = 5            # 字幕定位离线抽帧数（均匀取样，非逐帧）
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
+    localize_tts_model: str = "qwen-audio-3.0-tts-flash"  # 配音 TTS 模型
+    localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
 
 
 class FlowmindConfig(BaseModel):
