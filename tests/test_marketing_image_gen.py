@@ -13,7 +13,9 @@ from flowmind.skill import invoke, registry
 # ---------- 工具 ----------
 
 def _args(prompt: str = "酸菜鱼预制菜, 白瓷盘, 自然光, 电商产品摄影", **over):
-    base = {"prompt": prompt}
+    # 云优先原则：默认显式走 mock 后端（确定性占位，仅测试用）；不传 key 时
+    # backend=auto 会报错而不是静默降级。
+    base = {"prompt": prompt, "backend": "mock"}
     base.update(over)
     return base
 
@@ -137,10 +139,19 @@ def test_brand_override_applied():
     assert any("brand" in n for n in result.data.sampling_notes)
 
 
-def test_backend_auto_fallback():
-    """backend=None → cfg.default_backend='auto'。"""
-    result = invoke("marketing_image_gen", _args())
-    assert result.data.backend == "auto"
+def test_backend_auto_requires_key():
+    """云优先：backend 缺省（auto）且无 ALLIN_API_KEY → 显式报错，不静默降级 mock。"""
+    import os
+
+    saved = os.environ.pop("ALLIN_API_KEY", None)
+    try:
+        result = invoke("marketing_image_gen", {"prompt": "测试"})
+        assert result.ok is False
+        assert result.error.code == "INTERNAL"
+        assert "ALLIN_API_KEY" in result.error.message
+    finally:
+        if saved is not None:
+            os.environ["ALLIN_API_KEY"] = saved
 
 
 # ---------- 多版本 / 尺寸 / 成本 ----------
