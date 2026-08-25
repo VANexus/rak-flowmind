@@ -28,8 +28,6 @@ class FeishuKbConfig(BaseModel):
     """飞书知识库 FAQ 检索技能的可配置参数（附通用默认值）。"""
     data_path: str = ""                # FAQ 数据 JSON 文件路径；空 = 用默认种子
     retrieval_top_n: int = 20           # 每路召回候选上限（融合前）
-    chunk_size: int = 400               # 切块字符数（占位用）
-    chunk_overlap: int = 60             # 切块重叠（占位用）
     min_top1_score: float = 0.015       # hard-gate 阈值：Top-1 final_score 低于此值 → 转人工
                                          # 默认值由 ~113 条 FAQ 真实分布校准：正常命中 0.05-0.20，
                                          # 话题外噪声 0.00-0.01。0.015 为分隔点。

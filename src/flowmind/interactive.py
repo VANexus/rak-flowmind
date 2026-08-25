@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable
 
 from flowmind.config import DEFAULT_CONFIG_PATH, FlowmindConfig, init_for_user
 
@@ -138,27 +138,19 @@ def _ask(ask_fn: Callable[[str], str], q: Question) -> str:
             print(f"  ✗ {exc}")
 
 
+# 类型转换表：缺省（不在表里）= 原样透传给 init_for_user
+_COERCERS: dict[str, Callable[[str], object]] = {
+    "enable_tts": _parse_bool,
+    "remove_subtitles": _parse_bool,
+    "tts_voice": lambda raw: raw or None,
+    "subtitle_font_size": int,
+}
+
+
 def _coerce(qid: str, raw: str) -> object:
     """把 raw 字符串转成 init_for_user 期望的类型。"""
-    if qid == "target_lang":
-        return raw
-    if qid == "source_lang":
-        return raw
-    if qid == "enable_tts":
-        return _parse_bool(raw)
-    if qid == "tts_voice":
-        return raw or None
-    if qid == "remove_subtitles":
-        return _parse_bool(raw)
-    if qid == "remove_subtitles_strategy":
-        return raw
-    if qid == "subtitle_font_size":
-        return int(raw)
-    if qid == "subtitle_position":
-        return raw
-    if qid == "output_filename_suffix":
-        return raw
-    raise ValueError(f"未知 question id: {qid}")
+    conv = _COERCERS.get(qid)
+    return conv(raw) if conv else raw
 
 
 def run_interactive_init(
@@ -222,6 +214,3 @@ def run_interactive_init(
 def main() -> None:
     """CLI 入口：`uv run flowmind-init`"""
     run_interactive_init()
-
-
-QUESTIONS_FOR_DOCS: Sequence[Question] = QUESTIONS  # 公开给文档用
