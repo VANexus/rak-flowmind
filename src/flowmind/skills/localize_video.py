@@ -101,33 +101,15 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             sample_rate=int(getattr(cfg, "asr_sample_rate", 16000)),
         )
 
-        # 音频需公网 URL 供百炼识别。v1：要求输入即 URL，或配置 asr_upload_base
-        # （OSS 前缀）后先上传音轨；两者皆无 → video 类失败并给出明确指引。
-        upload_base = getattr(cfg, "asr_upload_base", "") or ""
-        if is_url:
-            audio_url = src
-        elif upload_base:
-            audio_url = f"{upload_base.rstrip('/')}/{Path(audio_path).name}"
-        else:
-            return _fail(
-                inp,
-                "ASR 需要音频可公网访问。请提供视频 URL，或在 flowmind.config.toml "
-                "[localizer] 配置 asr_upload_base（OSS 前缀）后先上传音轨。",
-                "video",
-            )
-
-        # ── 2) ASR（句级时间戳）──
-        segments = _cloud_asr.transcribe(
-            audio_url, api_key=dashscope_key,
-            interval_s=float(getattr(cfg, "asr_poll_interval_s", 2.0)),
-        )
+        # ── 2) ASR（句级时间戳；本地 wav 经 WS 流式直推云端，无需公网 URL）──
+        segments = _cloud_asr.transcribe_local(audio_path, api_key=dashscope_key)
         if not segments:
             return _ok_shell(inp, workdir, duration=_media.probe_duration(src),
                              msg="ASR 未识别到任何语音（可能无人声）",
                              erased=False, voice=None)
         duration_s = _media.probe_duration(src) if not is_url else segments[-1]["end"]
 
-        # ── 3) OCR 定位原字幕区（双匹配：文本冲突以 ASR 为准——OCR 只出 bbox）──
+        # ── 3) OCR 定位原字幕区（离线抽样 N 帧，非逐帧实时——见 _locate_region）──
         region = _locate_region(src, duration_s, workdir, dashscope_key, cfg)
 
         # ── 4) LongCat 翻译 ──
@@ -205,10 +187,15 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
 
 def _locate_region(src: str, duration_s: float, workdir: Path,
                    key: str, cfg) -> dict | None:
-    """抽 3 帧（10%/50%/90% 处）→ 云 OCR → 聚合底部字幕 bbox。"""
+    """离线抽样 N 帧（均匀铺开，非逐帧实时）→ 云 OCR → 聚合底部字幕 bbox。
+
+    字幕条位置整部片子通常固定，抽样即可定位区域；帧数走 cfg.ocr_frame_count。
+    """
+    n = max(1, int(getattr(cfg, "ocr_frame_count", 5)))
     frames = []
-    for frac in (0.1, 0.5, 0.9):
-        p = str(workdir / f"frame_{int(frac * 100)}.png")
+    for i in range(n):
+        frac = (i + 0.5) / n  # 均匀取中点，避开片头片尾黑屏
+        p = str(workdir / f"frame_{i:02d}.png")
         try:
             frames.append(_media.extract_frame(src, duration_s * frac, p))
         except _media.MediaError:

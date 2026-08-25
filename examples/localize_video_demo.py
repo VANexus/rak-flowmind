@@ -33,10 +33,6 @@ def install_mock_pipeline() -> None:
                   zip(segs, ["Hi everyone, welcome", "Today: engine maintenance"])]
     from pathlib import Path
 
-    from flowmind.config import FlowmindConfig, LocalizerConfig
-
-    cfg = FlowmindConfig(localizer=LocalizerConfig(asr_upload_base="https://oss.example.com/"))
-    lv.load_config = lambda: cfg
     lv.resolve_api_key = lambda env: "mock-key"
     lv._media.extract_audio = lambda v, o, sample_rate=16000: o
     lv._media.probe_duration = lambda p: 4.8
@@ -44,7 +40,7 @@ def install_mock_pipeline() -> None:
     lv._media.burn_subtitles = lambda vp, op, ass, erase_regions=None: (
         Path(op).write_bytes(b"x") or op)
     lv._media.mix_audio = lambda vp, d, op, keep_background=False: op
-    lv._cloud_asr.transcribe = lambda *a, **kw: segs
+    lv._cloud_asr.transcribe_local = lambda wav, api_key: segs
     lv._locate_region = lambda src, dur, wd, key, cfg: {"x": 120, "y": 900, "w": 640, "h": 70}
     lv._llm_translate.translate_segments = lambda s, **kw: translated
     lv._cloud_tts.synthesize_segments = lambda segments, **kw: [

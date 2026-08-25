@@ -82,12 +82,11 @@ def no_keys(monkeypatch):
 
 
 @pytest.fixture
-def upload_ok(monkeypatch):
-    """给 config 打上 asr_upload_base，让本地文件场景跳过公网 URL 检查。"""
-    from flowmind.config import FlowmindConfig, LocalizerConfig
+def asr_local_ok(monkeypatch):
+    """ASR 走本地流式路径（mock 掉 WS 适配层）。"""
+    import flowmind.skills.localize_video as lv
 
-    cfg = FlowmindConfig(localizer=LocalizerConfig(asr_upload_base="https://oss.example.com/"))
-    monkeypatch.setattr("flowmind.skills.localize_video.load_config", lambda: cfg)
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key: [])
 
 
 def test_localize_video_no_keys_degraded(no_keys, monkeypatch):
@@ -105,7 +104,7 @@ def test_localize_video_missing_file_is_video(no_keys, tmp_path):
     assert r.data.retriable is False
 
 
-def test_localize_video_full_pipeline_mocked(no_keys, upload_ok, tmp_path, monkeypatch):
+def test_localize_video_full_pipeline_mocked(no_keys, asr_local_ok, tmp_path, monkeypatch):
     """mock 五个云模块 → 完整编排跑通：产物/字幕区/推理链齐全。"""
     import flowmind.skills.localize_video as lv
 
@@ -126,7 +125,7 @@ def test_localize_video_full_pipeline_mocked(no_keys, upload_ok, tmp_path, monke
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
     monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
-    monkeypatch.setattr(lv._cloud_asr, "transcribe", lambda *a, **kw: segs)
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key: segs)
     monkeypatch.setattr(lv, "_locate_region",
                         lambda src, dur, wd, key, cfg: {"x": 100, "y": 800, "w": 600, "h": 80})
     # extract_frame 不再被 _locate_region 调用，但保留桩防其他路径
@@ -158,7 +157,7 @@ def _fake_concat(cmd, **kw):
     return 0, "", ""
 
 
-def test_localize_video_asr_failure_degraded(no_keys, upload_ok, tmp_path, monkeypatch):
+def test_localize_video_asr_failure_degraded(no_keys, asr_local_ok, tmp_path, monkeypatch):
     """ASR transient 失败 → degraded + transient + retriable=True。"""
     from flowmind.skills._cloud_asr import ASRError
 
@@ -168,8 +167,8 @@ def test_localize_video_asr_failure_degraded(no_keys, upload_ok, tmp_path, monke
     import flowmind.skills.localize_video as lv
     monkeypatch.setattr(lv, "resolve_api_key", lambda env: "k")
     monkeypatch.setattr(lv._media, "extract_audio", lambda v, o, sample_rate=16000: o)
-    monkeypatch.setattr(lv._cloud_asr, "transcribe",
-                        lambda *a, **kw: (_ for _ in ()).throw(
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local",
+                        lambda wav, api_key: (_ for _ in ()).throw(
                             ASRError("限流", category="transient", retriable=True)))
 
     r = invoke("localize_video", {"video_path": str(src)})
@@ -178,7 +177,7 @@ def test_localize_video_asr_failure_degraded(no_keys, upload_ok, tmp_path, monke
     assert r.data.retriable is True
 
 
-def test_localize_video_asr_over_ocr_conflict(no_keys, upload_ok, tmp_path, monkeypatch):
+def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, monkeypatch):
     """双匹配冲突：OCR 文本与 ASR 不一致时，采用 ASR 文本（用户硬要求）。"""
     import flowmind.skills.localize_video as lv
 
@@ -194,7 +193,7 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, upload_ok, tmp_path, monk
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
     monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
-    monkeypatch.setattr(lv._cloud_asr, "transcribe", lambda *a, **kw: segs)
+    monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key: segs)
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda s, **kw: [{**x, "text": "T"} for x in s])
     monkeypatch.setattr(lv._cloud_tts, "synthesize_segments",
