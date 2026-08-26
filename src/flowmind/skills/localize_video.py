@@ -131,10 +131,11 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         ass_path = _write_ass(translated, workdir, cfg)
         out_path = inp.output_path or str(
             Path(src).with_stem(Path(src).stem + "_localized").with_suffix(".mp4"))
+        regions = region or []
         erased_video = _media.burn_subtitles(
             src if not is_url else _ensure_local(src, workdir),
             str(workdir / "subbed.mp4"), ass_path,
-            erase_regions=[region] if region else None,
+            erase_regions=regions or None,
         )
 
         # ── 6) TTS 逐句配音（可选：入参或 config 提供音色时才启用）──
@@ -160,7 +161,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         chain = ReasoningChain(
             conclusion=(
                 f"本地化完成：{len(translated)} 句、"
-                f"{'已擦除' if region else '未检出'}原字幕区、"
+                f"{'已擦除' if regions else '未检出'}原字幕区、"
                 f"{'克隆配音 ' + voice_used if voice_used else '未配音'}"
             ),
             triggered_rules=[], evidence=[],
@@ -175,7 +176,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
                 output_path=out_path,
                 duration_seconds=round(duration_s, 3),
                 asr_segment_count=len(segments),
-                subtitle_region_erased=region is not None,
+                subtitle_region_erased=bool(regions),
                 voice_used=voice_used,
             ),
             reasoning=[chain], confidence=0.9, sample_size=len(segments),
@@ -194,10 +195,10 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
 
 def _locate_region(src: str, duration_s: float, workdir: Path,
                    key: str, cfg, *, width: int | None = None,
-                   height: int | None = None) -> dict | None:
-    """离线抽样 N 帧（均匀铺开，非逐帧实时）→ 云 OCR → 聚合底部字幕 bbox。
+                   height: int | None = None) -> list[dict]:
+    """离线抽样 N 帧（均匀铺开，非逐帧实时）→ 云 OCR → 聚合字幕擦除区列表。
 
-    字幕条位置整部片子通常固定，抽样即可定位区域；帧数走 cfg.ocr_frame_count。
+    可能返回多个独立区域（顶部标题 + 底部歌词）；帧数走 cfg.ocr_frame_count。
     """
     n = max(1, cfg.ocr_frame_count)
     frames = []
@@ -209,7 +210,7 @@ def _locate_region(src: str, duration_s: float, workdir: Path,
         except _media.MediaError:
             continue
     if not frames:
-        return None
+        return []
     return _cloud_ocr.locate_subtitle_region(frames, api_key=key,
                                              frame_width=width,
                                              frame_height=height)
