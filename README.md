@@ -51,7 +51,7 @@ cfg = run_interactive_init(ask_fn=my_chat_ask_fn)
 # 1. 装依赖
 uv sync --extra dev
 
-# 2. 跑 8 个技能的全部测试（必须全绿）
+# 2. 跑 14 个技能的全部测试（必须全绿）
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio
 
 # 3. 跑全部 demo 看真实输出
@@ -111,7 +111,7 @@ mcp_config = {
 ### 协议第 5 步：交付摘要
 
 > "部署完成。你现在可以：
-> - **MCP 工具**：在我（[agent name]）里能看到 8 个工具 —— `inventory_risk` / `feishu_kb_search` / `marketing_image_gen` / 5 个 `localize_*`
+> - **MCP 工具**：在我（[agent name]）里能看到 14 个工具 —— `inventory_risk` / `feishu_kb_search` / `marketing_image_gen` / 5 个 `localize_*` / 5 个 `content_*`
 > - **直接 Python**：`from flowmind import invoke, discover` 就能用
 > - **继续开发**：让我帮你加新技能（触发 flowmind-add-skill）或处理 PR（flowmind-handle-pr）
 >
@@ -154,6 +154,21 @@ print(result.ok, result.data.summary, result.reasoning)
 - `feishu_kb_search` —— 飞书 FAQ 检索
 - `marketing_image_gen` —— 营销生图（多平台/多风格）
 - `localize_batch` / `localize_status` / `localize_cancel` / `localize_download` / `localize_retry` —— 视频本地化 5 步编排
+- `content_idea_design` —— 内容选题思路设计（xhs/wechat/douyin）
+- `content_copywrite` —— 平台化文案生成（小红书种草 / 公众号长文 / 抖音口播）
+- `content_hot_topics` —— 平台热点雷达（聚合热榜，API 不可达降级种子）
+- `content_audit` —— 平台规则审计（规则库扫描 + LLM 复核）
+- `content_image_gen` —— 平台比例 AI 配图（3:4 / 16:9 / 9:16）
+
+## Web / HTTP 消费（flowmind-mcp-http）
+
+MCP 默认 stdio；供 Web 前端（如 cross-dashboard）等 HTTP 客户端消费时，
+以 **Streamable HTTP** 传输启动（技能与密钥全部留在 flowmind，客户端零密钥）：
+
+```bash
+# 后台启动（Streamable HTTP，默认 http://127.0.0.1:8001/mcp）
+FLOWMIND_MCP_HOST=127.0.0.1 FLOWMIND_MCP_PORT=8001 nohup uv run flowmind-mcp-http > /tmp/flowmind-mcp-http.log 2>&1 &
+```
 
 ## 给 Agent 的初始化剧本（AGENT INIT PLAYBOOK）
 

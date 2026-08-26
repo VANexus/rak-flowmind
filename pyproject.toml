@@ -19,6 +19,8 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.2.2",
     "dashscope>=1.27.1",
+    # content_* 技能 + flowmind-mcp-http（Streamable HTTP transport 起服务）
+    "uvicorn>=0.30",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +33,7 @@ dev = [
 
 [project.scripts]
 flowmind-mcp = "flowmind.server:main"
+flowmind-mcp-http = "flowmind.server_http:main"
 flowmind-init = "flowmind.interactive:main"
 
 [build-system]

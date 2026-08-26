@@ -38,7 +38,8 @@ uv run flowmind-init                                   # 9 步对话式初始化
 - **`config.py`** —— 配置层：`FlowmindConfig` / `InventoryConfig` / `FeishuKbConfig` / `MarketingImageConfig` / `LocalizerConfig`；`load_config` / `save_config` / `get_config` / `reload_config` / `init_for_user`。可调项只经 config 暴露，**带通用默认**；个性化由终端用户对话写 `flowmind.config.toml`（gitignored）。
 - **`vl_client.py`** —— 视频本地化后端 HTTP 封装（含请求分类）。
 - **`server.py`** —— FastMCP（**v1**，`mcp>=1.27,<2`）遍历注册表动态登记 MCP tool。`_make_tool` 靠设置 `__annotations__` 驱动 schema 推断 —— v1 特定技巧。
-- **`skills/`** —— 8 个 `@skill` 注册在 `__init__.py`：3 个纯计算（`inventory_risk` / `feishu_kb_search` / `marketing_image_gen`）+ 5 个 HTTP 依赖的 `localize_*`。每个技能文件第一段 docstring 会被 `SkillSpec.description` 自动捕获。
+- **`skills/`** —— 14 个 `@skill` 注册在 `__init__.py`：3 个纯计算（`inventory_risk` / `feishu_kb_search` / `marketing_image_gen`）+ 6 个 HTTP 依赖的 `localize_*` + 5 个内容创作 `content_*`（`content_idea_design` / `content_copywrite` / `content_hot_topics` / `content_audit` / `content_image_gen`，密钥走 `LONGCAT_API_KEY` / `CIYUANSKY_API_KEY` env）。每个技能文件第一段 docstring 会被 `SkillSpec.description` 自动捕获。
+- **`server_http.py`** —— `flowmind-mcp-http` 入口：以 Streamable HTTP 传输启动 MCP 服务（默认 `127.0.0.1:8001/mcp`），供 Web 前端（cross-dashboard）作 MCP 客户端零密钥消费。
 
 ### `feishu_kb_search` 关键能力（PR #6 + PR #7 合入后）
 
@@ -123,5 +124,5 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio
 
 - `.claude/skills/flowmind-onboard/` —— Agent 第一次进 repo 必读
 - `.claude/skills/flowmind-test-skill/` —— 端到端测试 skill
-- `examples/` —— 8 个 demo 脚本 + 1 个真打集成示例
+- `examples/` —— 13 个 demo 脚本 + 1 个真打集成示例
 - `.test-runs/` —— gitignored，端到端测试报告输出位置

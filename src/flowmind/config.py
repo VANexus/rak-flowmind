@@ -133,12 +133,54 @@ class LocalizerConfig(BaseModel):
     localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
 
 
+class ContentConfig(BaseModel):
+    """内容创作中心（content_* 5 技能）的可配置参数（附通用默认值）。
+
+    安全约定：云密钥只从环境变量读取（*_key_env 只存 env var 名，绝不存明文、
+    绝不进 toml / commit）。LLM 走 LongCat（Anthropic 兼容协议），生图走 ciyuansky
+    （OpenAI 兼容 /v1/images/generations），热点走聚合 API（DailyHotApi 协议）。
+    """
+
+    # ── LLM（LongCat / Anthropic 兼容 /v1/messages）──
+    llm_api_base: str = "https://api.longcat.chat/anthropic"
+    llm_api_key_env: str = "LONGCAT_API_KEY"
+    llm_model: str = "LongCat-2.0"
+    llm_max_tokens: int = 4096
+    llm_timeout_s: float = 60.0
+
+    # ── 生图（ciyuansky / OpenAI 兼容 /v1/images/generations）──
+    image_api_base: str = "https://api.ciyuansky.com"
+    image_api_key_env: str = "CIYUANSKY_API_KEY"
+    image_model: str = "gpt-image-2"
+    image_timeout_s: float = 60.0
+    image_max_variants: int = 4
+
+    # ── 热点（聚合 API，DailyHotApi 协议；小红书/公众号无公开热榜 → 代理平台）──
+    hot_topic_api_base: str = "https://api-hot.imsyy.top"
+    hot_topic_endpoints: dict[str, str] = Field(
+        default_factory=lambda: {
+            "xhs": "weibo",      # 小红书无公开热榜 → 微博全网热点代理
+            "wechat": "toutiao", # 公众号无公开热榜 → 头条代理
+            "douyin": "douyin",  # 抖音真榜
+        },
+    )
+    hot_topic_limit: int = 20
+    hot_topic_timeout_s: float = 10.0
+
+    # ── 生成约束 ──
+    max_ideas: int = 6          # 思路设计上限
+    max_tags: int = 6           # 文案标签上限
+    max_copy_length: int = 2000 # 文案正文上限
+    audit_llm_enabled: bool = True  # 审计是否启用 LLM 复核（规则扫描始终执行）
+
+
 class FlowmindConfig(BaseModel):
     """FlowMind 总配置：每技能一段。"""
     inventory: InventoryConfig = Field(default_factory=InventoryConfig)
     feishu_kb: FeishuKbConfig = Field(default_factory=FeishuKbConfig)
     marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
+    content: ContentConfig = Field(default_factory=ContentConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:
