@@ -1,7 +1,8 @@
 # FlowMind Skill SDK
 
-对任意 Agent 友好的技能底座。技能一次定义即成为 MCP 工具，
+对任意 Agent 友好的技能底座。技能一次定义即成为 MCP 工具 **和 A2A Agent 委托目标**，
 自带四段式因果推理链、可靠性指标与 trace_id，并可由终端用户对话初始化个性化配置。
+**FlowMind 既是 MCP 服务端，也是 Google A2A Agent** —— 同一套技能，双协议暴露。
 
 ---
 
@@ -169,6 +170,40 @@ MCP 默认 stdio；供 Web 前端（如 cross-dashboard）等 HTTP 客户端消�
 # 后台启动（Streamable HTTP，默认 http://127.0.0.1:8001/mcp）
 FLOWMIND_MCP_HOST=127.0.0.1 FLOWMIND_MCP_PORT=8001 nohup uv run flowmind-mcp-http > /tmp/flowmind-mcp-http.log 2>&1 &
 ```
+
+## 作为 A2A Agent 运行
+
+FlowMind 同时实现 [Google A2A 协议](https://github.com/google/A2A)，可接受任意 A2A 客户端的任务委托：
+
+```bash
+# 启动 HTTP 服务器（MCP + A2A 双协议，单端口 8001）
+uv run flowmind-mcp-http
+```
+
+**1. 发现 Agent Card**（A2A 客户端自发现入口）：
+
+```bash
+curl http://localhost:8001/.well-known/agent.json
+```
+
+**2. 提交任务**（JSON-RPC `tasks/send`）：
+
+```bash
+curl -X POST http://localhost:8001/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0", "id": "req-1", "method": "tasks/send",
+    "params": {
+      "id": "task-1",
+      "message": {"role": "user", "parts": [{"type": "text", "text": "帮我分析库存风险，SKU 为 A001"}]},
+      "metadata": {"include_reasoning": true}
+    }
+  }'
+```
+
+**3. 编排器**自动走 Planner → Executor → Recovery → Summarizer 四节点，LLM 规划技能调用序列，返回结果 + 可选推理链。
+
+> 前置：需设置 `LONGCAT_API_KEY` 环境变量（编排器 LLM）。完整 demo 见 `examples/a2a_demo.py`。
 
 ## 给 Agent 的初始化剧本（AGENT INIT PLAYBOOK）
 
