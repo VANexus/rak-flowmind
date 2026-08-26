@@ -9,11 +9,34 @@ from unittest import mock
 from starlette.testclient import TestClient
 
 from flowmind.a2a.server import FlowMindA2AServer
+from flowmind.a2a.store import clear_store
 
 
 def _make_client() -> TestClient:
     server = FlowMindA2AServer(base_url="http://localhost:8001")
     return TestClient(server.get_app())
+
+
+def _send_task(client: TestClient, task_id: str, text: str) -> dict:
+    """辅助：提交一个任务并返回 result。"""
+    with mock.patch("flowmind.a2a.server.run_orchestrator") as mock_orch:
+        mock_orch.return_value = {
+            "output": {"text": "完成了"},
+            "reasoning": [],
+            "degraded": False,
+            "error": None,
+        }
+        resp = client.post("/a2a", json={
+            "jsonrpc": "2.0",
+            "id": f"req-{task_id}",
+            "method": "tasks/send",
+            "params": {
+                "id": task_id,
+                "message": {"role": "user", "parts": [{"type": "text", "text": text}]},
+                "metadata": {},
+            },
+        })
+    return resp.json()["result"]
 
 
 def test_full_a2a_flow_happy_path():
@@ -134,3 +157,103 @@ def test_a2a_flow_failed():
     result = resp.json()["result"]
     assert result["status"]["state"] == "failed"
     assert "规划失败" in result["status"]["message"]
+
+
+def test_tasks_get_retrieves_stored_task():
+    """tasks/get 能查询到已提交的任务。"""
+    import asyncio
+    asyncio.run(clear_store())
+    client = _make_client()
+
+    # 先提交任务
+    _send_task(client, "task-get-1", "测试查询")
+
+    # 查询任务
+    resp = client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-get-1",
+        "method": "tasks/get",
+        "params": {"id": "task-get-1"},
+    })
+    result = resp.json()["result"]
+    assert result["id"] == "task-get-1"
+    assert result["status"]["state"] == "completed"
+
+
+def test_tasks_get_nonexistent_returns_error():
+    """tasks/get 查询不存在的任务 → 返回错误状态。"""
+    import asyncio
+    asyncio.run(clear_store())
+    client = _make_client()
+
+    resp = client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-get-2",
+        "method": "tasks/get",
+        "params": {"id": "never-exists"},
+    })
+    result = resp.json()["result"]
+    assert result["status"]["state"] == "failed"
+    assert "不存在" in result["status"]["message"]
+
+
+def test_tasks_cancel_marks_canceled():
+    """tasks/cancel 将任务标记为 canceled。"""
+    import asyncio
+    asyncio.run(clear_store())
+    client = _make_client()
+
+    # 先提交任务
+    _send_task(client, "task-cancel-1", "测试取消")
+
+    # 取消任务
+    resp = client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-cancel-1",
+        "method": "tasks/cancel",
+        "params": {"id": "task-cancel-1"},
+    })
+    result = resp.json()["result"]
+    assert result["id"] == "task-cancel-1"
+    assert result["status"]["state"] == "canceled"
+
+
+def test_tasks_cancel_then_get_shows_canceled():
+    """tasks/cancel 后再 tasks/get → 状态保持 canceled。"""
+    import asyncio
+    asyncio.run(clear_store())
+    client = _make_client()
+
+    # 提交 → 取消 → 查询
+    _send_task(client, "task-cancel-2", "测试取消后查询")
+    client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-cancel-2",
+        "method": "tasks/cancel",
+        "params": {"id": "task-cancel-2"},
+    })
+    resp = client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-get-3",
+        "method": "tasks/get",
+        "params": {"id": "task-cancel-2"},
+    })
+    result = resp.json()["result"]
+    assert result["status"]["state"] == "canceled"
+
+
+def test_tasks_cancel_nonexistent_returns_error():
+    """tasks/cancel 取消不存在的任务 → 返回错误状态。"""
+    import asyncio
+    asyncio.run(clear_store())
+    client = _make_client()
+
+    resp = client.post("/a2a", json={
+        "jsonrpc": "2.0",
+        "id": "req-cancel-3",
+        "method": "tasks/cancel",
+        "params": {"id": "never-exists"},
+    })
+    result = resp.json()["result"]
+    assert result["status"]["state"] == "failed"
+    assert "不存在" in result["status"]["message"]

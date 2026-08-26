@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from flowmind.a2a.agent_card import build_agent_card
+from flowmind.a2a.store import cancel_task, get_task, save_task
 from flowmind.a2a.types import a2a_task_to_request, result_to_a2a_task
 from flowmind.orchestrator.graph import run_orchestrator
 
@@ -49,7 +50,7 @@ async def _a2a_handler(request: Request) -> JSONResponse:
 
 
 async def _handle_task_send(params: dict) -> dict:
-    """处理 tasks/send：接收任务 → 编排 → 返回 Task。"""
+    """处理 tasks/send：接收任务 → 编排 → 存储 → 返回 Task。"""
     task_id = params.get("id", "")
     request = a2a_task_to_request(params.get("message", {}), params.get("metadata", {}))
 
@@ -58,17 +59,25 @@ async def _handle_task_send(params: dict) -> dict:
         skill_group=request["skill_group"],
         include_reasoning=request["include_reasoning"],
     )
-    return result_to_a2a_task(task_id, result, request["include_reasoning"])
+    task = result_to_a2a_task(task_id, result, request["include_reasoning"])
+    await save_task(task)
+    return task
 
 
 async def _handle_task_get(params: dict) -> dict:
-    """处理 tasks/get：查询任务状态（简化实现）。"""
-    return {"id": params.get("id"), "status": {"state": "completed"}}
+    """处理 tasks/get：从存储查询任务状态。"""
+    task = await get_task(params.get("id", ""))
+    if task is None:
+        return {"id": params.get("id"), "status": {"state": "failed", "message": "任务不存在"}}
+    return task
 
 
 async def _handle_task_cancel(params: dict) -> dict:
-    """处理 tasks/cancel：取消任务（简化实现）。"""
-    return {"id": params.get("id"), "status": {"state": "canceled"}}
+    """处理 tasks/cancel：在存储中标记任务为 canceled。"""
+    task = await cancel_task(params.get("id", ""))
+    if task is None:
+        return {"id": params.get("id"), "status": {"state": "failed", "message": "任务不存在"}}
+    return task
 
 
 class FlowMindA2AServer:
