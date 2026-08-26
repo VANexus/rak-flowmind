@@ -15,6 +15,7 @@ from starlette.routing import Route
 
 from flowmind.a2a.agent_card import build_agent_card
 from flowmind.a2a.types import a2a_task_to_request, result_to_a2a_task
+from flowmind.orchestrator.graph import run_orchestrator
 
 
 async def _agent_card_handler(request: Request) -> JSONResponse:
@@ -52,8 +53,11 @@ async def _handle_task_send(params: dict) -> dict:
     task_id = params.get("id", "")
     request = a2a_task_to_request(params.get("message", {}), params.get("metadata", {}))
 
-    # TODO: Task 12 替换为真实编排器调用
-    result = _stub_orchestrator(request)
+    result = run_orchestrator(
+        goal=request["goal"],
+        skill_group=request["skill_group"],
+        include_reasoning=request["include_reasoning"],
+    )
     return result_to_a2a_task(task_id, result, request["include_reasoning"])
 
 
@@ -65,16 +69,6 @@ async def _handle_task_get(params: dict) -> dict:
 async def _handle_task_cancel(params: dict) -> dict:
     """处理 tasks/cancel：取消任务（简化实现）。"""
     return {"id": params.get("id"), "status": {"state": "canceled"}}
-
-
-def _stub_orchestrator(request: dict) -> dict:
-    """占位编排器，Task 12 替换。"""
-    return {
-        "output": {"text": f"收到任务: {request['goal']}（编排器未实现）"},
-        "reasoning": [],
-        "degraded": False,
-        "error": None,
-    }
 
 
 class FlowMindA2AServer:
