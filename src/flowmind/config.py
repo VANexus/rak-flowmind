@@ -174,6 +174,16 @@ class ContentConfig(BaseModel):
     audit_llm_enabled: bool = True  # 审计是否启用 LLM 复核（规则扫描始终执行）
 
 
+class OrchestratorConfig(BaseModel):
+    """A2A 编排器配置。"""
+    llm_key_env: str = "LONGCAT_API_KEY"
+    llm_base_url: str = "https://api.longcat.chat/anthropic"
+    llm_model: str = "LongCat-2.0"
+    max_plan_steps: int = 5
+    max_retries_per_step: int = 1
+    enable_streaming: bool = True
+
+
 class FlowmindConfig(BaseModel):
     """FlowMind 总配置：每技能一段。"""
     inventory: InventoryConfig = Field(default_factory=InventoryConfig)
@@ -181,6 +191,7 @@ class FlowmindConfig(BaseModel):
     marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
     content: ContentConfig = Field(default_factory=ContentConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:
