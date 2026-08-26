@@ -21,6 +21,12 @@ dependencies = [
     "dashscope>=1.27.1",
     # content_* 技能 + flowmind-mcp-http（Streamable HTTP transport 起服务）
     "uvicorn>=0.30",
+    # A2A 协议层
+    "a2a-sdk>=0.1.0",
+    # 编排层
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langgraph>=0.2",
 ]
 
 [project.optional-dependencies]
