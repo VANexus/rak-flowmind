@@ -25,12 +25,12 @@ class ASRError(Exception):
 
 # ── 本地流式路径（WebSocket 直推，无需公网 URL）──
 
-STREAM_MODEL = "paraformer-realtime-8k-v1"
+STREAM_MODEL = "qwen-audio-3.0-asr-flash-streaming"
 
 
 def transcribe_local(
     wav_path: str, *, api_key: str, model: str = STREAM_MODEL,
-    sample_rate: int = 8000,
+    sample_rate: int = 16000, language_hints: list[str] | None = None,
 ) -> list[dict]:
     """本地音频文件流式推给云端识别，返回句段列表（秒）。
 
@@ -44,7 +44,8 @@ def transcribe_local(
     if not Path(wav_path).exists():
         raise ASRError(f"音频文件不存在: {wav_path}", category="video")
     sentences = _stream_recognize(wav_path, api_key=api_key, model=model,
-                                  sample_rate=sample_rate)
+                                  sample_rate=sample_rate,
+                                  language_hints=language_hints)
     out: list[dict] = []
     for s in sentences:
         text = str(s.get("text", "")).strip()
@@ -62,7 +63,8 @@ def transcribe_local(
 
 
 def _stream_recognize(
-    wav_path: str, *, api_key: str, model: str, sample_rate: int = 8000,
+    wav_path: str, *, api_key: str, model: str, sample_rate: int = 16000,
+    language_hints: list[str] | None = None,
 ) -> list[dict]:
     """dashscope Recognition WS 薄适配层：本地文件 callback 流式直推。
 
@@ -129,23 +131,28 @@ def _stream_recognize(
                 final_sentences.append(last_sentence[-1])
         def on_close(self): ...
 
-    recognition = Recognition(
+    kwargs: dict = dict(
         model=model,
         format="wav",
         sample_rate=sample_rate,
         callback=_Callback(),
     )
+    if language_hints:
+        kwargs["language_hints"] = language_hints
+    recognition = Recognition(**kwargs)
     try:
         recognition.start()
-        # 分片节奏按近实时模拟：3200B=200ms@8kHz/16bit/mono，间隔 60ms。
-        # 实测灌大包（9600B/20ms）时服务端会静默丢弃整条流（零事件）。
+        # 分片节奏按近实时模拟：6400B≈200ms@16kHz/16bit/mono，间隔 100ms。
+        # 8k 模型用 3200B；16k 模型用 6400B（实测灌大包会静默丢弃整条流）。
+        chunk_size = int(sample_rate * 2 * 0.2)  # 200ms × bytes_per_sample(2) × rate
+        sleep_step = 0.10
         with open(wav_path, "rb") as f:
             while True:
-                chunk = f.read(3200)
+                chunk = f.read(chunk_size)
                 if not chunk:
                     break
                 recognition.send_audio_frame(chunk)
-                time.sleep(0.06)
+                time.sleep(sleep_step)
         recognition.stop()
         # on_complete/on_error 在 SDK 接收线程里异步触发，等它收尾
         # （实测 8k 模型 stop 后约 1-2 秒才派发完最后的事件）

@@ -103,8 +103,11 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         )
 
         # ── 2) ASR（句级时间戳；本地 wav 经 WS 流式直推云端，无需公网 URL）──
-        segments = _cloud_asr.transcribe_local(audio_path, api_key=dashscope_key,
-                                    sample_rate=cfg.asr_sample_rate)
+        segments = _cloud_asr.transcribe_local(
+            audio_path, api_key=dashscope_key,
+            sample_rate=cfg.asr_sample_rate,
+            language_hints=[inp.source_lang or cfg.source_lang_default],
+        )
         duration_s, width, height = (None, None, None)
         if not is_url:
             duration_s, width, height = _media.probe_media(src)
