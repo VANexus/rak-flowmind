@@ -22,6 +22,8 @@ def skill_entry(spec: SkillSpec) -> dict:
         "name": spec.name,
         "version": spec.version,
         "description": spec.description,
+        "category": spec.category,
+        "tags": spec.tags,
         "input_schema": spec.input_model.model_json_schema() if spec.input_model else None,
         "output_schema": spec.output_model.model_json_schema() if spec.output_model else None,
         "reliability_profile": {

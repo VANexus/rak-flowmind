@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 import typing
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
 
@@ -35,6 +35,8 @@ class SkillSpec:
     func: Callable[[Any], SkillOutput] = None  # type: ignore[assignment]
     input_model: type[BaseModel] | None = None
     output_model: type[BaseModel] | None = None  # 从返回注解 SkillOutput[T] 提取的 T
+    category: str = "通用"          # UI 分组（后端声明，前端只渲染，不推断）
+    tags: list[str] = field(default_factory=list)  # 意图标签（后端声明）
 
 
 _REGISTRY: dict[str, SkillSpec] = {}
@@ -90,7 +92,14 @@ def _extract_output_model(func: Callable, hints: dict[str, Any]) -> type[BaseMod
     return None
 
 
-def skill(*, id: str, name: str, version: str) -> Callable:
+def skill(
+    *,
+    id: str,
+    name: str,
+    version: str,
+    category: str = "通用",
+    tags: list[str] | None = None,
+) -> Callable:
     """把一个业务函数登记为技能。函数签名首参注解即输入模型。
 
     注解通过 ``typing.get_type_hints`` 解析，因此模块是否启用
@@ -99,6 +108,10 @@ def skill(*, id: str, name: str, version: str) -> Callable:
 
     返回类型若为 ``SkillOutput[T]``，会自动把 T 记为 output_model，供
     manifest / discover() 暴露给 Agent 做输出字段发现。
+
+    ``category`` 与 ``tags`` 由后端显式声明（source of truth），
+    前端只负责渲染，不再硬编码推断。这样接入任意新后端时，
+    其技能分组与语义标签由该后端自主决定，前端零改动。
     """
     def deco(func: Callable[[Any], SkillOutput]) -> Callable[[Any], SkillOutput]:
         params = list(inspect.signature(func).parameters.values())
@@ -119,6 +132,7 @@ def skill(*, id: str, name: str, version: str) -> Callable:
             id=id, name=name, version=version,
             description=_extract_description(func),
             func=func, input_model=input_model, output_model=output_model,
+            category=category, tags=tags or [],
         )
         return func
     return deco
