@@ -88,9 +88,10 @@ def _stream_recognize(
     dashscope.api_key = api_key
 
     final_sentences: list[dict] = []
-    last_sentence: list[dict] = []   # 无 sentence_end 字段的模型（8k-v1）：记最后一条
+    last_sentence: list[dict] = []   # 无 sentence_end 字段的模型（8k-v1）：当前未完成短语
     error_holder: list[str] = []
     completed = False
+    _seen_final: set[tuple] = set()  # 8k-v1 去重：(begin, end)
 
     class _Callback:
         def on_open(self): ...
@@ -101,8 +102,15 @@ def _stream_recognize(
                     return
                 if s.get("sentence_end"):
                     final_sentences.append(s)      # v2 等模型：显式完结标记
+                elif s.get("end_time") is not None:
+                    # 8k-v1：无 sentence_end，但 end_time 存在 = 该短语已确定；
+                    # 同一短语可能被重复推送，按 (begin, end) 去重后累积。
+                    key = (s.get("begin_time"), s.get("end_time"))
+                    if key not in _seen_final:
+                        _seen_final.add(key)
+                        final_sentences.append(s)
                 else:
-                    # 8k-v1：持续覆盖（clear+append；空 list 下标赋值会 IndexError）
+                    # 无 end_time = 仍在修订中的中间假设，只保留最新一条
                     last_sentence.clear()
                     last_sentence.append(s)
             except Exception:  # 单事件解析失败不中断整条流
@@ -115,7 +123,8 @@ def _stream_recognize(
         def on_complete(self):
             nonlocal completed
             completed = True
-            # 兼容无 sentence_end 的模型：整段音频作为单句收下（带字级时间戳聚合）
+            # 兜底：模型全程未发出任何确定短语（全为中间假设）时，取最后一条作为单句。
+            # 正常路径下 8k-v1 的确定短语已在 on_event 中累积到 final_sentences。
             if not final_sentences and last_sentence:
                 final_sentences.append(last_sentence[-1])
         def on_close(self): ...
