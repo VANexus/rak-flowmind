@@ -34,3 +34,4 @@ cc_debug.png
 *.png.tmp
 .codegraph/
 .claude/worktrees/
+.claude/
