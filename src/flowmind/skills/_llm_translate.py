@@ -41,8 +41,8 @@ def translate_segments(
     api_key: str,
     api_base: str = DEFAULT_BASE,
     model: str = DEFAULT_MODEL,
-    batch_size: int = 20,
-    timeout_s: float = 60.0,
+    batch_size: int = 3,
+    timeout_s: float = 180.0,
     client: httpx.Client | None = None,
 ) -> list[dict]:
     """分批翻译句段，返回同结构列表（text 为译文，begin/end/index 原样）。"""

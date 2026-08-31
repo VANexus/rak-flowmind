@@ -100,7 +100,7 @@ def mix_audio(
 ) -> str:
     """把配音轨合回视频。keep_background=True 时原声降为 -12dB 背景。"""
     if keep_background:
-        afilter = "[1:a]volume=-12dB[bg];[bg][2:a]amix=inputs=2:duration=first[aout]"
+        afilter = "[0:a]volume=-12dB[bg];[bg][1:a]amix=inputs=2:duration=first[aout]"
         amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]
         inputs = ["-i", video_path, "-i", dub_path]
     else:

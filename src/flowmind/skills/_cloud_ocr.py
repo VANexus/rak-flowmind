@@ -117,12 +117,27 @@ def _ocr_request(*, url: str, api_key: str, body: dict) -> dict:
     raise last_err or OCRError("OCR 失败")
 
 
+def _bbox(boxes: list[tuple[int, int, int, int]]) -> dict:
+    """一组像素框 → 外扩 padding 的擦除区 {x,y,w,h}。"""
+    pad = 8
+    return {
+        "x": max(0, min(b[0] for b in boxes) - pad),
+        "y": max(0, min(b[1] for b in boxes) - pad),
+        "w": max(b[2] for b in boxes) - min(b[0] for b in boxes) + pad * 2,
+        "h": max(b[3] for b in boxes) - min(b[1] for b in boxes) + pad * 2,
+    }
+
+
 def locate_subtitle_region(
     frame_paths: list[str], *, api_key: str,
     frame_width: int | None = None, frame_height: int | None = None,
-) -> dict | None:
-    """多帧聚合出字幕区 bbox {x,y,w,h}（外扩 padding 防描边残留）；
-    全部帧无字幕返回 None。"""
+) -> list[dict]:
+    """多帧聚合出字幕擦除区列表 [{x,y,w,h}, ...]（外扩 padding 防描边残留）。
+
+    返回多个独立区域：竖排视频里标题（顶部）与歌词（底部）可能落在同一
+    垂直线上但 y 位置分开，需分别擦除，避免全屏高的一条竖带误伤画面主体。
+    全部帧无字幕返回空列表。
+    """
     if not api_key:
         raise ValueError("收到空 API key。请检查 DASHSCOPE_API_KEY 是否设置（项目 .env）。")
 
@@ -135,25 +150,55 @@ def locate_subtitle_region(
             if px is None:
                 continue
             x1, y1, x2, y2 = px
-            # 底部区域先验：字幕应落在画面下部 40%（若已知高度）
-            if frame_height is not None and y1 < frame_height * 0.6:
+            bw, bh = x2 - x1, y2 - y1
+            # 尺寸先验：取长边（兼容竖排字幕——宽 23px 但高 477px）。
+            # 短边可能是旋转 90° 的细高文字，不应因"窄"被丢弃。
+            if frame_width is not None and max(bw, bh) < frame_width * 0.1:
                 continue
-            # 尺寸合理性先验：bbox 需占画面宽度至少 10%
-            if frame_width is not None and (x2 - x1) < frame_width * 0.1:
+            # 底部区域先验：bbox 底边应进入画面下部 40%（用 y2 而非 y1，
+            # 否则顶部起始的竖排标题 y1=760 刚好落在阈值 768 之上被误杀）。
+            if frame_height is not None and y2 < frame_height * 0.6:
                 continue
             boxes.append((x1, y1, x2, y2))
 
     if not boxes:
-        return None
+        return []
 
-    # 擦除区外扩 padding：字幕描边/抗锯齿常溢出标框，留边防残留
-    pad = 8
-    min_x = max(0, min(b[0] for b in boxes) - pad)
-    min_y = max(0, min(b[1] for b in boxes) - pad)
-    max_x = max(b[2] for b in boxes) + pad
-    max_y = max(b[3] for b in boxes) + pad
+    # 按水平中心聚类，分离中央字幕与边缘水印（如抖音号竖排水印在右侧）。
+    x_gap = frame_width * 0.15 if frame_width else 0
+    sorted_boxes = sorted(boxes, key=lambda b: (b[0] + b[2]) / 2)
+    x_clusters: list[list[tuple[int, int, int, int]]] = [[sorted_boxes[0]]]
+    for b in sorted_boxes[1:]:
+        prev_cx = (x_clusters[-1][-1][0] + x_clusters[-1][-1][2]) / 2
+        cur_cx = (b[0] + b[2]) / 2
+        if cur_cx - prev_cx < x_gap:
+            x_clusters[-1].append(b)
+        else:
+            x_clusters.append([b])
+    # 选簇：优先靠近画面中央（字幕居中，水印在边缘），框数最多作为平局打破。
+    frame_cx = (frame_width / 2) if frame_width else 0
+    boxes = max(
+        x_clusters,
+        key=lambda c: (-abs((c[0][0] + c[0][2]) / 2 - frame_cx), len(c)),
+    )
+
+    # 按 y 中心再聚类：分离顶部标题与底部歌词，各自成为独立擦除区。
+    y_gap = frame_height * 0.25 if frame_height else 0
+    y_sorted = sorted(boxes, key=lambda b: (b[1] + b[3]) / 2)
+    y_clusters: list[list[tuple[int, int, int, int]]] = [[y_sorted[0]]]
+    for b in y_sorted[1:]:
+        prev_cy = (y_clusters[-1][-1][1] + y_clusters[-1][-1][3]) / 2
+        cur_cy = (b[1] + b[3]) / 2
+        if cur_cy - prev_cy < y_gap:
+            y_clusters[-1].append(b)
+        else:
+            y_clusters.append([b])
+
+    regions = [_bbox(c) for c in y_clusters if len(c) >= 1]
     if frame_width is not None:
-        max_x = min(max_x, frame_width)
+        for r in regions:
+            r["w"] = min(r["w"], frame_width - r["x"])
     if frame_height is not None:
-        max_y = min(max_y, frame_height)
-    return {"x": min_x, "y": min_y, "w": max_x - min_x, "h": max_y - min_y}
+        for r in regions:
+            r["h"] = min(r["h"], frame_height - r["y"])
+    return regions
