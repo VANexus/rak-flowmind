@@ -32,3 +32,5 @@ out/
 # local debug artifacts
 cc_debug.png
 *.png.tmp
+.codegraph/
+.claude/worktrees/
