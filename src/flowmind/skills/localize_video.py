@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import requests  # noqa: F401  保留模块级引用：测试 fixture 打桩用
@@ -122,55 +121,87 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         region = _locate_region(src, duration_s, workdir, dashscope_key, cfg,
                                 width=width, height=height)
 
-        # ── 4) LongCat 翻译 ──
-        translated = _llm_translate.translate_segments(
-            segments,
-            target_lang=inp.target_lang or cfg.target_lang_default,
-            source_lang=inp.source_lang or cfg.source_lang_default,
-            api_key=longcat_key,
-        )
+        # ── 3.5) 长句拆分（避免"一坨字幕"覆盖全视频）──
+        print(f"[LV] segments={len(segments)}")
+        display_segments = _split_long_segments(segments)
+        print(f"[LV] display_segments={len(display_segments)}")
+
+        # ── 4) LongCat 翻译（用拆分后的短句，翻译更稳定）──
+        try:
+            translated = _llm_translate.translate_segments(
+                display_segments,
+                target_lang=inp.target_lang or cfg.target_lang_default,
+                source_lang=inp.source_lang or cfg.source_lang_default,
+                api_key=longcat_key,
+            )
+        except Exception as e:
+            print(f"[LV] TRANSLATE ERROR: {type(e).__name__}: {e}")
+            raise
+        print(f"[LV] translated={len(translated)}")
 
         # ── 5) 擦除原字幕区 + 烧译文字幕 ──
         ass_path = _write_ass(translated, workdir, cfg)
         out_path = inp.output_path or str(
             Path(src).with_stem(Path(src).stem + "_localized").with_suffix(".mp4"))
         regions = region or []
-        erased_video = _media.burn_subtitles(
-            src if not is_url else _ensure_local(src, workdir),
-            str(workdir / "subbed.mp4"), ass_path,
-            erase_regions=regions or None,
-        )
+        # 横条擦除：把多个竖检测区合并为一个底部横带，避免竖条马赛克
+        erase_regs = _to_horizontal_bar(regions, width, height)
+        print(f"[LV] erase_regs={erase_regs}")
+        try:
+            erased_video = _media.burn_subtitles(
+                src if not is_url else _ensure_local(src, workdir),
+                str(workdir / "subbed.mp4"), ass_path,
+                erase_regions=erase_regs or None,
+            )
+        except Exception as e:
+            print(f"[LV] BURN ERROR: {type(e).__name__}: {e}")
+            raise
+        print(f"[LV] erased_video={erased_video}")
 
-        # ── 6) TTS 逐句配音（可选：入参或 config 提供音色时才启用）──
+        # ── 6) TTS 逐句配音 ─ 移除原声，避免音画不同步 ──
         voice_used = None
         eff_voice = inp.voice_id or cfg.localize_voice or ""
+        print(f"[LV] eff_voice={eff_voice!r}")
         if eff_voice:
-            inp.voice_id = eff_voice
-            dubs = _cloud_tts.synthesize_segments(
-                translated, voice_id=inp.voice_id,
-                out_dir=str(workdir / "dubs"), api_key=dashscope_key,
-                target_model=cfg.localize_tts_model,
-            )
-            dub_track = _concat_wavs(dubs, str(workdir / "dub.wav"))
-            _media.mix_audio(erased_video, dub_track,
-                             out_path, keep_background=inp.keep_background_audio)
-            voice_used = inp.voice_id
+            # TTS 需要 index 字段；过滤过短句（≤1字，避免 TTS API 报错）
+            tts_segs = [
+                {**s, "index": i} for i, s in enumerate(translated)
+                if len(str(s.get("text", "")).strip()) > 1
+            ]
+            print(f"[LV] tts_segs={len(tts_segs)} (filtered from {len(translated)})")
+            if not tts_segs:
+                # 全部过短，退回使用原始 translated
+                tts_segs = [{**s, "index": i} for i, s in enumerate(translated)]
+            try:
+                dubs = _cloud_tts.synthesize_segments(
+                    tts_segs, voice_id=eff_voice,
+                    out_dir=str(workdir / "dubs"), api_key=dashscope_key,
+                    target_model=cfg.localize_tts_model,
+                )
+            except Exception as e:
+                print(f"[LV] TTS ERROR: {type(e).__name__}: {e}")
+                raise
+            print(f"[LV] dubs={len(dubs)}")
+            # 按原始时间戳合成配音（带静音间隔，保证音画同步）
+            dub_track = _build_timed_audio(translated, dubs, duration_s,
+                                           str(workdir / "dub.wav"))
+            _replace_audio(erased_video, dub_track, out_path)
+            voice_used = eff_voice
         else:
-            # 不配音：直接把擦除+字幕后的产物落到目标路径
-            # shutil.move 而非 Path.replace：workdir 与输出可能跨文件系统
-            if out_path != erased_video:
-                shutil.move(erased_video, out_path)
+            # 不配音：移除原声，仅保留擦除+字幕
+            _strip_audio(erased_video, out_path)
+        print(f"[LV] final out_path={out_path}")
 
         chain = ReasoningChain(
             conclusion=(
-                f"本地化完成：{len(translated)} 句、"
+                f"本地化完成：{len(display_segments)} 句（ASR {len(segments)} 句拆分）、"
                 f"{'已擦除' if regions else '未检出'}原字幕区、"
                 f"{'克隆配音 ' + voice_used if voice_used else '未配音'}"
             ),
             triggered_rules=[], evidence=[],
             causal_analysis=(
-                f"Paraformer ASR {len(segments)} 句 → LongCat 翻译 → "
-                f"qwen3.5-ocr 定位 → qwen-audio TTS 合成 → ffmpeg 合成"
+                f"Qwen-Audio-3.0 ASR {len(segments)} 句 → 拆分为 {len(display_segments)} 句 → "
+                f"LongCat 翻译 → qwen3.5-ocr 定位 → qwen-audio TTS → ffmpeg 合成"
             ),
             risk_note="译文为 LLM 生成，正式投放前建议人工抽查。",
         )
@@ -219,18 +250,54 @@ def _locate_region(src: str, duration_s: float, workdir: Path,
                                              frame_height=height)
 
 
+def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict]:
+    """把过长的句段按自然断句拆成多行，避免"一坨字幕"覆盖全视频。
+
+    拆分策略：在标点（。，！？；,.!?;）处切分，每段不超过 max_chars 字；
+    时间按字数比例分配。
+    """
+    import re
+    result: list[dict] = []
+    for seg in segments:
+        text = str(seg["text"]).strip()
+        duration = seg["end"] - seg["begin"]
+        if len(text) <= max_chars or duration < 0.5:
+            result.append(seg)
+            continue
+        # 按标点切分，保留分隔符
+        parts = re.split(r'(?<=[。，！？；,.!?；])\s*', text)
+        parts = [p for p in parts if p.strip()]
+        if len(parts) <= 1:
+            # 无标点可切，强制按 max_chars 硬切
+            parts = [text[i:i + max_chars] for i in range(0, len(text), max_chars)]
+        total_chars = sum(len(p) for p in parts)
+        t = seg["begin"]
+        for p in parts:
+            ratio = len(p) / total_chars if total_chars else 1.0 / len(parts)
+            seg_duration = duration * ratio
+            result.append({
+                "begin": round(t, 3),
+                "end": round(t + seg_duration, 3),
+                "text": p,
+            })
+            t += seg_duration
+    return result
+
+
 def _write_ass(segments: list[dict], workdir: Path, cfg) -> str:
-    """把译文句段写成 ASS 字幕（bottom_safe）。"""
+    """把译文句段写成 ASS 字幕（底部居中，带半透明底条）。"""
     font_size = getattr(cfg, "subtitle_font_size", 22)
     lines = [
         "[Script Info]", "PlayResX: 1280", "PlayResY: 720",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, "
-        "BorderStyle, Outline, Shadow, Alignment, MarginV",
-        f"Style: Sub,Noto Sans CJK SC,{font_size},&H00FFFFFF,&H00000000,"
-        "1,2,0,2,40",
+        "BorderStyle, Outline, Shadow, Alignment, MarginV, MarginL, MarginR",
+        # Alignment=2: 底部居中；MarginV=40 留边距防贴底
+        # 用 Noto Serif CJK SC（系统已装），不用 Sans（未装会导致不渲染）
+        f"Style: Sub,Noto Serif CJK SC,{font_size},&H00FFFFFF,&H00000000,"
+        "1,1,0,2,40,120,120",
         "[Events]",
-        "Format: Layer, Start, End, Text",
+        "Format: Layer, Start, End, Style, Text",
     ]
 
     def ts(sec: float) -> str:
@@ -239,8 +306,8 @@ def _write_ass(segments: list[dict], workdir: Path, cfg) -> str:
         return f"{int(h):01d}:{int(m):02d}:{s:05.2f}"
 
     for seg in segments:
-        text = str(seg["text"]).replace("\n", " ")
-        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},{text}")
+        text = str(seg["text"]).replace("\n", "\\N")
+        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{text}")
     path = workdir / "subs.ass"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
@@ -257,6 +324,95 @@ def _ensure_local(src: str, workdir: Path) -> str:
         for chunk in resp.iter_content(chunk_size=1 << 20):
             f.write(chunk)
     return str(local)
+
+
+def _to_horizontal_bar(regions: list[dict], width: int, height: int) -> list[dict]:
+    """把多个竖检测区合并为底部一条横带（避免竖条马赛克）。
+
+    只覆盖画面底部约 25%（典型字幕区），不触及顶部标题/主体。
+    """
+    if not regions:
+        return []
+    min_x = max(0, min(r["x"] for r in regions) - 30)
+    max_x = min(width, max(r["x"] + r["w"] for r in regions) + 30)
+    # 横带固定在底部 25%：起点=75%高度，终点=98%高度
+    min_y = int(height * 0.70)
+    max_y = int(height * 0.98)
+    return [{"x": min_x, "y": min_y, "w": max_x - min_x, "h": max_y - min_y}]
+
+
+def _replace_audio(video_path: str, audio_wav: str, out_path: str) -> str:
+    """用新音频替换视频原声（视频全长，音频不足部分自动补静音）。"""
+    # 先取视频时长，再用 apad 补静音到该时长
+    dur = _media.probe_media(video_path)[0]
+    cmd = [
+        "ffmpeg", "-y", "-i", video_path, "-i", audio_wav,
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+        "-af", f"apad=whole_dur={int(dur)}",  # 不足部分补静音，不截断视频
+        "-t", str(dur),  # 强制输出时长 = 视频时长
+        out_path,
+    ]
+    rc, _, err = _media.run_ffmpeg(cmd)
+    if rc != 0:
+        raise _media.MediaError(f"音轨替换失败: {err[-200:]}")
+    return out_path
+
+
+def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
+                       out_path: str) -> str:
+    """把逐句 TTS 按原始时间戳拼回完整音轨（带静音间隔，保证音画同步）。
+
+    segments: [{"begin": float, "end": float, "text": str}, ...]
+    dubs: 对应的 TTS mp3 路径列表
+    """
+    # 统一转为 wav + 静音间隔，再用 amix 合成
+    tmp_dir = Path(out_path).parent
+    wavs: list[tuple[float, str]] = []  # (delay_ms, wav_path)
+    for seg, dub in zip(segments, dubs):
+        # mp3 → wav
+        wav_p = str(tmp_dir / f"dub_{seg.get('index', 0):04d}.wav")
+        cmd = ["ffmpeg", "-y", "-i", dub, "-ac", "1", "-ar", "16000", wav_p]
+        rc, _, err = _media.run_ffmpeg(cmd)
+        if rc != 0:
+            raise _media.MediaError(f"dub 转 wav 失败: {err[-100:]}")
+        delay_ms = int(seg["begin"] * 1000)
+        wavs.append((delay_ms, wav_p))
+    if not wavs:
+        raise _media.MediaError("无配音片段可合成")
+    # 用 adelay + amix 合成：每路延迟到对应时间点（单声道用 adelay=ms）
+    # 每路独立：[0:a]adelay=ms[d0];[1:a]adelay=ms[d1];...;[d0][d1]amix=...
+    delays = ";".join(
+        f"[{i}:a]adelay={ms}[d{i}]" for i, (ms, _) in enumerate(wavs)
+    )
+    mix_inputs = "".join(f"[d{i}]" for i in range(len(wavs)))
+    n = len(wavs)
+    af = f"{delays};{mix_inputs}amix=inputs={n}:duration=longest:dropout_transition=0[aout]"
+    cmd = [
+        "ffmpeg", "-y",
+    ]
+    for _, wp in wavs:
+        cmd += ["-i", wp]
+    cmd += [
+        "-filter_complex", af,
+        "-map", "[aout]",
+        "-c:a", "pcm_s16le",
+        "-ar", "16000",
+        out_path,
+    ]
+    rc, _, err = _media.run_ffmpeg(cmd)
+    if rc != 0:
+        raise _media.MediaError(f"配音合成失败: {err[-200:]}")
+    return out_path
+
+
+def _strip_audio(video_path: str, out_path: str) -> str:
+    """移除视频音轨（不配音时使用）。"""
+    cmd = ["ffmpeg", "-y", "-i", video_path, "-c:v", "copy", "-an", out_path]
+    rc, _, err = _media.run_ffmpeg(cmd)
+    if rc != 0:
+        raise _media.MediaError(f"移除音轨失败: {err[-200:]}")
+    return out_path
 
 
 def _concat_wavs(wavs: list[str], out_path: str) -> str:
