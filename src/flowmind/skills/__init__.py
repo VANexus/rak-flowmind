@@ -14,6 +14,16 @@ from flowmind.skills import content_copywrite  # noqa: F401
 from flowmind.skills import content_hot_topics  # noqa: F401
 from flowmind.skills import content_idea_design  # noqa: F401
 from flowmind.skills import content_image_gen  # noqa: F401
+from flowmind.skills import content_publish_check  # noqa: F401
+from flowmind.skills import content_wechat_e2e  # noqa: F401
+from flowmind.skills import content_wechat_publish  # noqa: F401
+from flowmind.skills import content_web_fetch  # noqa: F401
+from flowmind.skills import content_xhs_draft  # noqa: F401
+from flowmind.skills import content_xhs_e2e  # noqa: F401
+from flowmind.skills import crawler_deadlink  # noqa: F401
+from flowmind.skills import crawler_sentiment  # noqa: F401
+from flowmind.skills import crawler_viral  # noqa: F401
+from flowmind.skills import content_crawler_suite  # noqa: F401
 from flowmind.skills import feishu_kb  # noqa: F401
 from flowmind.skills import image_prompt_reverse  # noqa: F401
 from flowmind.skills import inventory_risk  # noqa: F401

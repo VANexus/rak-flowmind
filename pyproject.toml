@@ -51,6 +51,8 @@ build-backend = "hatchling.build"
 packages = ["src/flowmind"]
 
 [tool.pytest.ini_options]
+# addopts 显式加载 asyncio 插件，使 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 下仍能跑异步测试
+addopts = ["-p", "asyncio"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
