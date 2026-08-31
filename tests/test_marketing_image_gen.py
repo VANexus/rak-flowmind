@@ -1,34 +1,71 @@
-"""营销生图技能测试：参数推断、四段式链、错误路径、确定性 mock 后端。"""
+"""营销生图技能测试：参数推断、四段式链、错误路径、确定性测试后端。
+
+去 mock 原则：显式 mock 出图后端已在 select_backend 禁用（云优先）。
+本文件在技能层打桩 _select_image_backend 注入确定性测试后端（仅测试用，
+不覆盖业务逻辑），参数推断 / 规则 / 尺寸等路径照常走真实代码。
+标记 @pytest.mark.real_backend 的用例不打桩（测后端选择与错误路径）。
+"""
 from __future__ import annotations
 
+import hashlib
+
+import pytest
+
 import flowmind.skills  # noqa: F401  触发技能注册
+import flowmind.skills.marketing_image_gen as mig_mod
 from flowmind.config import (
     FlowmindConfig,
     MarketingImageConfig,
     save_config,
 )
 from flowmind.skill import invoke, registry
+from flowmind.skills._image_backend import GeneratedImage, _sanitize_save_dir
 
 
 # ---------- 工具 ----------
 
 def _args(prompt: str = "酸菜鱼预制菜, 白瓷盘, 自然光, 电商产品摄影", **over):
-    # 云优先原则：默认显式走 mock 后端（确定性占位，仅测试用）；不传 key 时
-    # backend=auto 会报错而不是静默降级。
-    base = {"prompt": prompt, "backend": "mock"}
+    base = {"prompt": prompt}
     base.update(over)
     return base
 
 
-def _seed_url(prompt: str, seed: int, platform: str = "xiaohongshu") -> str:
-    """复现框架内同一份 sha256 算 URL，校验确定性。"""
-    import hashlib
+class _FakeTestBackend:
+    """确定性测试后端：URL 由 sha256 派生，纯本地可复现（仅测试用）。"""
 
-    h = hashlib.sha256()
-    for p in (prompt, platform, "literary", "3:4", seed):
-        h.update(str(p).encode("utf-8"))
-        h.update(b"|")
-    return f"https://flowmind.local/mock/{h.hexdigest()[:12]}.png?w=1080&h=1440"
+    name = "fake_test"
+
+    def generate(self, *, prompt, negative_prompt, width, height, n, seed, save_dir):
+        if seed is None:
+            seed = int(hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
+        safe = _sanitize_save_dir(save_dir) if save_dir else None
+        images: list[GeneratedImage] = []
+        for i in range(n):
+            img_seed = seed + i
+            h = hashlib.sha256()
+            for p in (prompt, negative_prompt, width, height, img_seed):
+                h.update(str(p).encode("utf-8"))
+                h.update(b"|")
+            img_id = h.hexdigest()[:12]
+            images.append(GeneratedImage(
+                index=i + 1,
+                url=f"https://test.local/img/{img_id}.png?w={width}&h={height}",
+                local_path=f"{safe}/{img_id}.png" if safe else None,
+                width=width,
+                height=height,
+                seed=img_seed,
+            ))
+        return images
+
+
+@pytest.fixture(autouse=True)
+def _fake_image_backend(request, monkeypatch):
+    """默认在技能层打桩出图后端；@pytest.mark.real_backend 用例不打桩。"""
+    if request.node.get_closest_marker("real_backend"):
+        yield None
+        return
+    monkeypatch.setattr(mig_mod, "_select_image_backend", lambda backend, cfg: _FakeTestBackend())
+    yield
 
 
 # ---------- 基础 ----------
@@ -48,7 +85,7 @@ def test_basic_call_returns_one_image():
     plan = result.data
     assert plan.num_variants == 1
     assert len(plan.images) == 1
-    assert plan.images[0].url.startswith("https://flowmind.local/mock/")
+    assert plan.images[0].url.startswith("https://test.local/img/")
     assert plan.images[0].width > 0 and plan.images[0].height > 0
     # 信封四要素齐全
     assert result.trace.trace_id
@@ -139,6 +176,15 @@ def test_brand_override_applied():
     assert any("brand" in n for n in result.data.sampling_notes)
 
 
+@pytest.mark.real_backend
+def test_explicit_mock_backend_rejected():
+    """去 mock 契约：backend='mock' 显式被拒（云优先，绝不静默出假图）。"""
+    result = invoke("marketing_image_gen", _args(backend="mock"))
+    assert result.ok is False
+    assert "mock" in result.error.message
+
+
+@pytest.mark.real_backend
 def test_backend_auto_requires_key():
     """云优先：backend 缺省（auto）且无 ALLIN_API_KEY → 显式报错，不静默降级 mock。"""
     import os
@@ -199,12 +245,12 @@ def test_estimated_cost_credit_matches_num_variants(tmp_path, monkeypatch):
     assert result.data.estimated_cost_credit == 3 * 2
 
 
-def test_save_dir_resolution():
+def test_save_dir_resolution(tmp_path):
     """save_dir 入参 → images[].local_path 应拼出本地路径。"""
-    result = invoke("marketing_image_gen", _args(save_dir="/tmp/mkt"))
+    result = invoke("marketing_image_gen", _args(save_dir=str(tmp_path)))
     img = result.data.images[0]
     assert img.local_path is not None
-    assert img.local_path.startswith("/tmp/mkt/")
+    assert img.local_path.startswith(str(tmp_path))
 
 
 # ---------- 确定性 / 种子 ----------

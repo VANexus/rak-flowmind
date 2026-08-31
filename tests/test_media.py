@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 import pytest
 
@@ -108,6 +109,7 @@ def test_mix_audio_replaces_original(monkeypatch):
 # ── 真 ffmpeg 冒烟 ──
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="本机未安装 ffmpeg")
 def test_real_ffmpeg_smoke(tmp_path):
     """生成 2s 测试视频 → 探时长 → 提取音轨 → 音轨可探。"""
     src = tmp_path / "t.mp4"

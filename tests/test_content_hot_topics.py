@@ -1,6 +1,6 @@
 """content_hot_topics 技能测试：通过 invoke() 走信封层，monkeypatch mock 聚合 API。
 
-覆盖：成功抓取 / 聚合 API 失败 → degraded 种子兜底（failure_category/retriable/warning）/
+覆盖：成功抓取 / 聚合 API 失败 → degraded 空数据（failure_category/retriable/warning）/
 非法平台 VALIDATION / limit 透传。
 """
 from __future__ import annotations
@@ -42,8 +42,8 @@ def test_hot_topics_degraded_fallback(monkeypatch):
     assert d.degraded is True
     assert d.failure_category == "environment"
     assert d.retriable is False
-    assert d.topics  # 种子兜底非空
-    assert "种子" in (d.warning or "")
+    assert d.topics == []  # 绝不做种子兜底，宁可返回空也不返回假热点
+    assert "不可达" in (d.warning or "")
 
 
 def test_hot_topics_transient_retriable(monkeypatch):

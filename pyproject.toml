@@ -27,6 +27,7 @@ dependencies = [
     "langchain>=0.3",
     "langchain-core>=0.3",
     "langgraph>=0.2",
+    "playwright>=1.62.0",
 ]
 
 [project.optional-dependencies]
@@ -52,6 +53,9 @@ packages = ["src/flowmind"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "real_backend: 不打桩出图后端（测 select_backend 真实错误路径）",
+]
 
 [tool.ruff]
 line-length = 100

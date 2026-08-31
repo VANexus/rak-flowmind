@@ -33,15 +33,24 @@ def test_sanitize_save_dir_rejects_dotdot_traversal(tmp_path):
 
 
 def test_sanitize_save_dir_rejects_system_dirs():
+    """POSIX 系统目录必须被拒；Windows 下这些路径非绝对路径，先被绝对路径校验拦截。"""
+    import sys
+
     for forbidden in ("/etc", "/etc/passwd", "/root", "/var/log", "/proc/1"):
-        with pytest.raises(ValueError, match="系统敏感目录"):
+        with pytest.raises(ValueError) as ei:
             _sanitize_save_dir(forbidden)
+        if sys.platform == "win32":
+            assert "绝对路径" in str(ei.value)
+        else:
+            assert "系统敏感目录" in str(ei.value)
 
 
 def test_sanitize_save_dir_expands_user():
     """~ 会被展开为 home,展开后是绝对路径——应该通过（不在黑名单里）。"""
+    from pathlib import Path
+
     safe = _sanitize_save_dir("~/foo_bar_nonexistent_test_dir")
-    assert safe.startswith("/")  # 绝对路径
+    assert Path(safe).is_absolute()  # 跨平台绝对路径断言
     assert "foo_bar_nonexistent_test_dir" in safe
 
 

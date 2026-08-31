@@ -184,6 +184,87 @@ class OrchestratorConfig(BaseModel):
     enable_streaming: bool = True
 
 
+class KeywordTrendConfig(BaseModel):
+    """B端关键词趋势榜单（b2b_keyword_trends / b2b_longtail_keywords）可配置参数。
+
+    数据源全部自托管（零第三方趋势 API）：
+    - tiktok → Creative Center 热门话题榜（GetHashtagList 直连 + 浏览器降级）；
+      登录会话（站内渠道授权捕获）可解锁全量榜单。
+    - instagram → IG 网页版话题搜索（topsearch），必须带登录会话。
+    - alibaba → TOP 热销词统计。
+    登录会话由调用方经工具参数注入，绝不进 toml / commit。
+    """
+    trend_timeout_s: float = 15.0
+    default_country: str = "US"
+
+    # ── TikTok Creative Center 自托管抓取 ──
+    cc_scrape_page_url: str = "https://ads.tiktok.com/business/creativecenter/hashtag/popular/pc/en"
+    cc_scrape_period_days: int = 7
+    cc_scrape_timeout_s: float = 90.0
+    cc_scrape_headless: bool = True
+    # 海外出口代理（可选，直连被风控时使用）：http://host:port / socks5://host:port
+    cc_scrape_proxy: str = ""
+
+    seed_keywords: dict[str, list[dict]] = Field(default_factory=dict)
+
+    # ── 长尾词生成（复用 LongCat LLM，走 _llm_client）──
+    longtail_llm_model: str = "LongCat-2.0"
+    max_longtail: int = 50
+
+
+class AlibabaConfig(BaseModel):
+    """阿里国际站开放 API（alibaba_* 技能）配置。
+
+    走 TOP 协议 + OAuth 授权。AppKey/Secret/Session 只从环境变量读取，
+    绝不进 toml / commit。未授权时 alibaba_* 技能返回结构化 degraded。
+    """
+    api_base: str = "https://eco.taobao.com/router/rest"
+    app_key_env: str = "ALIBABA_APP_KEY"
+    app_secret_env: str = "ALIBABA_APP_SECRET"
+    session_env: str = "ALIBABA_SESSION"
+    sign_method: str = "hmac"
+    timeout_s: float = 20.0
+    token_url: str = "https://oauth.alibaba.com/token"
+    # 国际站 Listing 字段硬约束（运营提供字段规则前的通用默认，见 _alibaba_client.py）
+    title_max_len: int = 128
+    listing_rules: list[str] = Field(
+        default_factory=lambda: [
+            "标题 ≤ 128 字符，核心关键词前置",
+            "禁用特殊符号：& | # * % 及全角符号（（））等",
+            "卖点结构：核心词 + 属性 + 用途 + 场景，每条卖点 ≤ 80 字，最多 6 条卖点",
+            "关键词 ≤ 3 个，单个关键词 ≤ 50 字符，关键词之间用英文逗号分隔",
+            "详情页说明 ≥ 500 字符，突出采购场景、尺寸、材质、包装、售后",
+            "FOB 价格必须为数字（保留两位小数），支持区间格式 X.XX - Y.YY",
+            "MOQ（最小起订量）≥ 1，且为整数；支持阶梯价展示",
+            "类目 ID（category_id）必填；如未提供请先在国际站后台匹配叶子类目再发布",
+            "主图 ≥ 800×800 像素，白底或浅底，PNG/JPG，建议 5 张主图，首图无 Logo 水印",
+            "组 ID（group_id）可空，填写后可在产品组批量管理",
+        ],
+    )
+
+
+class ImageSkillConfig(BaseModel):
+    """生图 skill 化（image_prompt_reverse）配置。
+
+    提示词反推走视觉 LLM（复用 LongCat Anthropic 兼容 /v1/messages + image 块）。
+    """
+    reverse_prompt_api_base: str = "https://api.longcat.chat/anthropic"
+    reverse_prompt_key_env: str = "LONGCAT_API_KEY"
+    reverse_prompt_model: str = "LongCat-2.0"
+    reverse_prompt_timeout_s: float = 45.0
+
+
+class B2bPushConfig(BaseModel):
+    """B端每日推送（b2b_push_feishu/wecom / b2b_daily_digest）可配置参数。
+
+    webhook URL 只从环境变量读取（*_env 只存 env var 名，绝不存明文、
+    绝不进 toml / commit）；入参显式传 webhook_url 优先于 env（供「测试推送」即时校验）。
+    """
+    feishu_webhook_url_env: str = "FEISHU_WEBHOOK_URL"
+    wecom_webhook_url_env: str = "WECOM_WEBHOOK_URL"
+    webhook_timeout_s: float = 10.0
+
+
 class FlowmindConfig(BaseModel):
     """FlowMind 总配置：每技能一段。"""
     inventory: InventoryConfig = Field(default_factory=InventoryConfig)
@@ -192,6 +273,10 @@ class FlowmindConfig(BaseModel):
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
     content: ContentConfig = Field(default_factory=ContentConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
+    keyword_trend: KeywordTrendConfig = Field(default_factory=KeywordTrendConfig)
+    alibaba: AlibabaConfig = Field(default_factory=AlibabaConfig)
+    image_skill: ImageSkillConfig = Field(default_factory=ImageSkillConfig)
+    b2b_push: B2bPushConfig = Field(default_factory=B2bPushConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:

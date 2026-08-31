@@ -605,7 +605,7 @@ def _rerank(
 
 @lru_cache(maxsize=1)
 def _load_default_faqs() -> tuple[dict, ...]:
-    """加载默认种子数据（与 skill 文件同目录的 seed_faqs.json）。"""
+    """加载内置真实企业 FAQ（与 skill 同目录的 feishu_kb_seed.json，docx 解析产物）。"""
     seed = Path(__file__).parent / "feishu_kb_seed.json"
     if not seed.exists():
         return ()
@@ -781,7 +781,7 @@ def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
     retrieval_query = _expand_query_for_cross_lang(cleaned, lang)
     intent_category, intent_conf, matched = _classify(retrieval_query)
 
-    # 加载 FAQ：优先用 cfg.data_path，否则用默认种子
+    # 加载 FAQ：优先用 cfg.data_path；未配置时用内置真实企业 FAQ（docx 解析产物，非演示数据）
     faqs = list(_load_faqs_from_path(cfg.data_path)) if cfg.data_path else list(_load_default_faqs())
     if not faqs:
         return SkillOutput(

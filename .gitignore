@@ -28,3 +28,7 @@ flowmind.config.toml
 # 生成的测试图片
 out/
 ._lv_work/
+
+# local debug artifacts
+cc_debug.png
+*.png.tmp

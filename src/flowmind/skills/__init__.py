@@ -1,10 +1,21 @@
 """技能包：导入各技能以触发 @skill 注册。"""
+from flowmind.skills import alibaba_listing_generate  # noqa: F401
+from flowmind.skills import alibaba_product_list  # noqa: F401
+from flowmind.skills import alibaba_product_post  # noqa: F401
+from flowmind.skills import alibaba_product_recommend  # noqa: F401
+from flowmind.skills import b2b_channel_login  # noqa: F401
+from flowmind.skills import b2b_daily_digest  # noqa: F401
+from flowmind.skills import b2b_keyword_trends  # noqa: F401
+from flowmind.skills import b2b_longtail_keywords  # noqa: F401
+from flowmind.skills import b2b_push_feishu  # noqa: F401
+from flowmind.skills import b2b_push_wecom  # noqa: F401
 from flowmind.skills import content_audit  # noqa: F401
 from flowmind.skills import content_copywrite  # noqa: F401
 from flowmind.skills import content_hot_topics  # noqa: F401
 from flowmind.skills import content_idea_design  # noqa: F401
 from flowmind.skills import content_image_gen  # noqa: F401
 from flowmind.skills import feishu_kb  # noqa: F401
+from flowmind.skills import image_prompt_reverse  # noqa: F401
 from flowmind.skills import inventory_risk  # noqa: F401
 from flowmind.skills import localize_batch      # noqa: F401
 from flowmind.skills import localize_cancel     # noqa: F401

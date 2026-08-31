@@ -234,7 +234,10 @@ def select_backend(
     chosen = (requested or "auto").lower()
 
     if chosen == "mock":
-        return MockBackend()
+        raise ValueError(
+            "显式 mock 出图后端已禁用（云优先原则：一切营销生图 / SKU 图必须走真实云 API）。"
+            "请在「设置 → B 端运营」配置 ALLIN_API_KEY 后再重试。"
+        )
 
     if chosen == "allin_api":
         api_key = resolve_api_key(cfg_allin_key_env) or ""
