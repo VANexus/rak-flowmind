@@ -4,6 +4,7 @@ from flowmind.skills import alibaba_product_list  # noqa: F401
 from flowmind.skills import alibaba_product_post  # noqa: F401
 from flowmind.skills import alibaba_product_recommend  # noqa: F401
 from flowmind.skills import b2b_channel_login  # noqa: F401
+from flowmind.skills import b2b_channel_verify  # noqa: F401
 from flowmind.skills import b2b_daily_digest  # noqa: F401
 from flowmind.skills import b2b_keyword_trends  # noqa: F401
 from flowmind.skills import b2b_longtail_keywords  # noqa: F401
