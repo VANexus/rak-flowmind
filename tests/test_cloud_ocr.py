@@ -62,16 +62,16 @@ def test_locate_union_of_boxes(monkeypatch, tmp_path):
         [[{"rotate_rect": [400, 875, 390, 65, 0]}],   # ≈x[160..415]
          [{"rotate_rect": [395, 878, 385, 70, 0]}]],  # ≈x[150..420]
         tmp_path)
-    region = _cloud_ocr.locate_subtitle_region(frames, api_key="k",
-                                               frame_width=640, frame_height=360)
-    assert region is not None
-    assert region["w"] > 250 and region["h"] > 30
+    regions = _cloud_ocr.locate_subtitle_region(frames, api_key="k",
+                                                frame_width=640, frame_height=360)
+    assert len(regions) == 1
+    assert regions[0]["w"] > 250 and regions[0]["h"] > 30
 
 
 def test_locate_none_when_all_no_subtitle(monkeypatch, tmp_path):
     frames = _stub_frames(monkeypatch, [[], []], tmp_path)
     assert _cloud_ocr.locate_subtitle_region(frames, api_key="k",
-                                             frame_width=640, frame_height=360) is None
+                                             frame_width=640, frame_height=360) == []
 
 
 def test_locate_filters_top_region(monkeypatch, tmp_path):
@@ -82,10 +82,10 @@ def test_locate_filters_top_region(monkeypatch, tmp_path):
         [[{"rotate_rect": [300, 100, 300, 40, 0]},
           {"rotate_rect": [300, 850, 300, 40, 0]}]],
         tmp_path)
-    region = _cloud_ocr.locate_subtitle_region(frames, api_key="k",
-                                               frame_width=1280, frame_height=1080)
-    assert region is not None
-    assert region["y"] > 1080 * 0.6, "只应保留底部框"
+    regions = _cloud_ocr.locate_subtitle_region(frames, api_key="k",
+                                                frame_width=1280, frame_height=1080)
+    assert len(regions) == 1
+    assert regions[0]["y"] > 1080 * 0.6, "只应保留底部框"
 
 
 def test_no_key_raises(tmp_path):

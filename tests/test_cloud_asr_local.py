@@ -25,11 +25,13 @@ def test_transcribe_local_calls_stream_adapter(monkeypatch, tmp_path):
     ]
     captured = {}
 
-    def fake_stream(wav_path: str, api_key: str, model: str, sample_rate: int = 8000):
+    def fake_stream(wav_path: str, *, api_key: str, model: str,
+                    sample_rate: int = 16000, language_hints: list[str] | None = None):
         captured["wav"] = wav_path
         captured["key"] = api_key
         captured["model"] = model
         captured["sample_rate"] = sample_rate
+        captured["language_hints"] = language_hints
         return raw_sentences
 
     monkeypatch.setattr(_cloud_asr, "_stream_recognize", fake_stream)

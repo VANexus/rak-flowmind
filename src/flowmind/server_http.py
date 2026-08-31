@@ -22,10 +22,9 @@ from __future__ import annotations
 import os
 
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 
 from flowmind.a2a.server import FlowMindA2AServer
-||||||| parent of bade9b8 (feat: content-studio 基础设施 — CORS + 发现 API + 新技能注册)
-from starlette.middleware.cors import CORSMiddleware
 from flowmind.server import mcp
 from flowmind.server_rest import register_rest_routes
 

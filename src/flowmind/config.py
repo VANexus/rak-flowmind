@@ -263,8 +263,45 @@ class B2bPushConfig(BaseModel):
     feishu_webhook_url_env: str = "FEISHU_WEBHOOK_URL"
     wecom_webhook_url_env: str = "WECOM_WEBHOOK_URL"
     webhook_timeout_s: float = 10.0
+
+
+class WechatPublishConfig(BaseModel):
+    """微信公众号发布（content_wechat_publish / _wechat_client）可配置参数。
+
+    凭证只从环境变量读取（*_env 只存 env var 名，绝不存明文、绝不进 toml / commit）。
+    """
+    app_id_env: str = "WECHAT_APP_ID"
+    app_secret_env: str = "WECHAT_APP_SECRET"
+    api_base: str = "https://api.weixin.qq.com/cgi-bin"
+    timeout_s: float = 30.0
+
+
+class CrawlerConfig(BaseModel):
+    """智能爬虫套件（content_web_fetch / crawler_sentiment / crawler_deadlink）可配置参数。"""
+    timeout_s: float = 15.0
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    )
+    max_links_per_check: int = 30      # 死链检测单次上限（防滥用）
+    max_concurrent: int = 10           # 死链检测并发数
+
+
+class FlowmindConfig(BaseModel):
+    """FlowMind 总配置：每技能一段。"""
+    inventory: InventoryConfig = Field(default_factory=InventoryConfig)
+    feishu_kb: FeishuKbConfig = Field(default_factory=FeishuKbConfig)
+    marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
+    localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
+    content: ContentConfig = Field(default_factory=ContentConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
+    keyword_trend: KeywordTrendConfig = Field(default_factory=KeywordTrendConfig)
+    alibaba: AlibabaConfig = Field(default_factory=AlibabaConfig)
+    image_skill: ImageSkillConfig = Field(default_factory=ImageSkillConfig)
+    b2b_push: B2bPushConfig = Field(default_factory=B2bPushConfig)
     wechat_publish: WechatPublishConfig = Field(default_factory=WechatPublishConfig)
     crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
+
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:
     """读取配置文件；不存在则全用通用默认。用户值覆盖默认，缺项回落默认。"""

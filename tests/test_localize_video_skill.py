@@ -75,10 +75,11 @@ def test_localize_video_full_pipeline_mocked(no_keys, asr_local_ok, tmp_path, mo
                         lambda v, t, o: open(o, "wb").close() or o)
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
-    monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
+    monkeypatch.setattr(lv, "_build_timed_audio", lambda segs, dubs, dur, out: out)
+    monkeypatch.setattr(lv, "_replace_audio", lambda vp, au, op: op)
     monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key, **kw: segs)
     monkeypatch.setattr(lv, "_locate_region",
-                        lambda src, dur, wd, key, cfg, **kw: {"x": 100, "y": 800, "w": 600, "h": 80})
+                        lambda src, dur, wd, key, cfg, **kw: [{"x": 100, "y": 800, "w": 600, "h": 80}])
     # extract_frame 不再被 _locate_region 调用，但保留桩防其他路径
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda segs, **kw: translated)
@@ -143,7 +144,8 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, m
                         lambda v, t, o: open(o, "wb").close() or o)
     monkeypatch.setattr(lv._media, "burn_subtitles",
                         lambda vp, op, ass, erase_regions=None: op)
-    monkeypatch.setattr(lv._media, "mix_audio", lambda vp, d, op, keep_background=False: op)
+    monkeypatch.setattr(lv, "_build_timed_audio", lambda segs, dubs, dur, out: out)
+    monkeypatch.setattr(lv, "_replace_audio", lambda vp, au, op: op)
     monkeypatch.setattr(lv._cloud_asr, "transcribe_local", lambda wav, api_key, **kw: segs)
     monkeypatch.setattr(lv._llm_translate, "translate_segments",
                         lambda s, **kw: [{**x, "text": "T"} for x in s])
@@ -158,7 +160,7 @@ def test_localize_video_asr_over_ocr_conflict(no_keys, asr_local_ok, tmp_path, m
     monkeypatch.setattr(lv._media, "burn_subtitles", fake_burn)
     # OCR 只用于定位 bbox，文本不进翻译源（ASR 为准）
     monkeypatch.setattr(lv, "_locate_region",
-                        lambda src, dur, wd, key, cfg, **kw: {"x": 0, "y": 900, "w": 500, "h": 60})
+                        lambda src, dur, wd, key, cfg, **kw: [{"x": 0, "y": 900, "w": 500, "h": 60}])
 
     r = invoke("localize_video", {"video_path": str(src), "target_lang": "en"})
     assert r.ok is True
