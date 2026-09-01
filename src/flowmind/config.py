@@ -197,8 +197,8 @@ class KeywordTrendConfig(BaseModel):
     trend_timeout_s: float = 15.0
     default_country: str = "US"
 
-    # ── TikTok Creative Center 自托管抓取 ──
-    cc_scrape_page_url: str = "https://ads.tiktok.com/business/creativecenter/hashtag/popular/pc/en"
+    # ── TikTok Creative Center 自托管抓取（旧 URL 已 301 到 TikTok One） ──
+    cc_scrape_page_url: str = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
     cc_scrape_period_days: int = 7
     cc_scrape_timeout_s: float = 90.0
     cc_scrape_headless: bool = True

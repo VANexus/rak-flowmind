@@ -15,11 +15,13 @@
 """
 from __future__ import annotations
 
+import time
+
 import httpx
 
 from ._trend_adapters import TrendAdapter, TrendError
 
-DEFAULT_CC_PAGE_URL = "https://ads.tiktok.com/business/creativecenter/hashtag/popular/pc/en"
+DEFAULT_CC_PAGE_URL = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
 HASHTAG_LIST_URL = "https://ads.tiktok.com/CreativeOne/KnowledgeAPI/GetHashtagList"
 
 _UA = (
@@ -222,10 +224,15 @@ class TikTokCreativeScraperAdapter(TrendAdapter):
             rows = self._fetch_via_cdp_browser(limit=limit)
             if rows:
                 return rows
-            raise TrendError(
-                "CDP 直连未拦截到榜单响应（检查浏览器是否登录 TikTok / 网络是否可达）。",
-                category="environment", retriable=True,
-            )
+            # CDP 页面未拦截到榜单响应（页面被风控/加载卡住等）→ 降级 httpx 直连
+            try:
+                return self._fetch_via_http(limit=limit)
+            except TrendError as http_exc:
+                raise TrendError(
+                    "CDP 直连未拦截到榜单响应，httpx 直连降级也失败："
+                    f"{http_exc}",
+                    category="environment", retriable=True,
+                ) from http_exc
         try:
             return self._fetch_via_http(limit=limit)
         except TrendError as http_exc:
@@ -253,15 +260,19 @@ class TikTokCreativeScraperAdapter(TrendAdapter):
             except Exception:  # noqa: BLE001
                 pass
 
-        from flowmind.skills._cdp_browser import open_page, user_browser
+        from flowmind.skills._cdp_browser import user_browser
 
         try:
             with user_browser(self.cdp_url, connect_timeout_s=10.0) as (_pw, ctx):
-                page = open_page(ctx, url=self.page_url, timeout_ms=int(self.timeout_s * 1000))
+                page = ctx.new_page()
                 try:
+                    # 先挂监听再导航，避免榜单 XHR 早于监听器被漏掉
                     page.on("response", _on_response)
-                    page.wait_for_load_state("networkidle", timeout=self.timeout_s * 1000)
-                    page.wait_for_timeout(2000)
+                    page.goto(self.page_url, wait_until="domcontentloaded", timeout=int(self.timeout_s * 1000))
+                    # 榜单 XHR 一到就收工；页面埋点 ping 持续不断，networkidle 永不触发
+                    deadline = time.monotonic() + self.timeout_s
+                    while not captured and time.monotonic() < deadline:
+                        page.wait_for_timeout(500)
                 finally:
                     try:
                         page.close()

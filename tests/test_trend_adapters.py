@@ -18,7 +18,7 @@ class _Cfg:
     """resolve_adapter 所需的最小配置桩。"""
 
     default_country = "US"
-    cc_scrape_page_url = "https://ads.tiktok.com/business/creativecenter/hashtag/popular/pc/en"
+    cc_scrape_page_url = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
     cc_scrape_period_days = 7
     cc_scrape_timeout_s = 90.0
     cc_scrape_headless = True

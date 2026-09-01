@@ -127,8 +127,12 @@ class InstagramSelfHostAdapter(TrendAdapter):
                                 '/web/search/topsearch/?context=blended&query=' + encodeURIComponent(kw),
                                 { headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-IG-App-ID': '936619743392459' } },
                             );
+                            const ctype = r.headers.get('content-type') || '';
                             if (!r.ok) return { __status: r.status };
-                            return await r.json();
+                            if (!ctype.includes('json')) return { __login: true };
+                            const text = await r.text();
+                            if (text.startsWith('<')) return { __login: true };
+                            return JSON.parse(text);
                         }""",
                         kw,
                     )
@@ -145,6 +149,11 @@ class InstagramSelfHostAdapter(TrendAdapter):
 
         if not isinstance(payload, dict):
             raise TrendError("Instagram 响应非 JSON", category="unknown", retriable=True)
+        if payload.get("__login"):
+            raise TrendError(
+                "Instagram 未登录（topsearch 返回了登录页）：请在你的浏览器里登录 instagram.com 后重试。",
+                category="environment", retriable=False,
+            )
         status = payload.get("__status")
         if status in (401, 403, 302):
             raise TrendError(
