@@ -136,11 +136,12 @@ def _extract_list(payload) -> list | None:
     return None
 
 
-def resolve_adapter(platform: str, cfg, *, alibaba_cfg=None, session_cookie: str = "") -> TrendAdapter:
+def resolve_adapter(platform: str, cfg, *, alibaba_cfg=None, session_cookie: str = "", cdp_url: str = "") -> TrendAdapter:
     """按平台路由到自托管 adapter：tiktok→Creative Center 抓取；instagram→IG 会话直连；alibaba→TOP 热销词统计。
 
-    ``session_cookie`` 为对应平台的登录会话（站内「渠道授权」捕获），
-    TikTok 用于解锁全量榜单，IG 必需。
+    ``cdp_url`` 为用户浏览器调试端口（CDP 直连模式）：
+    提供时 adapter 直连用户真实浏览器抓取——真实指纹 + 浏览器登录态，零风控；
+    优先于 ``session_cookie``（保险库/设置会话）。
     """
     if platform == "tiktok":
         from flowmind.skills._cc_scraper import TikTokCreativeScraperAdapter
@@ -153,6 +154,7 @@ def resolve_adapter(platform: str, cfg, *, alibaba_cfg=None, session_cookie: str
             headless=cfg.cc_scrape_headless,
             proxy=getattr(cfg, "cc_scrape_proxy", "") or None,
             session_cookie=session_cookie,
+            cdp_url=cdp_url,
         )
     if platform == "instagram":
         from flowmind.skills._ig_scraper import InstagramSelfHostAdapter
@@ -160,6 +162,7 @@ def resolve_adapter(platform: str, cfg, *, alibaba_cfg=None, session_cookie: str
         return InstagramSelfHostAdapter(
             session_cookie=session_cookie,
             timeout_s=getattr(cfg, "trend_timeout_s", 30.0) or 30.0,
+            cdp_url=cdp_url,
         )
     if platform == "alibaba":
         if alibaba_cfg is None:

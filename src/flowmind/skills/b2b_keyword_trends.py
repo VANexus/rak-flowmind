@@ -26,7 +26,11 @@ class KeywordTrendInput(BaseModel):
     platform: TrendPlatform = Field(description="数据源平台：tiktok / instagram / alibaba")
     industry_id: int | None = Field(default=None, description="行业一级 ID（保留参数，当前自托管源未启用行业过滤）")
     keyword: str | None = Field(default=None, description="搜索关键词（instagram 必填；alibaba 可用于过滤商品池）")
-    session_cookie: str | None = Field(default=None, description="平台登录会话（站内渠道授权捕获）：TikTok 解锁全量榜单；IG 必需")
+    session_cookie: str | None = Field(default=None, description="平台登录会话（保险库/设置兜底）：TikTok 解锁全量榜单；IG 必需")
+    browser_debug_url: str | None = Field(
+        default=None,
+        description="用户浏览器 CDP 地址（如 http://127.0.0.1:9222）。提供时优先直连用户浏览器抓取——真实指纹 + 浏览器登录态",
+    )
     limit: int | None = Field(default=None, ge=1, le=50, description="返回条数上限")
 
 
@@ -76,6 +80,7 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
             inp.platform, cfg,
             alibaba_cfg=load_config().alibaba,
             session_cookie=(inp.session_cookie or "").strip(),
+            cdp_url=(inp.browser_debug_url or "").strip(),
         )
         source_label = adapter.name
         adapter_name_for_chain = adapter.name

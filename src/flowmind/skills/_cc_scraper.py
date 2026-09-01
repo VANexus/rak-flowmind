@@ -201,6 +201,7 @@ class TikTokCreativeScraperAdapter(TrendAdapter):
         headless: bool = True,
         proxy: str | None = None,
         session_cookie: str | None = None,
+        cdp_url: str = "",
     ):
         self.page_url = page_url
         self.country = country
@@ -209,12 +210,22 @@ class TikTokCreativeScraperAdapter(TrendAdapter):
         self.headless = headless
         # 海外出口代理（可选）：http://host:port / socks5://host:port
         self.proxy = (proxy or "").strip() or None
-        # TikTok 登录会话（M2 账号保险库注入），可解锁全量榜单；空 = 匿名 Top3
+        # TikTok 登录会话（保险库/设置兜底注入），可解锁全量榜单；空 = 匿名 Top3
         self.session_cookie = (session_cookie or "").strip() or None
+        # CDP 直连用户浏览器：提供时优先走用户浏览器（真实指纹 + 浏览器登录态）
+        self.cdp_url = (cdp_url or "").strip()
 
     def fetch(self, platform: str, *, industry_id: int | None = None, limit: int = 20, keyword: str | None = None) -> list[dict]:
         if platform != "tiktok":
             raise TrendError(f"TikTokCreativeScraperAdapter 不支持平台 {platform}", category="unknown", retriable=False)
+        if self.cdp_url:
+            rows = self._fetch_via_cdp_browser(limit=limit)
+            if rows:
+                return rows
+            raise TrendError(
+                "CDP 直连未拦截到榜单响应（检查浏览器是否登录 TikTok / 网络是否可达）。",
+                category="environment", retriable=True,
+            )
         try:
             return self._fetch_via_http(limit=limit)
         except TrendError as http_exc:
@@ -224,6 +235,58 @@ class TikTokCreativeScraperAdapter(TrendAdapter):
             if rows:
                 return rows
             raise http_exc from None
+
+    # ── CDP 直连：用户自己的浏览器（真实指纹 + 浏览器登录态） ─────────
+
+    def _fetch_via_cdp_browser(self, *, limit: int) -> list[dict]:
+        captured: list[dict] = []
+
+        def _on_response(resp):  # Playwright 内部回调
+            try:
+                if "creative_radar_api" not in resp.url and "KnowledgeAPI" not in resp.url:
+                    return
+                if "hashtag" not in resp.url:
+                    return
+                body = resp.json()
+                if isinstance(body, dict):
+                    captured.append(body)
+            except Exception:  # noqa: BLE001
+                pass
+
+        from flowmind.skills._cdp_browser import open_page, user_browser
+
+        try:
+            with user_browser(self.cdp_url, connect_timeout_s=10.0) as (_pw, ctx):
+                page = open_page(ctx, url=self.page_url, timeout_ms=int(self.timeout_s * 1000))
+                try:
+                    page.on("response", _on_response)
+                    page.wait_for_load_state("networkidle", timeout=self.timeout_s * 1000)
+                    page.wait_for_timeout(2000)
+                finally:
+                    try:
+                        page.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+        except TrendError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise TrendError(
+                f"CDP 直连抓取失败：{type(exc).__name__}: {exc}",
+                category="environment", retriable=True,
+            ) from exc
+
+        best: list[dict] | None = None
+        for payload in captured:
+            try:
+                if isinstance(payload.get("items"), list):
+                    rows = parse_cc_hashtag_items(payload["items"], limit=limit)
+                else:
+                    rows = parse_cc_payload(payload, limit=limit)
+                if best is None or len(rows) > len(best):
+                    best = rows
+            except TrendError:
+                continue
+        return best or []
 
     # ── 主路径：httpx 直连 GetHashtagList ──────────────────────────────
 

@@ -4,6 +4,7 @@ skills 融合 mcp——技能只需 @skill 定义，无需改动本文件即被�
 """
 from __future__ import annotations
 
+import anyio
 from mcp.server.fastmcp import FastMCP
 
 import flowmind.skills  # noqa: F401  触发技能注册
@@ -20,13 +21,18 @@ def _make_tool(spec):
     让 FastMCP 从注解推断入参 schema，再以 ``server.add_tool`` 显式登记。
     升级到 FastMCP v2 前需重新审视这些反射点；当前由 pyproject 中
     ``mcp>=1.27,<2`` 锁版本保护。
+
+    技能体统一调度到工作线程执行：
+      - HTTP 传输下事件循环不可阻塞——登录（5 分钟等待）、浏览器抓取等长任务
+        若在 loop 线程执行会卡死全部并发请求；
+      - Playwright Sync API / httpx 等同步库在无 loop 的工作线程中可正常运行。
     """
     input_model = spec.input_model
     skill_id = spec.id
 
-    def tool(inp) -> SkillResult:
+    async def tool(inp) -> SkillResult:
         raw = inp.model_dump() if hasattr(inp, "model_dump") else dict(inp)
-        return invoke(skill_id, raw)
+        return await anyio.to_thread.run_sync(lambda: invoke(skill_id, raw))
 
     # 让 FastMCP 从注解推断输入 schema 与返回类型
     tool.__name__ = skill_id
