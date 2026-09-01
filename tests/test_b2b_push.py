@@ -153,7 +153,7 @@ def test_wecom_errcode_error(monkeypatch):
 # 3. b2b_daily_digest（编排：打桩 invoke，不 mock 数据内容）
 # =====================================================================
 
-def _trend_result(platform, kws, degraded=False, source="cc_scraper", warning=None):
+def _trend_result(platform, kws, degraded=False, source="tikhub", warning=None):
     """构造与 b2b_keyword_trends 兼容的最小 data（字段鸭子类型访问）。"""
     return _res(SimpleNamespace(
         platform=platform, source=source, degraded=degraded,

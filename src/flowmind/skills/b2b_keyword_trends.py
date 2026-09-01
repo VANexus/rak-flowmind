@@ -1,7 +1,8 @@
-"""b2b_keyword_trends 技能：行业关键词趋势榜单（全部自托管数据源）。
+"""b2b_keyword_trends 技能：行业关键词趋势榜单（真实数据源，绝不 mock）。
 
-数据源按平台路由：tiktok→Creative Center 抓取（登录会话解锁全量）；
-instagram→IG 会话直连（必填关键词）；alibaba→TOP 热销词统计。
+数据源按平台路由：tiktok→TikHub API 代抓 Creative Center（默认，无需登录会话；
+可切回 cc_scraper 自建路径）；instagram→TikHub IG 话题搜索（默认，关键词必填，
+无需登录会话；可切回 self_host 会话直连）；alibaba→TOP 热销词统计。
 错误契约：抓取失败走 degraded SkillOutput（keywords=[] + failure_category/retriable/warning）。
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ from flowmind.skill import skill
 from flowmind.skills._content_common import build_chain
 from flowmind.skills._trend_adapters import TrendError, resolve_adapter
 
-_VERSION = "0.2.0"
+_VERSION = "0.4.0"
 
 TrendPlatform = Literal["tiktok", "instagram", "alibaba"]
 
@@ -24,9 +25,9 @@ TrendPlatform = Literal["tiktok", "instagram", "alibaba"]
 class KeywordTrendInput(BaseModel):
     """关键词趋势榜单入参。"""
     platform: TrendPlatform = Field(description="数据源平台：tiktok / instagram / alibaba")
-    industry_id: int | None = Field(default=None, description="行业一级 ID（保留参数，当前自托管源未启用行业过滤）")
-    keyword: str | None = Field(default=None, description="搜索关键词（instagram 必填；alibaba 可用于过滤商品池）")
-    session_cookie: str | None = Field(default=None, description="平台登录会话（保险库/设置兜底）：TikTok 解锁全量榜单；IG 必需")
+    industry_id: int | None = Field(default=None, description="行业一级 ID（TikTok 走 TikHub 时支持行业过滤；CC 一级行业 ID 如 22000000000=服装配饰）")
+    keyword: str | None = Field(default=None, description="搜索关键词（instagram 必填，走 TikHub 话题搜索；alibaba 可用于过滤商品池）")
+    session_cookie: str | None = Field(default=None, description="平台登录会话（可选）：TikTok 透传给 TikHub 解锁更多数据；仅 self_host 回退路径必需")
     browser_debug_url: str | None = Field(
         default=None,
         description="用户浏览器 CDP 地址（如 http://127.0.0.1:9222）。提供时优先直连用户浏览器抓取——真实指纹 + 浏览器登录态",
@@ -59,10 +60,10 @@ class KeywordTrendPlan(BaseModel):
 def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
     """抓取指定平台/行业的趋势关键词榜单；源不可用时返回 degraded 空数据（绝不返回假 mock）。
 
-    数据流：平台 → adapter 路由 → 自托管真实抓取 → 解析 → KeywordTrendPlan + 推理链；
-    失败（不支持平台 / fetch 抛错 / 缺登录会话）→ degraded=True + keywords=[] +
-    结构化 failure_category/retriable/warning，前端展示空态 + 跳转到
-    「设置 → B 端运营」渠道授权的 CTA。
+    数据流：平台 → adapter 路由 → 真实抓取（TikHub/IG 会话回退/TOP）→ 解析 →
+    KeywordTrendPlan + 推理链；失败（不支持平台 / fetch 抛错 / 缺凭证）→
+    degraded=True + keywords=[] + 结构化 failure_category/retriable/warning，
+    具体修复动作（配 TIKHUB_API_KEY / 渠道授权登录回退）由 adapter 错误消息给出。
     """
     cfg = load_config().keyword_trend
     limit = inp.limit or 20
@@ -97,10 +98,8 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
         adapter_name_for_chain = source_label
         failure_category = exc.category
         retriable = exc.retriable
-        warning = (
-            f"趋势抓取不可用（{exc.category}）：{str(exc).strip()}"
-            "。请在「设置 → B 端运营」完成对应平台的渠道授权登录后重试。"
-        )
+        # 修复引导：TikTok/Instagram 主路径都走 TikHub（配 API Key），self_host 回退才需要渠道登录
+        warning = f"趋势抓取不可用（{exc.category}）：{str(exc).strip()} 请按上述原因修复配置/网络后重试。"
 
     keywords = [
         TrendKeyword(
@@ -121,7 +120,7 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
             f"{len(keywords)} 条（源 {source_label}）"
         ),
         causal_analysis=f"平台 {inp.platform} → adapter {adapter_name_for_chain} → 保留 {len(keywords)} 条",
-        risk_note="趋势数据随时间变化；degraded 空态等待渠道授权登录后可一键刷新。",
+        risk_note="趋势数据随时间变化；degraded 空态代表数据源当前不可达（已标注原因类别），修复凭证/网络后可一键刷新。",
     )
     return SkillOutput(
         data=KeywordTrendPlan(

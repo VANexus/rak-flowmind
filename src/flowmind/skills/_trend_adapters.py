@@ -1,10 +1,14 @@
-"""可插拔关键词趋势数据源 adapter（全部自托管真实数据，零第三方趋势 API）。
+"""可插拔关键词趋势数据源 adapter（真实数据，绝不 mock）。
 
-- ``TikTokCreativeScraperAdapter``：Creative Center 热门话题榜
-  （POST /CreativeOne/KnowledgeAPI/GetHashtagList，httpx 直连 + 浏览器降级），
-  匿名 Top3，注入登录会话解锁全量 20 条/页。
-- ``InstagramSelfHostAdapter``：IG 网页版话题搜索（web/search/topsearch），
-  必须带站内「渠道授权」登录捕获的会话。
+- ``TikTokTikHubTrendAdapter``（TikTok 默认主路径）：TikHub 第三方 API 代抓
+  Creative Center 热门话题榜，无需 cookie/浏览器即给全量榜单，见 _tikhub_trends.py。
+- ``TikTokCreativeScraperAdapter``（TikTok 回退路径）：自建直连
+  （POST /CreativeOne/KnowledgeAPI/GetHashtagList，httpx + 浏览器三级降级），
+  匿名 Top3，注入登录会话解锁全量 20 条/页；config.tiktok_trend_source="cc_scraper" 时启用。
+- ``InstagramTikHubTrendAdapter``（IG 默认主路径）：TikHub IG V2 话题搜索
+  （关键词 → 话题榜，heat=media_count），无需登录会话，见 _tikhub_instagram.py。
+- ``InstagramSelfHostAdapter``（IG 回退路径）：IG 网页版话题搜索（topsearch），
+  必须带登录会话；config.instagram_trend_source="self_host" 时启用。
 - ``AlibabaHotSellTrendAdapter``：调阿里国际站 TOP alibaba.product.list 拉在线商品，
   对商品标题/关键词做词频统计得到「热销词」榜单。
 
@@ -137,32 +141,58 @@ def _extract_list(payload) -> list | None:
 
 
 def resolve_adapter(platform: str, cfg, *, alibaba_cfg=None, session_cookie: str = "", cdp_url: str = "") -> TrendAdapter:
-    """按平台路由到自托管 adapter：tiktok→Creative Center 抓取；instagram→IG 会话直连；alibaba→TOP 热销词统计。
+    """按平台路由趋势 adapter：tiktok→TikHub（默认，可切回自建）；instagram→TikHub 话题搜索（默认，可切回会话直连）；alibaba→TOP 热销词统计。
 
-    ``cdp_url`` 为用户浏览器调试端口（CDP 直连模式）：
+    TikTok 数据源由 ``cfg.tiktok_trend_source`` 决定：
+    - ``"tikhub"``（默认）：TikHub API 代抓 Creative Center，无需 cookie/浏览器；
+    - ``"cc_scraper"``：旧自建三级降级路径（httpx→Playwright→CDP），保留为回退。
+
+    Instagram 数据源由 ``cfg.instagram_trend_source`` 决定：
+    - ``"tikhub"``（默认）：TikHub IG V2 话题搜索（关键词驱动），无需登录会话；
+    - ``"self_host"``：旧 IG 网页会话直连（topsearch），必须带登录会话。
+
+    ``cdp_url`` 为用户浏览器调试端口（CDP 直连模式，仅旧自建回退路径使用）：
     提供时 adapter 直连用户真实浏览器抓取——真实指纹 + 浏览器登录态，零风控；
     优先于 ``session_cookie``（保险库/设置会话）。
     """
     if platform == "tiktok":
-        from flowmind.skills._cc_scraper import TikTokCreativeScraperAdapter
+        source = getattr(cfg, "tiktok_trend_source", "tikhub")
+        if source == "cc_scraper":
+            from flowmind.skills._cc_scraper import TikTokCreativeScraperAdapter
 
-        return TikTokCreativeScraperAdapter(
-            page_url=cfg.cc_scrape_page_url,
+            return TikTokCreativeScraperAdapter(
+                page_url=cfg.cc_scrape_page_url,
+                country=cfg.default_country,
+                period_days=cfg.cc_scrape_period_days,
+                timeout_s=cfg.cc_scrape_timeout_s,
+                headless=cfg.cc_scrape_headless,
+                proxy=getattr(cfg, "cc_scrape_proxy", "") or None,
+                session_cookie=session_cookie,
+                cdp_url=cdp_url,
+            )
+        from flowmind.skills._tikhub_trends import TikTokTikHubTrendAdapter
+
+        return TikTokTikHubTrendAdapter(
             country=cfg.default_country,
             period_days=cfg.cc_scrape_period_days,
-            timeout_s=cfg.cc_scrape_timeout_s,
-            headless=cfg.cc_scrape_headless,
-            proxy=getattr(cfg, "cc_scrape_proxy", "") or None,
+            timeout_s=getattr(cfg, "tikhub_timeout_s", 30.0),
+            max_pages=getattr(cfg, "tikhub_max_pages", 5),
             session_cookie=session_cookie,
-            cdp_url=cdp_url,
         )
     if platform == "instagram":
-        from flowmind.skills._ig_scraper import InstagramSelfHostAdapter
+        source = getattr(cfg, "instagram_trend_source", "tikhub")
+        if source == "self_host":
+            from flowmind.skills._ig_scraper import InstagramSelfHostAdapter
 
-        return InstagramSelfHostAdapter(
-            session_cookie=session_cookie,
-            timeout_s=getattr(cfg, "trend_timeout_s", 30.0) or 30.0,
-            cdp_url=cdp_url,
+            return InstagramSelfHostAdapter(
+                session_cookie=session_cookie,
+                timeout_s=getattr(cfg, "trend_timeout_s", 30.0) or 30.0,
+                cdp_url=cdp_url,
+            )
+        from flowmind.skills._tikhub_instagram import InstagramTikHubTrendAdapter
+
+        return InstagramTikHubTrendAdapter(
+            timeout_s=getattr(cfg, "tikhub_timeout_s", 30.0),
         )
     if platform == "alibaba":
         if alibaba_cfg is None:

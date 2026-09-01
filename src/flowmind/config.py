@@ -187,17 +187,32 @@ class OrchestratorConfig(BaseModel):
 class KeywordTrendConfig(BaseModel):
     """B端关键词趋势榜单（b2b_keyword_trends / b2b_longtail_keywords）可配置参数。
 
-    数据源全部自托管（零第三方趋势 API）：
-    - tiktok → Creative Center 热门话题榜（GetHashtagList 直连 + 浏览器降级）；
-      登录会话（站内渠道授权捕获）可解锁全量榜单。
-    - instagram → IG 网页版话题搜索（topsearch），必须带登录会话。
+    - tiktok 默认走 TikHub 第三方 API（tiktok_trend_source="tikhub"），
+      服务端代抓 Creative Center 热门话题榜，无需 cookie/浏览器即给全量榜单；
+      API Key 只从环境变量 TIKHUB_API_KEY 读取，绝不进 toml / commit。
+      大陆环境 api_base 用加速域名 https://api.tikhub.dev，海外用 https://api.tikhub.io。
+      旧自建三级降级路径保留为回退（tiktok_trend_source="cc_scraper"）。
+    - instagram 同样默认走 TikHub（instagram_trend_source="tikhub"）：
+      话题搜索端点（关键词 → 话题榜，heat=media_count），无需登录会话；
+      旧 IG 网页会话直连保留为回退（instagram_trend_source="self_host"）。
     - alibaba → TOP 热销词统计。
     登录会话由调用方经工具参数注入，绝不进 toml / commit。
     """
     trend_timeout_s: float = 15.0
     default_country: str = "US"
 
-    # ── TikTok Creative Center 自托管抓取（旧 URL 已 301 到 TikTok One） ──
+    # ── 数据源选择：tikhub（默认）| 旧自建回退（tiktok: cc_scraper / instagram: self_host） ──
+    tiktok_trend_source: str = "tikhub"
+    instagram_trend_source: str = "tikhub"
+
+    # ── TikHub API（docs.tikhub.io；key 只走环境变量） ──
+    # 大陆默认加速域名 .dev（直连免代理）；海外部署改为 https://api.tikhub.io
+    tikhub_api_base: str = "https://api.tikhub.dev"
+    tikhub_key_env: str = "TIKHUB_API_KEY"
+    tikhub_timeout_s: float = 30.0
+    tikhub_max_pages: int = 5          # 分页聚合上限（每页 20，最多 100 条）
+
+    # ── TikTok Creative Center 自建抓取（回退路径；旧 URL 已 301 到 TikTok One） ──
     cc_scrape_page_url: str = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
     cc_scrape_period_days: int = 7
     cc_scrape_timeout_s: float = 90.0

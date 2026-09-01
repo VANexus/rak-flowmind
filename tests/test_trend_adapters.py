@@ -1,7 +1,8 @@
 """趋势 adapter 测试：resolve_adapter 路由 + AlibabaHotSellTrendAdapter。
 
-TikTok/IG 自托管抓取的解析逻辑见 test_cc_scraper.py / test_ig_scraper.py；
-本文件聚焦路由与阿里热销词统计。
+TikTok TikHub 主路径的解析/分页/错误映射见 test_tikhub_trends.py；
+旧 Creative Center 自建路径的解析逻辑见 test_cc_scraper.py；
+IG 自托管抓取见 test_ig_scraper.py；本文件聚焦路由与阿里热销词统计。
 """
 from __future__ import annotations
 
@@ -18,6 +19,10 @@ class _Cfg:
     """resolve_adapter 所需的最小配置桩。"""
 
     default_country = "US"
+    tiktok_trend_source = "tikhub"
+    instagram_trend_source = "tikhub"
+    tikhub_timeout_s = 30.0
+    tikhub_max_pages = 5
     cc_scrape_page_url = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
     cc_scrape_period_days = 7
     cc_scrape_timeout_s = 90.0
@@ -31,10 +36,20 @@ class _Cfg:
 # =====================================================================
 
 
-def test_resolve_tiktok_routes_to_cc_scraper():
-    from flowmind.skills._cc_scraper import TikTokCreativeScraperAdapter
+def test_resolve_tiktok_routes_to_tikhub_by_default():
+    from flowmind.skills._tikhub_trends import TikTokTikHubTrendAdapter
 
     adapter = resolve_adapter("tiktok", _Cfg())
+    assert isinstance(adapter, TikTokTikHubTrendAdapter)
+    assert adapter.name == "tikhub"
+
+
+def test_resolve_tiktok_cc_scraper_fallback_when_configured():
+    from flowmind.skills._cc_scraper import TikTokCreativeScraperAdapter
+
+    cfg = _Cfg()
+    cfg.tiktok_trend_source = "cc_scraper"
+    adapter = resolve_adapter("tiktok", cfg)
     assert isinstance(adapter, TikTokCreativeScraperAdapter)
     assert adapter.name == "cc_scraper"
 
@@ -44,10 +59,20 @@ def test_resolve_tiktok_passes_session_cookie():
     assert adapter.session_cookie == "sessionid=abc; ttid=web"
 
 
-def test_resolve_instagram_routes_to_ig_scraper():
+def test_resolve_instagram_routes_to_tikhub_by_default():
+    from flowmind.skills._tikhub_instagram import InstagramTikHubTrendAdapter
+
+    adapter = resolve_adapter("instagram", _Cfg())
+    assert isinstance(adapter, InstagramTikHubTrendAdapter)
+    assert adapter.name == "tikhub-instagram"
+
+
+def test_resolve_instagram_self_host_fallback_when_configured():
     from flowmind.skills._ig_scraper import InstagramSelfHostAdapter
 
-    adapter = resolve_adapter("instagram", _Cfg(), session_cookie="sessionid=xyz")
+    cfg = _Cfg()
+    cfg.instagram_trend_source = "self_host"
+    adapter = resolve_adapter("instagram", cfg, session_cookie="sessionid=xyz")
     assert isinstance(adapter, InstagramSelfHostAdapter)
     assert adapter.name == "ig_scraper"
     assert adapter.session_cookie == "sessionid=xyz"
