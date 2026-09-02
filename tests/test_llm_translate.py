@@ -65,7 +65,7 @@ def test_translate_request_format():
 
 
 def test_translate_raises_on_empty_key():
-    with pytest.raises(ValueError, match="LONGCAT_API_KEY"):
+    with pytest.raises(ValueError, match="AI_LLM_API_KEY"):
         translate_segments(SEGMENTS, target_lang="en",
                            api_key="", client=_client({}, ""))
 

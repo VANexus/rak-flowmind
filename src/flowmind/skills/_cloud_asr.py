@@ -38,7 +38,7 @@ def transcribe_local(
     """
     if not api_key:
         raise ValueError(
-            "收到空 API key。请检查环境变量 DASHSCOPE_API_KEY 是否设置。"
+            "收到空 API key。请检查环境变量 AI_SPEECH_API_KEY 是否设置。"
             "云优先原则：ASR 必须走云端，不做本地降级。"
         )
     if not Path(wav_path).exists():

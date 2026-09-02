@@ -70,11 +70,11 @@ class MarketingImageConfig(BaseModel):
     )
 
     # --- allin-api 后端 (PR #5) ---
-    allin_api_base: str = "https://allin-api.com"
-    allin_api_image_model: str = "gpt-image-2"
+    allin_api_base: str = "https://api.ciyuansky.com"
+    allin_api_image_model: str = "MPT-Image-2"
     # 关键安全:API key 仅从环境变量读取,绝不放进 toml/commit。
     # 用户在终端对话初始化时由 Agent 询问,然后由运行环境导出。
-    allin_api_key_env: str = "ALLIN_API_KEY"
+    allin_api_key_env: str = "AI_IMAGE_API_KEY"
     allin_api_timeout_s: float = 60.0
 
     # --- 画面描述提取器 ---
@@ -143,15 +143,15 @@ class ContentConfig(BaseModel):
 
     # ── LLM（LongCat / Anthropic 兼容 /v1/messages）──
     llm_api_base: str = "https://api.longcat.chat/anthropic"
-    llm_api_key_env: str = "LONGCAT_API_KEY"
+    llm_api_key_env: str = "AI_LLM_API_KEY"
     llm_model: str = "LongCat-2.0"
     llm_max_tokens: int = 4096
     llm_timeout_s: float = 60.0
 
     # ── 生图（ciyuansky / OpenAI 兼容 /v1/images/generations）──
     image_api_base: str = "https://api.ciyuansky.com"
-    image_api_key_env: str = "CIYUANSKY_API_KEY"
-    image_model: str = "gpt-image-2"
+    image_api_key_env: str = "AI_IMAGE_API_KEY"
+    image_model: str = "MPT-Image-2"
     image_timeout_s: float = 60.0
     image_max_variants: int = 4
 
@@ -176,7 +176,7 @@ class ContentConfig(BaseModel):
 
 class OrchestratorConfig(BaseModel):
     """A2A 编排器配置。"""
-    llm_key_env: str = "LONGCAT_API_KEY"
+    llm_key_env: str = "AI_LLM_API_KEY"
     llm_base_url: str = "https://api.longcat.chat/anthropic"
     llm_model: str = "LongCat-2.0"
     max_plan_steps: int = 5
@@ -189,7 +189,7 @@ class KeywordTrendConfig(BaseModel):
 
     - tiktok 默认走 TikHub 第三方 API（tiktok_trend_source="tikhub"），
       服务端代抓 Creative Center 热门话题榜，无需 cookie/浏览器即给全量榜单；
-      API Key 只从环境变量 TIKHUB_API_KEY 读取，绝不进 toml / commit。
+      API Key 只从环境变量 AI_TRENDS_API_KEY 读取，绝不进 toml / commit。
       大陆环境 api_base 用加速域名 https://api.tikhub.dev，海外用 https://api.tikhub.io。
       旧自建三级降级路径保留为回退（tiktok_trend_source="cc_scraper"）。
     - instagram 同样默认走 TikHub（instagram_trend_source="tikhub"）：
@@ -208,9 +208,18 @@ class KeywordTrendConfig(BaseModel):
     # ── TikHub API（docs.tikhub.io；key 只走环境变量） ──
     # 大陆默认加速域名 .dev（直连免代理）；海外部署改为 https://api.tikhub.io
     tikhub_api_base: str = "https://api.tikhub.dev"
-    tikhub_key_env: str = "TIKHUB_API_KEY"
+    tikhub_key_env: str = "AI_TRENDS_API_KEY"
     tikhub_timeout_s: float = 30.0
     tikhub_max_pages: int = 5          # 分页聚合上限（每页 20，最多 100 条）
+
+    # ── TikHub 响应磁盘缓存（_tikhub_cache）：默认保守，学习到免费窗才投机 ──
+    # soft_ttl 内直回本地缓存（零成本）；过期后真实外呼（默认计费）；
+    # 仅当端点从响应头学习到 TikHub 服务端免费缓存窗口时，soft_ttl 过期后的
+    # 外呼升级 speculative（大概率免费命中对方缓存，白拿最新数据）。
+    tikhub_cache_enabled: bool = True
+    tikhub_cache_soft_ttl_s: float = 1800.0     # 30 分钟
+    tikhub_cache_max_window_s: float = 21600.0  # 学习窗口上限 6h
+    tikhub_cache_db_path: str = ""              # 空 = <cwd>/.cache/tikhub_cache.db
 
     # ── TikTok Creative Center 自建抓取（回退路径；旧 URL 已 301 到 TikTok One） ──
     cc_scrape_page_url: str = "https://ads.tiktok.com/creative/creativeCenter/trends/hashtag"
@@ -264,7 +273,7 @@ class ImageSkillConfig(BaseModel):
     提示词反推走视觉 LLM（复用 LongCat Anthropic 兼容 /v1/messages + image 块）。
     """
     reverse_prompt_api_base: str = "https://api.longcat.chat/anthropic"
-    reverse_prompt_key_env: str = "LONGCAT_API_KEY"
+    reverse_prompt_key_env: str = "AI_LLM_API_KEY"
     reverse_prompt_model: str = "LongCat-2.0"
     reverse_prompt_timeout_s: float = 45.0
 

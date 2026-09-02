@@ -46,7 +46,7 @@ def reverse_prompt(
     """
     if not api_key:
         raise ValueError(
-            "收到空 API key。请检查环境变量 LONGCAT_API_KEY 是否设置。"
+            "收到空 API key。请检查环境变量 AI_LLM_API_KEY 是否设置。"
             "云优先原则：提示词反推必须走视觉云 LLM，不做本地降级。"
         )
 

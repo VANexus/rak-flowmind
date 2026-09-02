@@ -60,7 +60,7 @@ class TikTokTikHubTrendAdapter(TrendAdapter):
             client = new_client_from_config(get_config().keyword_trend)
         if not getattr(client, "api_key", ""):
             raise TrendError(
-                "TikTok 趋势走 TikHub 但未配置 TIKHUB_API_KEY；"
+                "TikTok 趋势走 TikHub 但未配置 AI_TRENDS_API_KEY；"
                 "请在 .env 填写 TikHub API Key（或将 keyword_trend.tiktok_trend_source "
                 "切回 cc_scraper 走旧自建路径）。",
                 category="environment", retriable=False,

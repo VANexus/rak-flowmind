@@ -89,7 +89,7 @@ def test_locate_filters_top_region(monkeypatch, tmp_path):
 
 
 def test_no_key_raises(tmp_path):
-    with pytest.raises(ValueError, match="DASHSCOPE_API_KEY"):
+    with pytest.raises(ValueError, match="AI_SPEECH_API_KEY"):
         _cloud_ocr.locate_subtitle_region([str(tmp_path / "x.png")], api_key="")
 
 

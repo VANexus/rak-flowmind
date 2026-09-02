@@ -139,7 +139,7 @@ def locate_subtitle_region(
     全部帧无字幕返回空列表。
     """
     if not api_key:
-        raise ValueError("收到空 API key。请检查 DASHSCOPE_API_KEY 是否设置（项目 .env）。")
+        raise ValueError("收到空 API key。请检查 AI_SPEECH_API_KEY 是否设置（项目 .env）。")
 
     boxes: list[tuple[int, int, int, int]] = []
     for path in frame_paths:

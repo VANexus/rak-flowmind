@@ -69,7 +69,7 @@ def test_missing_api_key_raises_environment():
     with pytest.raises(Exception) as ei:  # noqa: PT011
         adapter.fetch("instagram", keyword="fashion")
     assert getattr(ei.value, "category", "") == "environment"
-    assert "TIKHUB_API_KEY" in str(ei.value)
+    assert "AI_TRENDS_API_KEY" in str(ei.value)
 
 
 def test_tikhub_error_maps_category_and_retriable():

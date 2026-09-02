@@ -46,7 +46,7 @@ class InstagramTikHubTrendAdapter(TrendAdapter):
             client = new_client_from_config(get_config().keyword_trend)
         if not getattr(client, "api_key", ""):
             raise TrendError(
-                "Instagram 趋势走 TikHub 但未配置 TIKHUB_API_KEY；请在 .env 填写 TikHub API Key。",
+                "Instagram 趋势走 TikHub 但未配置 AI_TRENDS_API_KEY；请在 .env 填写趋势 API Key。",
                 category="environment", retriable=False,
             )
 

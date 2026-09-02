@@ -146,7 +146,7 @@ class AllInApiBackend(ImageBackend):
     def generate(self, *, prompt, negative_prompt, width, height, n, seed, save_dir):
         if not self.api_key:
             raise ValueError(
-                "AllInApiBackend 收到空 API key。请检查环境变量 ALLIN_API_KEY 是否设置。"
+                "AllInApiBackend 收到空 API key。请检查环境变量 AI_IMAGE_API_KEY 是否设置。"
             )
 
         final_prompt = prompt
@@ -175,7 +175,18 @@ class AllInApiBackend(ImageBackend):
         else:
             with httpx.Client(timeout=self.timeout_s) as client:
                 resp = client.post(url, headers=headers, json=body)
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # 提取 API 错误体里的具体原因（如 额度不足/无权使用模型），
+            # 不用 raise_for_status（会把原因吞成笼统的 "403 Forbidden"）；
+            # 错误消息脱敏：不回显完整 URL。
+            detail = ""
+            try:
+                detail = str(resp.json().get("error", {}).get("message", ""))[:200]
+            except Exception:
+                detail = ""
+            raise RuntimeError(
+                f"生图 API 返回 HTTP {resp.status_code}：{detail or resp.reason_phrase}"
+            )
         data = resp.json()
 
         items = data.get("data") or []
@@ -236,7 +247,7 @@ def select_backend(
     if chosen == "mock":
         raise ValueError(
             "显式 mock 出图后端已禁用（云优先原则：一切营销生图 / SKU 图必须走真实云 API）。"
-            "请在「设置 → B 端运营」配置 ALLIN_API_KEY 后再重试。"
+            "请在「设置 → B 端运营」配置 AI_IMAGE_API_KEY 后再重试。"
         )
 
     if chosen == "allin_api":

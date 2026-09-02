@@ -104,7 +104,7 @@ class ChatExtractor(SceneExtractor):
     def extract(self, *, marketing_copy, hint=None):
         if not self.api_key:
             raise ValueError(
-                "ChatExtractor 收到空 API key。请检查环境变量 ALLIN_API_KEY 是否设置。"
+                "ChatExtractor 收到空 API key。请检查环境变量 AI_IMAGE_API_KEY 是否设置。"
             )
 
         user_msg = f"营销文案：{marketing_copy}"

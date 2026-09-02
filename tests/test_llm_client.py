@@ -66,7 +66,7 @@ def test_llm_json_skips_thinking_blocks():
 
 
 def test_llm_json_raises_on_empty_key():
-    with pytest.raises(ValueError, match="LONGCAT_API_KEY"):
+    with pytest.raises(ValueError, match="AI_LLM_API_KEY"):
         llm_json(prompt="p", system="s", api_key="", client=_client({}, "{}"))
 
 

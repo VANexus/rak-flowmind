@@ -6,7 +6,7 @@ from flowmind.config import (
 
 def test_orchestrator_config_default():
     cfg = OrchestratorConfig()
-    assert cfg.llm_key_env == "LONGCAT_API_KEY"
+    assert cfg.llm_key_env == "AI_LLM_API_KEY"
     assert cfg.max_plan_steps == 5
     assert cfg.max_retries_per_step == 1
     assert cfg.enable_streaming is True

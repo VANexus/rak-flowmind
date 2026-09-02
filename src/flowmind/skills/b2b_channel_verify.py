@@ -121,7 +121,7 @@ def _extract_account(platform: str, resp: httpx.Response) -> str:
 def _result(platform: str, ok: bool, status: str, account: str, message: str) -> SkillOutput[ChannelVerifyPlan]:
     chain = build_chain(
         conclusion=f"{platform} 会话探活：{status}{'（' + account + '）' if account else ''} — {message}",
-        causal_analysis=f"只读请求平台官方账号端点 → 按 HTTP 状态分类 active/expired/risk_control，不发任何写请求",
+        causal_analysis="只读请求平台官方账号端点 → 按 HTTP 状态分类 active/expired/risk_control，不发任何写请求",
         risk_note="探活为只读操作；会话 cookie 仅用于本次请求头，不落日志。",
     )
     return SkillOutput(

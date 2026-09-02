@@ -48,7 +48,7 @@ def translate_segments(
     """分批翻译句段，返回同结构列表（text 为译文，begin/end/index 原样）。"""
     if not api_key:
         raise ValueError(
-            "收到空 API key。请检查环境变量 LONGCAT_API_KEY 是否设置。"
+            "收到空 API key。请检查环境变量 AI_LLM_API_KEY 是否设置。"
             "云优先原则：翻译必须走云 LLM，不做本地降级。"
         )
     out: list[dict] = []
