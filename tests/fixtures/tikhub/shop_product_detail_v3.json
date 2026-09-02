@@ -1,0 +1,3321 @@
+{
+ "product_data": {
+  "ab_test": {
+   "user_level": {
+    "shouldJumpH5Pay": 1
+   },
+   "page_level": {
+    "page_id": "210407275290488883",
+    "vids": [],
+    "params": {}
+   }
+  },
+  "page_config": {
+   "global_fe_config": {},
+   "components_map": [
+    {
+     "component_type": "user_info",
+     "component_name": "user_info",
+     "fe_config": {}
+    },
+    {
+     "component_type": "page_header",
+     "component_name": "page_header",
+     "fe_config": {}
+    },
+    {
+     "component_type": "call_app_bottom_popup",
+     "component_name": "call_app_bottom_popup",
+     "fe_config": {
+      "target": "wrapper_pdp"
+     }
+    },
+    {
+     "component_type": "coupon_popup",
+     "component_name": "coupon_popup",
+     "fe_config": {}
+    },
+    {
+     "component_type": "product_detail",
+     "component_name": "product_detail",
+     "fe_config": {
+      "data_source": {
+       "skip_data_return": true
+      }
+     }
+    },
+    {
+     "component_type": "deals_info",
+     "component_name": "deals_info",
+     "fe_config": {
+      "data_source": {
+       "skip_data_return": true
+      }
+     }
+    },
+    {
+     "component_type": "product_info",
+     "component_name": "product_info",
+     "fe_config": {
+      "show_protections_policy": true,
+      "show_empty_page": true,
+      "is_pay_supported": true,
+      "is_cart_supported": true,
+      "data_source": {
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "product_detail",
+        "category_info",
+        "shop_info",
+        "deals_info"
+       ]
+      }
+     },
+     "component_data": {
+      "error_code": 0,
+      "error_message": "success",
+      "product_info": {
+       "product_model": {
+        "product_id": "1732316229382607396",
+        "seller_id": "7496113907254463012",
+        "sold_count": "4277",
+        "name": "Curvysweet Claire Women’s Sleeveless Acrylic Knitting Halter Neck Mesh Backless Below Ankle Maxi Dress - Elegant Formal Party Gown, Draped, Ruched, Basic Tie Bodycon Summer Wedding Guest Women's Clothing",
+        "description": "[{\"type\":\"image\",\"image\":{\"height\":580,\"width\":1164,\"uri\":\"tos-useast5-i-omjb5zjo8w-tx/5df36fc6876546d488b78e6e8ebfd8b8\",\"url_list\":[\"https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/5df36fc6876546d488b78e6e8ebfd8b8~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\",\"https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/5df36fc6876546d488b78e6e8ebfd8b8~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\"],\"remove_gap\":\"false\"}},{\"type\":\"image\",\"image\":{\"height\":450,\"width\":600,\"uri\":\"tos-useast8-i-rt0ujvrtvp-tx2/2a910472d9f04e5c864fe1295105405f\",\"url_list\":[\"https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/2a910472d9f04e5c864fe1295105405f~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\",\"https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/2a910472d9f04e5c864fe1295105405f~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\"],\"remove_gap\":\"false\"}},{\"type\":\"image\",\"image\":{\"height\":450,\"width\":600,\"uri\":\"tos-useast8-i-rt0ujvrtvp-tx2/af1e1c99fbd444cf9a084c38fcbc51ce\",\"url_list\":[\"https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/af1e1c99fbd444cf9a084c38fcbc51ce~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\",\"https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/af1e1c99fbd444cf9a084c38fcbc51ce~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\"],\"remove_gap\":\"false\"}},{\"type\":\"image\",\"image\":{\"height\":450,\"width\":600,\"uri\":\"tos-useast8-i-rt0ujvrtvp-tx2/2b60535c70e244978df90454e1b2f20e\",\"url_list\":[\"https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/2b60535c70e244978df90454e1b2f20e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\",\"https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/2b60535c70e244978df90454e1b2f20e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\"],\"remove_gap\":\"false\"}},{\"type\":\"image\",\"image\":{\"height\":450,\"width\":600,\"uri\":\"tos-useast8-i-rt0ujvrtvp-tx2/cd70772c6bb248a5996551b34e1437c7\",\"url_list\":[\"https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/cd70772c6bb248a5996551b34e1437c7~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\",\"https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/cd70772c6bb248a5996551b34e1437c7~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&t=555f072d&ps=933b5bde&shp=a3510d86&shcp=6ce186a1&idc=useast5&from=2739998086\"],\"remove_gap\":\"false\"}}]",
+        "images": [
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/8933ef06be2f4826bb98383a85ad69a4",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/8933ef06be2f4826bb98383a85ad69a4~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/8933ef06be2f4826bb98383a85ad69a4~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/7b243d34a8c14d73a90760d86ef7a4cd",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7b243d34a8c14d73a90760d86ef7a4cd~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7b243d34a8c14d73a90760d86ef7a4cd~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/c3dee3343cdb4028a96c14ca24d4ac8f",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/c3dee3343cdb4028a96c14ca24d4ac8f~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/c3dee3343cdb4028a96c14ca24d4ac8f~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/92ef7c16798f4890a28c12a27b1546a6",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/92ef7c16798f4890a28c12a27b1546a6~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/92ef7c16798f4890a28c12a27b1546a6~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/87b7f633477f4b91a8c612404d4ac544",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/87b7f633477f4b91a8c612404d4ac544~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/87b7f633477f4b91a8c612404d4ac544~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/b6f9abf728994386ac33c29886b7bf01",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/b6f9abf728994386ac33c29886b7bf01~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/b6f9abf728994386ac33c29886b7bf01~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/eec495150b5245d18cfc4395cd68d916",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/eec495150b5245d18cfc4395cd68d916~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/eec495150b5245d18cfc4395cd68d916~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/3099ae2cc1da4662ad2796212eddccc5",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/3099ae2cc1da4662ad2796212eddccc5~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/3099ae2cc1da4662ad2796212eddccc5~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         {
+          "height": 1785,
+          "width": 1340,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/09b4a85ff1264091811a9ef5663e3571",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/09b4a85ff1264091811a9ef5663e3571~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/09b4a85ff1264091811a9ef5663e3571~tplv-fhlh96nyum-crop-webp:1340:1785.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         }
+        ],
+        "sale_properties": [
+         {
+          "property_id": "100000",
+          "has_image": true,
+          "property_name": "Color",
+          "property_values": [
+           {
+            "property_value_id": "7614695759451621141",
+            "property_value_name": "Avocado Green",
+            "image": {
+             "height": 1200,
+             "width": 1200,
+             "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+             "url_list": [
+              "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+              "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+             ]
+            },
+            "extend_images": [
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/8622ece4d23d480cac52fe90a3a64ad4",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/8622ece4d23d480cac52fe90a3a64ad4~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/8622ece4d23d480cac52fe90a3a64ad4~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             },
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/dc46b21f66c540b080ea9e6a9a74ef8e",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/dc46b21f66c540b080ea9e6a9a74ef8e~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/dc46b21f66c540b080ea9e6a9a74ef8e~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             }
+            ]
+           },
+           {
+            "property_value_id": "7616537039944812301",
+            "property_value_name": "Burgundy",
+            "image": {
+             "height": 1200,
+             "width": 1200,
+             "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+             "url_list": [
+              "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+              "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+             ]
+            },
+            "extend_images": [
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/80098c09429a4cd8b3f9081613eb2077",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/80098c09429a4cd8b3f9081613eb2077~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/80098c09429a4cd8b3f9081613eb2077~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             },
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/a8ffd704a2e547dfa33dfbc7a0bbe34e",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/a8ffd704a2e547dfa33dfbc7a0bbe34e~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/a8ffd704a2e547dfa33dfbc7a0bbe34e~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             }
+            ]
+           },
+           {
+            "property_value_id": "7663878688986187533",
+            "property_value_name": "Black",
+            "image": {
+             "height": 1200,
+             "width": 1200,
+             "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+             "url_list": [
+              "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+              "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+             ]
+            },
+            "extend_images": [
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/8419323909f940b1a5f9fd6b55732a0a",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/8419323909f940b1a5f9fd6b55732a0a~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/8419323909f940b1a5f9fd6b55732a0a~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             },
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/6e5635a11a89418cb3c53d726b76dbb9",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/6e5635a11a89418cb3c53d726b76dbb9~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/6e5635a11a89418cb3c53d726b76dbb9~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             }
+            ]
+           },
+           {
+            "property_value_id": "7637441340189296405",
+            "property_value_name": "Baby Blue",
+            "image": {
+             "height": 1200,
+             "width": 1200,
+             "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+             "url_list": [
+              "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+              "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+             ]
+            },
+            "extend_images": [
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/82fb964e088047b8a92fbe468de5e328",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/82fb964e088047b8a92fbe468de5e328~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/82fb964e088047b8a92fbe468de5e328~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             },
+             {
+              "width": 1200,
+              "height": 1200,
+              "uri": "tos-useast8-i-rt0ujvrtvp-tx2/6105bb39723c48b6a806ddbf287f9a84",
+              "image_source": 0,
+              "url_list": [
+               "https://p16-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/6105bb39723c48b6a806ddbf287f9a84~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+               "https://p19-oec-general-useast8.ttcdn-us.com/tos-useast8-i-rt0ujvrtvp-tx2/6105bb39723c48b6a806ddbf287f9a84~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+              ]
+             }
+            ]
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100007",
+          "has_image": false,
+          "property_name": "Size",
+          "property_values": [
+           {
+            "property_value_id": "7676148967827130126",
+            "property_value_name": "XS"
+           },
+           {
+            "property_value_id": "7624032194855438094",
+            "property_value_name": "S"
+           },
+           {
+            "property_value_id": "7624033874448140045",
+            "property_value_name": "M"
+           },
+           {
+            "property_value_id": "7624031905083705101",
+            "property_value_name": "L"
+           },
+           {
+            "property_value_id": "7624031905083655949",
+            "property_value_name": "XL"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         }
+        ],
+        "product_properties": [
+         {
+          "property_id": "101395",
+          "has_image": false,
+          "property_name": "CA prop 65: repro. chems",
+          "property_values": [
+           {
+            "property_value_id": "1000059",
+            "property_value_name": "No"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": true,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101400",
+          "has_image": false,
+          "property_name": "CA prop 65: carcinogens",
+          "property_values": [
+           {
+            "property_value_id": "1000059",
+            "property_value_name": "No"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": true,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101619",
+          "has_image": false,
+          "property_name": "Dangerous goods or hazardous materials",
+          "property_values": [
+           {
+            "property_value_id": "1000059",
+            "property_value_name": "No"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": true,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100149",
+          "has_image": false,
+          "property_name": "Country of origin",
+          "property_values": [
+           {
+            "property_value_id": "1000850",
+            "property_value_name": "China"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100157",
+          "has_image": false,
+          "property_name": "Material",
+          "property_values": [
+           {
+            "property_value_id": "7257799715797075739",
+            "property_value_name": "95% Polyester and 5% Elastane"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100198",
+          "has_image": false,
+          "property_name": "Pattern",
+          "property_values": [
+           {
+            "property_value_id": "1001182",
+            "property_value_name": "Plain"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100347",
+          "has_image": false,
+          "property_name": "Quantity per pack",
+          "property_values": [
+           {
+            "property_value_id": "1000256",
+            "property_value_name": "1"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100392",
+          "has_image": false,
+          "property_name": "Occasion",
+          "property_values": [
+           {
+            "property_value_id": "1001123",
+            "property_value_name": "Wedding"
+           },
+           {
+            "property_value_id": "7627103574971156280",
+            "property_value_name": "formal"
+           },
+           {
+            "property_value_id": "7623887034091210508",
+            "property_value_name": "party"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100395",
+          "has_image": false,
+          "property_name": "Sleeve length",
+          "property_values": [
+           {
+            "property_value_id": "1001203",
+            "property_value_name": "Sleeveless"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": true,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100396",
+          "has_image": false,
+          "property_name": "Sleeve type",
+          "property_values": [
+           {
+            "property_value_id": "1001203",
+            "property_value_name": "Sleeveless"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": true,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100397",
+          "has_image": false,
+          "property_name": "Season",
+          "property_values": [
+           {
+            "property_value_id": "1001162",
+            "property_value_name": "Summer"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100398",
+          "has_image": false,
+          "property_name": "Style",
+          "property_values": [
+           {
+            "property_value_id": "1001168",
+            "property_value_name": "Elegant"
+           },
+           {
+            "property_value_id": "1001165",
+            "property_value_name": "Basic"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": true,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100399",
+          "has_image": false,
+          "property_name": "Fit",
+          "property_values": [
+           {
+            "property_value_id": "1001214",
+            "property_value_name": "Bodycon"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100401",
+          "has_image": false,
+          "property_name": "Washing instructions",
+          "property_values": [
+           {
+            "property_value_id": "1001199",
+            "property_value_name": "Machine washable"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100404",
+          "has_image": false,
+          "property_name": "Hem length",
+          "property_values": [
+           {
+            "property_value_id": "1002411",
+            "property_value_name": "Below the ankle"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100405",
+          "has_image": false,
+          "property_name": "Dress length",
+          "property_values": [
+           {
+            "property_value_id": "1001208",
+            "property_value_name": "Maxi"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100406",
+          "has_image": false,
+          "property_name": "Embellishment",
+          "property_values": [
+           {
+            "property_value_id": "7623923564827199244",
+            "property_value_name": "tie"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100409",
+          "has_image": false,
+          "property_name": "Clothing type",
+          "property_values": [
+           {
+            "property_value_id": "7549998380378785549",
+            "property_value_name": "maxi dress"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "100701",
+          "has_image": false,
+          "property_name": "Material",
+          "property_values": [
+           {
+            "property_value_id": "7312423206227855110",
+            "property_value_name": "95%Polyester5%Elastane"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101057",
+          "has_image": false,
+          "property_name": "Composition",
+          "property_values": [
+           {
+            "property_value_id": "1000014",
+            "property_value_name": "Acrylic"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": true,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101095",
+          "has_image": false,
+          "property_name": "Weaving method",
+          "property_values": [
+           {
+            "property_value_id": "1005845",
+            "property_value_name": "Knitting"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101172",
+          "has_image": false,
+          "property_name": "Closure type",
+          "property_values": [
+           {
+            "property_value_id": "1001482",
+            "property_value_name": "Tie"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": true,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101175",
+          "has_image": false,
+          "property_name": "Back style",
+          "property_values": [
+           {
+            "property_value_id": "1003729",
+            "property_value_name": "Backless"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": true,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101269",
+          "has_image": false,
+          "property_name": "Sheer",
+          "property_values": [
+           {
+            "property_value_id": "1000059",
+            "property_value_name": "No"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "101788",
+          "has_image": false,
+          "property_name": "Dress style",
+          "property_values": [
+           {
+            "property_value_id": "1001208",
+            "property_value_name": "Maxi"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         },
+         {
+          "property_id": "102205",
+          "has_image": false,
+          "property_name": "Contour type",
+          "property_values": [
+           {
+            "property_value_id": "1152975",
+            "property_value_name": "A type"
+           }
+          ],
+          "property_label": {
+           "key_property": false,
+           "binding_property": false,
+           "shopping_guide_property": false,
+           "logistics_property": false,
+           "gne_property": false,
+           "customs_property": false,
+           "spu_same_product_property": false,
+           "legal_property": false,
+           "hide_c_side_property": false,
+           "non_merchant_filled": false
+          },
+          "property_value_id_to_grouping_properties": {}
+         }
+        ],
+        "skus": [
+         {
+          "sku_id": "1732606041681793572",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_AVOGRN_XS",
+          "sku_status": 2,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7614695759451621141",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Avocado Green"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7676148967827130126",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XS"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7529152862661936916",
+           "available_quantity": 0
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+           "image_source": 0
+          },
+          "sku_stock_status": 2,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 2
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245701792292",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_AVOGRN_S",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7614695759451621141",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Avocado Green"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624032194855438094",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "S"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 288
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245701857828",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_AVOGRN_M",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7614695759451621141",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Avocado Green"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624033874448140045",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "M"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 173
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245701923364",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_AVOGRN_L",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7614695759451621141",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Avocado Green"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083705101",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "L"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 287
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245701988900",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_AVOGRN_XL",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7614695759451621141",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Avocado Green"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083655949",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XL"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7623220892663891726",
+           "available_quantity": 18
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732606041681859108",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BGD_XS",
+          "sku_status": 2,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7616537039944812301",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Burgundy"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7676148967827130126",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XS"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7529152862661936916",
+           "available_quantity": 0
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+           "image_source": 0
+          },
+          "sku_stock_status": 2,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 2
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245702054436",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BGD_S",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7616537039944812301",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Burgundy"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624032194855438094",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "S"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 464
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245702119972",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BGD_M",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7616537039944812301",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Burgundy"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624033874448140045",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "M"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 344
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245702185508",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BGD_L",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7616537039944812301",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Burgundy"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083705101",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "L"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 223
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732316245702251044",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BGD_XL",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7616537039944812301",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Burgundy"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083655949",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XL"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 79
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732606041681924644",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BLK_XS",
+          "sku_status": 2,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7663878688986187533",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Black"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7676148967827130126",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XS"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7529152862661936916",
+           "available_quantity": 0
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+           "image_source": 0
+          },
+          "sku_stock_status": 2,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 2
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732503156300419620",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BLK_S",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7663878688986187533",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Black"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624032194855438094",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "S"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7623220892663891726",
+           "available_quantity": 49
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732503156300485156",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BLK_M",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7663878688986187533",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Black"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624033874448140045",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "M"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7623220892663891726",
+           "available_quantity": 15
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732503156300550692",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BLK_L",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7663878688986187533",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Black"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083705101",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "L"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7623220892663891726",
+           "available_quantity": 28
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732503156300616228",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BLK_XL",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7663878688986187533",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Black"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083655949",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XL"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7623220892663891726",
+           "available_quantity": 14
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732606041681990180",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BBLUE_XS",
+          "sku_status": 2,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7637441340189296405",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Baby Blue"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7676148967827130126",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XS"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7529152862661936916",
+           "available_quantity": 0
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+           "image_source": 0
+          },
+          "sku_stock_status": 2,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 2
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732425631931470372",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BBLUE_S",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7637441340189296405",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Baby Blue"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624032194855438094",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "S"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 78
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732425631931535908",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BBLUE_M",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7637441340189296405",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Baby Blue"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624033874448140045",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "M"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 140
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732425631931601444",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BBLUE_L",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7637441340189296405",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Baby Blue"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083705101",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "L"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7485243321276630792",
+           "available_quantity": 88
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         },
+         {
+          "sku_id": "1732425631931666980",
+          "pre_order_ship_day": 0,
+          "is_pre_order": false,
+          "package_weight": 502,
+          "package_length": 29,
+          "package_width": 22,
+          "package_height": 5,
+          "sku_name": "SDK0631A_BBLUE_XL",
+          "sku_status": 1,
+          "property_pairs": [
+           {
+            "sku_property_id": "100000",
+            "sku_property_value_id": "7637441340189296405",
+            "sku_property_name": "Color",
+            "sku_property_value_name": "Baby Blue"
+           },
+           {
+            "sku_property_id": "100007",
+            "sku_property_value_id": "7624031905083655949",
+            "sku_property_name": "Size",
+            "sku_property_value_name": "XL"
+           }
+          ],
+          "sku_quantity": {
+           "warehouse_id": "7543089982946690824",
+           "available_quantity": 22
+          },
+          "sku_image": {
+           "width": 1200,
+           "height": 1200,
+           "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+           "image_source": 0
+          },
+          "sku_stock_status": 1,
+          "dimension": {
+           "length": "29",
+           "width": "22",
+           "height": "5",
+           "unit": 1
+          },
+          "weight": {
+           "weight": "502",
+           "unit": 1
+          },
+          "sale_modes": [],
+          "app_to_sku_status": {
+           "0": 1
+          },
+          "sku_transparent_field": "{}",
+          "dimension_v2": {
+           "length": "11.42",
+           "width": "8.67",
+           "height": "1.97",
+           "unit": 2
+          },
+          "weight_v2": {
+           "weight": "1.11",
+           "unit": 2
+          }
+         }
+        ],
+        "videos": {
+         "v12d52gd0030d9k5favog65innua9h9g": {
+          "duration": 71.4,
+          "id": "v12d52gd0030d9k5favog65innua9h9g",
+          "post_url": "https://p19-common-sign.tiktokcdn-us.com/tos-useast5-p-afa798-tx/oIUX9KCmIIil8leHKVUqoG7C0QKfkJAeGG9LlT~tplv-noop.image?dr=12525&refresh_token=ef2cb395&x-expires=1788296300&x-signature=jzVh5Il1mkvMo14KdBzMY5Quuq8%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=6ce186a1&idc=useast5&VideoID=v12d52gd0030d9k5favog65innua9h9g",
+          "media_type": "video",
+          "video_infos": [
+           {
+            "url_expire": 1788296300,
+            "width": 576,
+            "height": 1024,
+            "size": 8588883,
+            "bitrate": 962339,
+            "main_url": "https://v16m-default.tiktokcdn-us.com/ffa13d11ee57ad977b29dd0bc87e7a80/6a973c6c/video/tos/useast5/tos-useast5-v-afa798-tx/o8bH9eGALQiX0rQoYTcmGCJq9KlQIkgeGUKfVI/?a=0&bti=PDM8QDI2M2A%3D&&bt=939&ft=GS-jnInz7ThQn7ZGXq8Zmo&mime_type=video_mp4&rc=NDk2Ozk7ZGlmNjkzNGdlZEBpamtkcWw5cmQ4PDMzZzVnNEAwMzQyM2BiXzIxMWI0LS5eYSM2NnJrMmRzY2hhMC1kMi9zcw%3D%3D&vvpl=1&l=20260901145708F94FBB20AE833006E0B3&btag=e000d0000",
+            "backup_url": "https://v16m-default.tiktokcdn-us.com/ffa13d11ee57ad977b29dd0bc87e7a80/6a973c6c/video/tos/useast5/tos-useast5-v-afa798-tx/o8bH9eGALQiX0rQoYTcmGCJq9KlQIkgeGUKfVI/?a=0&bti=PDM8QDI2M2A%3D&&bt=939&ft=GS-jnInz7ThQn7ZGXq8Zmo&mime_type=video_mp4&rc=NDk2Ozk7ZGlmNjkzNGdlZEBpamtkcWw5cmQ4PDMzZzVnNEAwMzQyM2BiXzIxMWI0LS5eYSM2NnJrMmRzY2hhMC1kMi9zcw%3D%3D&vvpl=1&l=20260901145708F94FBB20AE833006E0B3&btag=e000d0000",
+            "file_hash": "bb43fc02eda6605cfbac15877b0e2bec",
+            "format": "mp4",
+            "video_quality": "normal"
+           },
+           {
+            "url_expire": 1788296300,
+            "width": 720,
+            "height": 1280,
+            "size": 10817082,
+            "bitrate": 1211997,
+            "main_url": "https://v16m-default.tiktokcdn-us.com/6085122899460638ed734b238be59962/6a973c6c/video/tos/useast5/tos-useast5-v-afa798-tx/oYogiHeIuG08UXmk9IC9TJGHUfQfLlqoGKbKrQ/?a=0&bti=PDM8QDI2M2A%3D&&bt=1183&ft=GS-jnInz7ThQn7ZGXq8Zmo&mime_type=video_mp4&rc=aGc8ZzlpaTRnNTgzO2g5O0BpamtkcWw5cmQ4PDMzZzVnNEAtNV9iNS1gX2MxMi5hMmM2YSM2NnJrMmRzY2hhMC1kMi9zcw%3D%3D&vvpl=1&l=20260901145708F94FBB20AE833006E0B3&btag=e000d0000",
+            "backup_url": "https://v16m-default.tiktokcdn-us.com/6085122899460638ed734b238be59962/6a973c6c/video/tos/useast5/tos-useast5-v-afa798-tx/oYogiHeIuG08UXmk9IC9TJGHUfQfLlqoGKbKrQ/?a=0&bti=PDM8QDI2M2A%3D&&bt=1183&ft=GS-jnInz7ThQn7ZGXq8Zmo&mime_type=video_mp4&rc=aGc8ZzlpaTRnNTgzO2g5O0BpamtkcWw5cmQ4PDMzZzVnNEAtNV9iNS1gX2MxMi5hMmM2YSM2NnJrMmRzY2hhMC1kMi9zcw%3D%3D&vvpl=1&l=20260901145708F94FBB20AE833006E0B3&btag=e000d0000",
+            "file_hash": "379ae69cc2c02ac11871067e4d4b8e78",
+            "format": "mp4",
+            "video_quality": "normal"
+           }
+          ]
+         }
+        },
+        "biz_type": 0,
+        "sku_property_image_map": {
+         "7663878688986187533": {
+          "height": 1200,
+          "width": 1200,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9d01b05bda0a4e5f8944465d25a5045f~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         "7637441340189296405": {
+          "height": 1200,
+          "width": 1200,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/7bc80db4d8f8484ca69dc0d13ace04db~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         "7614695759451621141": {
+          "height": 1200,
+          "width": 1200,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/a93de6ac31ab4ea4a458ec7b5a6d2701~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         },
+         "7616537039944812301": {
+          "height": 1200,
+          "width": 1200,
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/cd8936fd8cbc430596372f5280a4e31b~tplv-fhlh96nyum-crop-webp:1200:1200.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=useast5&from=2378011839"
+          ]
+         }
+        }
+       },
+       "logistic_model": {
+        "pkg_of_service": {
+         "7486009440584386350": {
+          "delivery_min_days": 5,
+          "delivery_max_days": 10,
+          "delivery_min_time": "1788706629",
+          "delivery_max_time": "1789138629",
+          "delivery_min_bd_days": 4,
+          "delivery_max_bd_days": 7,
+          "cutoff_min_time": 0,
+          "cutoff_max_time": 0,
+          "cod_available": false,
+          "aging_display_status": true,
+          "fulfillable": true,
+          "reachable_item_list": [
+           {
+            "sub_fulfill_id": "0",
+            "order_line_id": "1732316245701792292",
+            "product_id": "1732316229382607396",
+            "sku_id": "1732316245701792292",
+            "length": 29,
+            "width": 22,
+            "height": 5,
+            "weight": 502,
+            "category_id": "905872",
+            "category_type": 1,
+            "currency": "USD",
+            "shipping_fee": "5.99",
+            "dimension_v2": {
+             "length": "11.42",
+             "width": "8.67",
+             "height": "1.97",
+             "unit": 2
+            },
+            "weight_v2": {
+             "weight": "1.11",
+             "unit": 2
+            },
+            "dimension_raw_data": {
+             "length": "29",
+             "width": "22",
+             "height": "5",
+             "unit": 1
+            },
+            "weight_raw_data": {
+             "weight": "502",
+             "unit": 1
+            }
+           }
+          ],
+          "logistics_service": {
+           "service_id": "7486009440584386350",
+           "service_name": "LSN-CB-US-Sendbyseller",
+           "delivery_option": 4,
+           "display_starling_key": "ecom_logistics_type_SOF",
+           "trackingMode": 1,
+           "booking_type": 2,
+           "party": 2,
+           "level": 2,
+           "transportType": 1,
+           "fulfill_solution": 2,
+           "business_type_v2": 2,
+           "logistics_business_model": 3
+          },
+          "shipping_fee": "5.99",
+          "currency": "USD",
+          "cod_max_price": "0",
+          "fulfillment_plan": {
+           "promise_edt": {
+            "delivery_min_day": 5,
+            "delivery_max_day": 10
+           }
+          },
+          "leadtime_display_strategy": {
+           "display_edt": true
+          },
+          "logistics_identity": "CB_3PL_US",
+          "extra_info": {
+           "4": "{\"edt_metrics\":\"{\\\"base_info\\\":{\\\"time_zone\\\":\\\"America/New_York\\\",\\\"fulfill_solution\\\":2},\\\"exp_out\\\":{\\\"algo_edt\\\":\\\"5-10\\\",\\\"exp_edt\\\":\\\"5_10\\\",\\\"before_xdd_flatten\\\":\\\"5_10\\\"}}\"}"
+          }
+         }
+        }
+       },
+       "promotion_model": {
+        "promotion_product_price": {
+         "min_price": {
+          "sku_id": "1732316245701792292",
+          "symbol_position": 1,
+          "show_currency_space": false,
+          "currency_show_mode": 1,
+          "currency_name": "USD",
+          "currency_symbol": "$",
+          "sale_price_decimal": "6*",
+          "origin_price_decimal": "1**",
+          "sale_price_format": "6*",
+          "origin_price_format": "1**",
+          "discount_format": "44%",
+          "discount_decimal": "0.44",
+          "reduce_price_format": "Saving $5*",
+          "single_product_price_format": "6*",
+          "single_product_price_decimal": "6*",
+          "sale_price_integer_part_format": "6*",
+          "sale_price_decimal_part_format": "9*",
+          "decimal_point_symbol": ".",
+          "promotion_deduction_details": {
+           "seller_subtotal_deduction": "52.00",
+           "seller_subtotal_deduction_decimal": "52"
+          }
+         },
+         "skus_price": {
+          "1732316245702185508": {
+           "sku_id": "1732316245702185508",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732503156300550692": {
+           "sku_id": "1732503156300550692",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732503156300616228": {
+           "sku_id": "1732503156300616228",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732425631931601444": {
+           "sku_id": "1732425631931601444",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732606041681793572": {
+           "sku_id": "1732606041681793572",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "sale_price_format": "6*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245701988900": {
+           "sku_id": "1732316245701988900",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245702054436": {
+           "sku_id": "1732316245702054436",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732425631931666980": {
+           "sku_id": "1732425631931666980",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245701857828": {
+           "sku_id": "1732316245701857828",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732503156300419620": {
+           "sku_id": "1732503156300419620",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245701923364": {
+           "sku_id": "1732316245701923364",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732606041681859108": {
+           "sku_id": "1732606041681859108",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "sale_price_format": "6*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732606041681924644": {
+           "sku_id": "1732606041681924644",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "sale_price_format": "6*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245701792292": {
+           "sku_id": "1732316245701792292",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732425631931470372": {
+           "sku_id": "1732425631931470372",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732503156300485156": {
+           "sku_id": "1732503156300485156",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245702251044": {
+           "sku_id": "1732316245702251044",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732606041681990180": {
+           "sku_id": "1732606041681990180",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "sale_price_format": "6*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732425631931535908": {
+           "sku_id": "1732425631931535908",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          },
+          "1732316245702119972": {
+           "sku_id": "1732316245702119972",
+           "symbol_position": 1,
+           "show_currency_space": false,
+           "currency_show_mode": 1,
+           "currency_name": "USD",
+           "currency_symbol": "$",
+           "sale_price_decimal": "6*",
+           "origin_price_decimal": "1**",
+           "sale_price_format": "6*",
+           "origin_price_format": "1**",
+           "discount_format": "44%",
+           "discount_decimal": "0.44",
+           "reduce_price_format": "Saving $5*",
+           "single_product_price_format": "6*",
+           "single_product_price_decimal": "6*",
+           "sale_price_integer_part_format": "6*",
+           "sale_price_decimal_part_format": "9*",
+           "decimal_point_symbol": ".",
+           "promotion_deduction_details": {
+            "seller_subtotal_deduction": "52.00",
+            "seller_subtotal_deduction_decimal": "52"
+           }
+          }
+         },
+         "feature": [
+          {
+           "property_name": "price_after_coupon_schema",
+           "property_value": "aweme://roma_redirect/?spark_page=roma_schema_price_after_voucher&roma_group_key=spark_page_roma_schema_price_after_voucher&roma_page_key=p&product_id={pid}&track_params={trackParams}&sku_id={skuID}&is_sku_selected={isSkuSelected}",
+           "property_type": 1
+          }
+         ]
+        },
+        "promotion_logistic_list": [
+         {
+          "deliveryOption": 4,
+          "freeShipping": true,
+          "deliveryName": "Shipped by seller",
+          "shippingFee": {
+           "origin_price": "*",
+           "real_price": "0",
+           "currency": "USD",
+           "real_price_desc": "$*",
+           "logistics_shipping_voucher": {}
+          },
+          "logisticsServiceId": "7486009440584386350",
+          "event_tracking": {
+           "shipping_type": "send_by_seller"
+          }
+         }
+        ],
+        "reserve_stock_map": {}
+       },
+       "review_model": {
+        "product_overall_score": 4.8,
+        "product_review_count": "232"
+       },
+       "seller_model": {
+        "shop_name": "CurvySweet-US",
+        "shop_logo": {
+         "height": 300,
+         "width": 300,
+         "uri": "tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc",
+         "url_list": [
+          "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc~tplv-fhlh96nyum-resize-png:300:300.png?dr=12184&t=555f072d&ps=933b5bde&shp=905da467&shcp=6ce186a1&idc=useast5&from=2422056039",
+          "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc~tplv-fhlh96nyum-resize-png:300:300.png?dr=12184&t=555f072d&ps=933b5bde&shp=905da467&shcp=6ce186a1&idc=useast5&from=2422056039"
+         ]
+        }
+       },
+       "safety_model": {
+        "legit_warnings": [],
+        "business_compliance_info": {
+         "business_name": "Cocoon Design Co., Limited",
+         "business_address": "ROOM 7O1 UNIT 1O8 7/F TOWER B NEW MANDARIN PLAZA 14 SCIENCE MUSEUM ROAD TSIM SHA TSUI KL, Kowloon Peninsula, Hong Kong, Hong Kong China"
+        }
+       },
+       "availability_model": {
+        "reason": 0
+       },
+       "base_resp": {
+        "StatusCode": 0,
+        "StatusMessage": "success"
+       }
+      },
+      "shop_info": {
+       "seller_id": "7496113907254463012",
+       "sold_count": 116969,
+       "on_sell_product_count": 26,
+       "review_count": 9338,
+       "global_seller_id": "7496113907254463012",
+       "global_sold_count": "116969",
+       "followers_count": "20739",
+       "video_count": "326",
+       "enable_follow": true,
+       "shop_name": "CurvySweet-US",
+       "shop_logo": {
+        "height": 300,
+        "width": 300,
+        "uri": "tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc",
+        "url_list": [
+         "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc~tplv-fhlh96nyum-resize-webp:300:300.webp?dr=12185&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039",
+         "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/24a0f9db648c4215a880477dfe4d47cc~tplv-fhlh96nyum-resize-webp:300:300.webp?dr=12185&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039"
+        ]
+       },
+       "shop_rating": "4.6",
+       "shop_link": "https://shop.tiktok.com/us/store/curvysweet-us/7496113907254463012",
+       "background": {
+        "is_default": false,
+        "image": {
+         "height": 1536,
+         "width": 1600,
+         "uri": "tos-useast5-i-reeeghz8mm-tx/bf686eadba4b4516a6f1a549f0f3cdc1",
+         "url_list": [
+          "https://p16-oec-shop-sign.tiktokcdn-us.com/tos-useast5-i-reeeghz8mm-tx/bf686eadba4b4516a6f1a549f0f3cdc1~tplv-reeeghz8mm-image-webp.webp?lk3s=905da467&x-expires=1788879429&x-signature=sPpqQFCI0d6s6Zun2v%2Bp9TVzT04%3D"
+         ]
+        },
+        "shop_background_type": 0
+       },
+       "format_sold_count": "117.0K",
+       "region": "US",
+       "display_on_sell_product_count": "26",
+       "format_global_sold_count": "117.0K",
+       "format_followers_count": "20.7K+",
+       "format_video_count": "326",
+       "store_sub_score": [
+        {
+         "score": 0.9931237721021611,
+         "type": 1,
+         "score_percentage": "99",
+         "high_light_tag": 1,
+         "platform_rate_type": 0
+        },
+        {
+         "score": 0,
+         "type": 2,
+         "score_percentage": "0",
+         "high_light_tag": 0,
+         "platform_rate_type": 0
+        },
+        {
+         "score": 0.9081,
+         "type": 3,
+         "score_percentage": "91",
+         "platform_rate_type": 1
+        }
+       ],
+       "worst_rating": "0",
+       "best_rating": "5",
+       "creator_name": "CurvySweet-US",
+       "shop_identity_label": {
+        "label_type": 4,
+        "identity_label_text": "Gold Star Seller",
+        "identity_logo_light": {
+         "height": 144,
+         "width": 144,
+         "ratio": 0,
+         "minetype": "image/png",
+         "uri": "tos-useast5-i-omjb5zjo8w-tx/06d3626726114510b9b73de21d9e0ae2",
+         "url_list": [
+          "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/06d3626726114510b9b73de21d9e0ae2~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039",
+          "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/06d3626726114510b9b73de21d9e0ae2~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039"
+         ]
+        },
+        "identity_logo_dark": {
+         "height": 144,
+         "width": 144,
+         "ratio": 0,
+         "minetype": "image/png",
+         "uri": "tos-useast5-i-omjb5zjo8w-tx/906841c6ffce4faa874a7dab54e112bf",
+         "url_list": [
+          "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/906841c6ffce4faa874a7dab54e112bf~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039",
+          "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/906841c6ffce4faa874a7dab54e112bf~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039"
+         ]
+        },
+        "identity_label_bg_color_light": "#F7EDE2",
+        "identity_label_bg_color_dark": "#F7EDE2",
+        "identity_label_text_color_light": "#B67A06",
+        "identity_label_text_color_dark": "#B67A06",
+        "shop_explanation_page_schema": "aweme://lynxview_popup?url=https%3A%2F%2Flf16-gecko-source.tiktokcdn.com%2Fobj%2Fbyte-gurd-source-sg%2Ftiktok%2Ffe%2Flive%2Ftiktok_ecommerce_mall_brand_explanation_runtime%2Fseller-explanation-page%2Ftemplate.js&use_new_container=1&use_spark=1&target_handler=webcast%2Cecom&trans_status_bar=1&hide_nav_bar=1&status_font_mode=light&enable_prefetch=1&enable_code_cache=1&show_mask=1&mask_bg_color=00000080&height_percent=90&bdhm_bid=astro_behavior_lynx&btm_page_code=b7749&enable_lynx_prefetch=1&enable_pull_down_close=1&radius=12&transition_animation=bottom&seller_id=7496113907254463012",
+        "label_without_bg_style": {
+         "identity_label_text": "Gold Star Seller",
+         "identity_logo_light": {
+          "height": 144,
+          "width": 144,
+          "ratio": 0,
+          "minetype": "image/png",
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/b07395c02df248a3bfe4362a59bf4131",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/b07395c02df248a3bfe4362a59bf4131~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/b07395c02df248a3bfe4362a59bf4131~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039"
+          ]
+         },
+         "identity_logo_dark": {
+          "height": 144,
+          "width": 144,
+          "ratio": 0,
+          "minetype": "image/png",
+          "uri": "tos-useast5-i-omjb5zjo8w-tx/eee6ca5f2ff64bb4b30f86e1a0f2e0ee",
+          "url_list": [
+           "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/eee6ca5f2ff64bb4b30f86e1a0f2e0ee~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039",
+           "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/eee6ca5f2ff64bb4b30f86e1a0f2e0ee~tplv-fhlh96nyum-origin-png.png?dr=12181&t=555f072d&ps=933b5bde&shp=905da467&shcp=e1be8f53&idc=useast5&from=2422056039"
+          ]
+         },
+         "identity_label_text_color_light": "#B67A06",
+         "identity_label_text_color_dark": "#FFC644",
+         "style_type": 2
+        },
+        "brand_info": {
+         "is_brand": false
+        },
+        "ShopIdentityLabelKey": "gold"
+       },
+       "desc": "Shop CurvySweet-US on TikTok Shop! 117.0K sold, 20.7K+ followers. 91+% positive feedback. 0+% Ships in 48h, 99+% replies in 24h. Join the trend!"
+      },
+      "vouchers": [],
+      "reviews_info": {},
+      "category_info": {
+       "recommended_categories": [
+        {
+         "category_id": "601152",
+         "category_name": "Womenswear & Underwear",
+         "category_name_en": "womenswear-underwear"
+        },
+        {
+         "category_id": "842504",
+         "category_name": "Women's Dresses",
+         "category_name_en": "women-s-dresses"
+        },
+        {
+         "category_id": "601271",
+         "category_name": "Formal Dresses",
+         "category_name_en": "formal-dresses"
+        }
+       ]
+      },
+      "shop_performance": [],
+      "hot_reviews": []
+     }
+    },
+    {
+     "component_type": "shop_info",
+     "component_name": "shop_info",
+     "fe_config": {
+      "data_source": {
+       "has_pre_dependency": true,
+       "skip_data_return": true,
+       "pre_dependency_modules": [
+        "product_detail"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "category_info",
+     "component_name": "category_info",
+     "fe_config": {
+      "data_source": {
+       "skip_data_return": true
+      }
+     }
+    },
+    {
+     "component_type": "hot_reviews",
+     "component_name": "hot_reviews",
+     "fe_config": {
+      "data_source": {
+       "request_order": 1,
+       "skip_data_return": true,
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "product_detail"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "related_videos",
+     "component_name": "related_videos",
+     "fe_config": {
+      "data_source": {
+       "request_order": 1,
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "product_detail"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "feed_list",
+     "component_name": "feed_list_more_from",
+     "fe_config": {
+      "title": "Explore more from {s_shopName}",
+      "is_horizontal": true,
+      "data_source": {
+       "request_order": 1,
+       "type": "more_from",
+       "params": {
+        "count": 10,
+        "shop_page": 2,
+        "product_component": 3
+       },
+       "need_load_more": false,
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "product_detail"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "feed_list",
+     "component_name": "feed_list_you_may_like",
+     "fe_config": {
+      "title": "You may also like",
+      "data_source": {
+       "request_order": 1,
+       "type": "recommended_for_you",
+       "params": {
+        "count": 20,
+        "shop_page": 2,
+        "product_component": 9
+       },
+       "use_rule_based_recommendation": true,
+       "need_load_more": false,
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "product_detail"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "related_link",
+     "component_name": "related_link",
+     "fe_config": {
+      "title": "People also searched for",
+      "data_source": {
+       "request_order": 1
+      }
+     }
+    },
+    {
+     "component_type": "bread_crumbs",
+     "component_name": "bread_crumbs",
+     "fe_config": {
+      "data_source": {
+       "request_order": 1,
+       "has_pre_dependency": true,
+       "pre_dependency_modules": [
+        "category_info"
+       ]
+      }
+     }
+    },
+    {
+     "component_type": "page_footer",
+     "component_name": "page_footer",
+     "fe_config": {
+      "need_expose_pool": true,
+      "data_source": {
+       "request_order": 1
+      }
+     }
+    },
+    {
+     "component_type": "call_app",
+     "component_name": "call_app",
+     "fe_config": {
+      "data_source": {}
+     },
+     "component_data": {
+      "banners": [],
+      "popups": [
+       {
+        "name": "popup_pdp",
+        "jump_link_type": "default",
+        "launch_type": "tiktok_app",
+        "image": "https://lf16-tiktok-common.ibytedtos.com/obj/tiktok-web-common-sg/mtact/static/images/tiktok/rebrand-logo.png",
+        "title": "Get the full experience on the app",
+        "description": "Follow your favorite accounts, explore new trends, and create your own videos",
+        "action_button_text": "Open TikTok",
+        "dismiss_button_text": "Not now",
+        "popup_url": {
+         "url_schemes": [
+          "snssdk1233://ec/pdp?biz_type=0&gd_label={{gd_label}}&need_mall=1&needlaunchlog=1&page_name=reflow_pdp&params_url=https%3A%2F%2Fshop.tiktok.com%2Fus%2Fpdp%2F1732316229382607396%3Fsource%3Dproduct_detail%26first_entrance%3Dproduct_detail%26first_entrance_tt_scene%3Dseo&refer=web&requestParams=%7B%22product_id%22%3A%5B%221732316229382607396%22%5D%7D&trackParams="
+         ],
+         "url_fallback": "https://snssdk1233.onelink.me/bIdt?domain_source=tiktok&af_dp={{schema}}",
+         "extra": ""
+        }
+       }
+      ],
+      "buttons": [],
+      "wrappers": [
+       {
+        "name": "wrapper_pdp",
+        "jump_link_type": "default",
+        "launch_type": "tiktok_app",
+        "wrapper_url": {
+         "url_schemes": [
+          "snssdk1233://ec/pdp?biz_type=0&gd_label={{gd_label}}&need_mall=1&needlaunchlog=1&page_name=reflow_pdp&params_url=https%3A%2F%2Fshop.tiktok.com%2Fus%2Fpdp%2F1732316229382607396%3Fsource%3Dproduct_detail%26first_entrance%3Dproduct_detail%26first_entrance_tt_scene%3Dseo&refer=web&requestParams=%7B%22product_id%22%3A%5B%221732316229382607396%22%5D%7D&trackParams="
+         ],
+         "url_fallback": "https://snssdk1233.onelink.me/bIdt?domain_source=tiktok&af_dp={{schema}}",
+         "extra": ""
+        }
+       },
+       {
+        "name": "wrapper_coupon_open_homepage",
+        "jump_link_type": "default",
+        "launch_type": "tiktok_app",
+        "wrapper_url": {
+         "url_schemes": [
+          "snssdk1233://shop/open_homepage?biz_type=0&gd_label={{gd_label}}&needlaunchlog=1&params_url=https%3A%2F%2Fshop.tiktok.com%2Fus%2Fpdp%2F1732316229382607396%3Fsource%3Dproduct_detail%26first_entrance%3Dproduct_detail%26first_entrance_tt_scene%3Dseo&refer=web&requestParams=%7B%22product_id%22%3A%5B%221732316229382607396%22%5D%7D&trackParams="
+         ],
+         "url_fallback": "https://snssdk1233.onelink.me/bIdt?domain_source=tiktok&af_dp={{schema}}",
+         "extra": ""
+        }
+       },
+       {
+        "name": "wrapper_my_coupons",
+        "jump_link_type": "default",
+        "launch_type": "tiktok_app",
+        "wrapper_url": {
+         "url_schemes": [
+          "snssdk1233://roma_redirect?biz_type=0&gd_label={{gd_label}}&needlaunchlog=1&params_url=https%3A%2F%2Fshop.tiktok.com%2Fus%2Fpdp%2F1732316229382607396%3Fsource%3Dproduct_detail%26first_entrance%3Dproduct_detail%26first_entrance_tt_scene%3Dseo&refer=web&requestParams=%7B%22product_id%22%3A%5B%221732316229382607396%22%5D%7D&roma_group_key=spark_page_roma_schema_your_offer&roma_page_key=p&spark_page=roma_schema_your_offer&trackParams="
+         ],
+         "url_fallback": "https://snssdk1233.onelink.me/bIdt?domain_source=tiktok&af_dp={{schema}}",
+         "extra": ""
+        }
+       },
+       {
+        "name": "wrapper_ad_open_homepage",
+        "jump_link_type": "default",
+        "launch_type": "tiktok_app",
+        "wrapper_url": {
+         "url_schemes": [
+          "snssdk1233://shop/open_homepage?biz_type=0&needlaunchlog=1&params_url=https%3A%2F%2Fshop.tiktok.com%2Fus%2Fpdp%2F1732316229382607396%3Fsource%3Dproduct_detail%26first_entrance%3Dproduct_detail%26first_entrance_tt_scene%3Dseo&refer=web&request_params=%257B%2522product_id%2522%253A%255B%25221732316229382607396%2522%255D%257D&track_params="
+         ],
+         "url_fallback": "https://snssdk1233.onelink.me/bIdt?domain_source=tiktok&af_dp={{schema}}",
+         "extra": ""
+        }
+       }
+      ],
+      "page_context": {
+       "idc": "US-TTP",
+       "biz_name": "ECSharing",
+       "page_name": "Pdp",
+       "region": "US"
+      }
+     }
+    },
+    {
+     "component_type": "bottom_button",
+     "component_name": "bottom_button",
+     "fe_config": {
+      "is_pay_supported": true,
+      "is_cart_supported": true
+     }
+    },
+    {
+     "component_type": "reviews",
+     "component_name": "reviews",
+     "fe_config": {
+      "data_source": {
+       "request_order": 1,
+       "skip_data_return": true
+      }
+     }
+    }
+   ]
+  }
+ }
+}

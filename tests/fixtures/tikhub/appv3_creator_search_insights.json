@@ -1,0 +1,665 @@
+{
+ "banners": {
+  "conversion_bar_list": [
+   {
+    "item_link": "https://activity.tiktokw.us/magic/eco/runtime/release/66581e19df4daf02866b5cc9?appType=muse&magic_page_no=1&lang=en&region=Default&use_spark=1",
+    "item_text": "Learn more"
+   }
+  ],
+  "event_banners": {
+   "ecommerce_education": {
+    "eligible": {
+     "image_url": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/6cjd5rh91716193010532",
+     "link": "https://activity.tiktokw.us/magic/eco/runtime/release/664c4298f65e08d77319049b?appType=muse&magic_page_no=1&lang=en-US&region=US&use_spark=1 ",
+     "text": "Promote products people want to buy. Start earning now!"
+    },
+    "enrolled": {
+     "image_url": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/b0fmjabl1716192964040",
+     "link": "https://activity.tiktokw.us/magic/eco/runtime/release/6645db2e6f3a610291d0b0ac?appType=muse&magic_page_no=1&lang=en-US&region=US&use_spark=1",
+     "text": "Create shoppable videos with products people want to buy!"
+    },
+    "non_eligible": {
+     "image_url": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/hdskk6yq1716193026366",
+     "link": "https://activity.tiktokw.us/magic/eco/runtime/release/664c4c03f33586028244e7fb?appType=muse&magic_page_no=1&lang=en-US&region=US&use_spark=1",
+     "text": "Explore opportunities to earn with shopping insights"
+    }
+   }
+  },
+  "home_page_banner": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/q8hl7ump1713411026852",
+  "image_url": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/r8z2ni6s1708410808360",
+  "image_url_dark": "https://sf16-muse-va.ibytedtos.com/obj/search-static-maliva/maliva/a1av24511708410895413",
+  "loading_page_banner": "https://p16-search-fe-static.tiktokcdn-us.com/tos-alisg-i-baf7wf9fmw-sg/e06d4221d05a4859be4def9f58c37540~tplv-baf7wf9fmw-image.image"
+ },
+ "cost_tracker": {
+  "es_cost": 23,
+  "model_cost": 143,
+  "post_process_cost": 23,
+  "recall_cost": 63,
+  "recommend_reason_cost": 2,
+  "rough_sort_cost": 0,
+  "total_cost": 270
+ },
+ "cursor": 5,
+ "extra": {
+  "cold_start": true,
+  "latency": 271,
+  "logid": "2026090114550520A88DD33CBC0513FD68",
+  "now": 1788274506224,
+  "vgeo": "VGeo-US"
+ },
+ "has_follower_searched": false,
+ "has_more": true,
+ "inspiration_list": [
+  {
+   "business_types": [
+    "basic",
+    "experience",
+    "music",
+    "llm_query_multi_lang",
+    "demand_points"
+   ],
+   "cover_image": "",
+   "debug_info": {
+    "creator_category": [
+     {
+      "reason": "byFollowerCnt",
+      "type": "new_creator"
+     },
+     {
+      "type": "csi_new_user"
+     }
+    ],
+    "creator_lang": {
+     "infer_languages": [
+      "en"
+     ],
+     "use_mul_lang": false
+    },
+    "experiment": {
+     "csi_csi_dynamic_tab": "csi_dynamic_tab_v1",
+     "csi_csi_exp_vt": "csi_exp_vt_v2",
+     "csi_csi_feature_tab_reverse_0612_us": "csi_feature_tab_reverse_0612_us_v0",
+     "csi_csi_hot_recall_fanci": "csi_hot_recall_fanci_l1ctrl_v2_add",
+     "csi_csi_scatter_agg_v1": "csi_scatter_agg_v1_group1",
+     "csi_csi_useful_exp_gen": "csi_useful_exp_gen_v3",
+     "csi_item_token_bert_recall": "item_token_bert_recall_v1"
+    },
+    "language": "en",
+    "recall_scores": [
+     0,
+     0
+    ],
+    "recall_source": [
+     "FromRegionHotQueryMulLang",
+     "FromLangHotQuery"
+    ],
+    "recall_source_position": {
+     "FromLangHotQuery": 36,
+     "FromRegionHotQueryMulLang": 29
+    },
+    "rough_score": 0,
+    "score": 0.23822255730628966,
+    "target_score": {
+     "all_boost": 1.100000023841858,
+     "before_boost": 0.18047164380550385,
+     "csi_relevance_roughsort__base": 0.1,
+     "cvr_shoot_score": 0.13179484009742737,
+     "cvr_strict_publish_score": 0.20048248767852783,
+     "dssm_roughsort__base": 0.1,
+     "keyword_reward_model__total": 0,
+     "laplace_csi_qwen3_emb_6b_vllm__base": 0.1,
+     "multitasks_click_score": 0.5536926984786987,
+     "multitasks_collection_score": 0.018988490104675293,
+     "multitasks_info_collection_score": 0.0036035478115081787,
+     "multitasks_info_shoot_score": 0.3042680323123932,
+     "multitasks_shoot_score": 0.339525043964386,
+     "multitasks_strict_publish_score": 0.29075872898101807,
+     "rank_relevance_score": 0.16640493273735046,
+     "recall_relevance_score": 0.5020633935928345,
+     "video_quality_publish_score": 0.04681515693664551,
+     "video_quality_strict_search_vv_score": 0.2566012740135193
+    }
+   },
+   "dislike_option_enabled": true,
+   "entity_id": 0,
+   "favorited_updated_at": 0,
+   "inspiration_types": [
+    "search"
+   ],
+   "is_favorited": false,
+   "order_popularity_seq": [],
+   "popularity": 74,
+   "popularity_updated_at": 1788271342,
+   "popularity_v2": 286685,
+   "query_id": 7449584484497752069,
+   "query_id_str": "7449584484497752069",
+   "query_labels": [],
+   "query_text": "new account on tiktok",
+   "rewrite_version": "",
+   "show_ai_canvas_entry": false,
+   "sug_id_str": "3689601110723670296",
+   "textnet": {
+    "layer1": "Science and Technology",
+    "layer2": "Software",
+    "layer3": "Apps/Computer Software",
+    "layer4": "Apps/Computer Software Function Tutorials"
+   },
+   "trending_seq": [
+    77,
+    72,
+    79,
+    82,
+    77,
+    72,
+    74
+   ],
+   "trending_seq_v2": [
+    403521,
+    184055,
+    490146,
+    715314,
+    387316,
+    189956,
+    286685
+   ],
+   "use_csi_api_for_related_videos": false,
+   "user_avatars": [],
+   "video_num": 89545
+  },
+  {
+   "business_types": [
+    "basic",
+    "local service old",
+    "experience",
+    "hot_event_v2",
+    "hashtag",
+    "music",
+    "effect",
+    "llm_query_multi_lang",
+    "video_agg_score",
+    "video_agg_score_post",
+    "informative_exp"
+   ],
+   "cover_image": "",
+   "debug_info": {
+    "creator_category": [
+     {
+      "reason": "byFollowerCnt",
+      "type": "new_creator"
+     },
+     {
+      "type": "csi_new_user"
+     }
+    ],
+    "creator_lang": {
+     "infer_languages": [
+      "en"
+     ],
+     "use_mul_lang": false
+    },
+    "experiment": {
+     "csi_csi_dynamic_tab": "csi_dynamic_tab_v1",
+     "csi_csi_exp_vt": "csi_exp_vt_v2",
+     "csi_csi_feature_tab_reverse_0612_us": "csi_feature_tab_reverse_0612_us_v0",
+     "csi_csi_hot_recall_fanci": "csi_hot_recall_fanci_l1ctrl_v2_add",
+     "csi_csi_scatter_agg_v1": "csi_scatter_agg_v1_group1",
+     "csi_csi_useful_exp_gen": "csi_useful_exp_gen_v3",
+     "csi_item_token_bert_recall": "item_token_bert_recall_v1"
+    },
+    "language": "en",
+    "recall_scores": [
+     0.16520965099334717,
+     0.16520965099334717,
+     0,
+     0
+    ],
+    "recall_source": [
+     "FromMidLongTailDssmViking",
+     "FromDssmViking",
+     "FromRegionHotQueryMulLang",
+     "FromLangHotQuery"
+    ],
+    "recall_source_position": {
+     "FromDssmViking": 0,
+     "FromLangHotQuery": 2,
+     "FromMidLongTailDssmViking": 0,
+     "FromRegionHotQueryMulLang": 1
+    },
+    "rough_score": 0,
+    "score": 0.1333182245492935,
+    "target_score": {
+     "all_boost": 1.100000023841858,
+     "before_boost": 0.100998654961586,
+     "csi_relevance_roughsort__base": 0.1,
+     "cvr_shoot_score": 0.17518895864486694,
+     "cvr_strict_publish_score": 0.24263623356819153,
+     "dssm_roughsort__base": 0.1,
+     "keyword_reward_model__total": 0,
+     "laplace_csi_qwen3_emb_6b_vllm__base": 0.1,
+     "multitasks_click_score": 0.3681732416152954,
+     "multitasks_collection_score": 0.013535350561141968,
+     "multitasks_info_collection_score": 0.002107948064804077,
+     "multitasks_info_shoot_score": 0.24526259303092957,
+     "multitasks_shoot_score": 0.20238664746284485,
+     "multitasks_strict_publish_score": 0.18283408880233765,
+     "rank_relevance_score": 0.8590607047080994,
+     "recall_relevance_score": 0.47999557852745056,
+     "video_quality_publish_score": 0.04491525888442993,
+     "video_quality_strict_search_vv_score": 0.26665428280830383
+    }
+   },
+   "dislike_option_enabled": true,
+   "entity_id": 0,
+   "favorited_updated_at": 0,
+   "inspiration_types": [
+    "search"
+   ],
+   "is_favorited": false,
+   "order_popularity_seq": [],
+   "popularity": 85,
+   "popularity_updated_at": 1788272364,
+   "popularity_v2": 2554933,
+   "query_id": 7509091202382168120,
+   "query_id_str": "7509091202382168120",
+   "query_labels": [],
+   "query_text": "creators sight insights",
+   "rec_reason": {
+    "rec_reason_code": "BeginnerFriendly",
+    "rec_reason_detail_show_text": "A perfect topic for your first post. Try it out now!",
+    "rec_reason_short_show_text": "Great for a first post"
+   },
+   "rewrite_version": "",
+   "show_ai_canvas_entry": false,
+   "sug_id_str": "3990856894084740922",
+   "textnet": {
+    "layer1": "TikTok's Featured Content",
+    "layer2": "Others TikTok and Video Contents",
+    "layer3": "",
+    "layer4": ""
+   },
+   "trending_seq": [
+    86,
+    86,
+    86,
+    86,
+    86,
+    86,
+    85
+   ],
+   "trending_seq_v2": [
+    3602218,
+    2845745,
+    3960311,
+    2867239,
+    2873037,
+    3717184,
+    2554933
+   ],
+   "use_csi_api_for_related_videos": false,
+   "user_avatars": [],
+   "video_num": 31979323
+  },
+  {
+   "business_types": [
+    "basic",
+    "experience"
+   ],
+   "cover_image": "",
+   "debug_info": {
+    "creator_category": [
+     {
+      "reason": "byFollowerCnt",
+      "type": "new_creator"
+     },
+     {
+      "type": "csi_new_user"
+     }
+    ],
+    "creator_lang": {
+     "infer_languages": [
+      "en"
+     ],
+     "use_mul_lang": false
+    },
+    "experiment": {
+     "csi_csi_dynamic_tab": "csi_dynamic_tab_v1",
+     "csi_csi_exp_vt": "csi_exp_vt_v2",
+     "csi_csi_feature_tab_reverse_0612_us": "csi_feature_tab_reverse_0612_us_v0",
+     "csi_csi_hot_recall_fanci": "csi_hot_recall_fanci_l1ctrl_v2_add",
+     "csi_csi_scatter_agg_v1": "csi_scatter_agg_v1_group1",
+     "csi_csi_useful_exp_gen": "csi_useful_exp_gen_v3",
+     "csi_item_token_bert_recall": "item_token_bert_recall_v1"
+    },
+    "language": "en",
+    "recall_scores": [
+     0.03271782398223877,
+     0.03271782398223877,
+     0,
+     0
+    ],
+    "recall_source": [
+     "FromDssmViking",
+     "FromMidLongTailDssmViking",
+     "FromRegionHotQueryMulLang",
+     "FromLangHotQuery"
+    ],
+    "recall_source_position": {
+     "FromDssmViking": 18,
+     "FromLangHotQuery": 29,
+     "FromMidLongTailDssmViking": 18,
+     "FromRegionHotQueryMulLang": 22
+    },
+    "rough_score": 0,
+    "score": 0.0740435153245926,
+    "target_score": {
+     "all_boost": 1.100000023841858,
+     "before_boost": 0.056093573570251465,
+     "csi_relevance_roughsort__base": 0.1,
+     "cvr_shoot_score": 0.1254124939441681,
+     "cvr_strict_publish_score": 0.17504459619522095,
+     "dssm_roughsort__base": 0.1,
+     "keyword_reward_model__total": 0,
+     "laplace_csi_qwen3_emb_6b_vllm__base": 0.1,
+     "multitasks_click_score": 0.2615946829319,
+     "multitasks_collection_score": 0.01131129264831543,
+     "multitasks_info_collection_score": 0.0036164820194244385,
+     "multitasks_info_shoot_score": 0.25931215286254883,
+     "multitasks_shoot_score": 0.10674571990966797,
+     "multitasks_strict_publish_score": 0.10737267136573792,
+     "rank_relevance_score": 0.4325081408023834,
+     "recall_relevance_score": 0.5133549571037292,
+     "video_quality_publish_score": 0.022217661142349243,
+     "video_quality_strict_search_vv_score": 0.222866952419281
+    }
+   },
+   "dislike_option_enabled": true,
+   "entity_id": 0,
+   "favorited_updated_at": 0,
+   "inspiration_types": [
+    "search"
+   ],
+   "is_favorited": false,
+   "order_popularity_seq": [],
+   "popularity": 73,
+   "popularity_updated_at": 1788271763,
+   "popularity_v2": 244473,
+   "query_id": 7417365957699534853,
+   "query_id_str": "7417365957699534853",
+   "query_labels": [
+    "content_gap"
+   ],
+   "query_text": "More likes",
+   "rewrite_version": "",
+   "show_ai_canvas_entry": false,
+   "sug_id_str": "1388800898868005492",
+   "textnet": {
+    "layer1": "Science and Technology",
+    "layer2": "Internet",
+    "layer3": "Internet Entrepreneurship Knowledge",
+    "layer4": "Self-Media Operation Knowledge"
+   },
+   "trending_seq": [
+    72,
+    73,
+    70,
+    70,
+    73,
+    25,
+    73
+   ],
+   "trending_seq_v2": [
+    183354,
+    252275,
+    130939,
+    126938,
+    258277,
+    1400,
+    244473
+   ],
+   "use_csi_api_for_related_videos": false,
+   "user_avatars": [],
+   "video_num": 238648
+  },
+  {
+   "business_types": [
+    "basic",
+    "experience",
+    "llm_query_multi_lang",
+    "video_agg_score_post"
+   ],
+   "cover_image": "",
+   "debug_info": {
+    "creator_category": [
+     {
+      "reason": "byFollowerCnt",
+      "type": "new_creator"
+     },
+     {
+      "type": "csi_new_user"
+     }
+    ],
+    "creator_lang": {
+     "infer_languages": [
+      "en"
+     ],
+     "use_mul_lang": false
+    },
+    "experiment": {
+     "csi_csi_dynamic_tab": "csi_dynamic_tab_v1",
+     "csi_csi_exp_vt": "csi_exp_vt_v2",
+     "csi_csi_feature_tab_reverse_0612_us": "csi_feature_tab_reverse_0612_us_v0",
+     "csi_csi_hot_recall_fanci": "csi_hot_recall_fanci_l1ctrl_v2_add",
+     "csi_csi_scatter_agg_v1": "csi_scatter_agg_v1_group1",
+     "csi_csi_useful_exp_gen": "csi_useful_exp_gen_v3",
+     "csi_item_token_bert_recall": "item_token_bert_recall_v1"
+    },
+    "language": "en",
+    "recall_scores": [
+     0.03732794523239136,
+     0.03732794523239136
+    ],
+    "recall_source": [
+     "FromDssmViking",
+     "FromMidLongTailDssmViking"
+    ],
+    "recall_source_position": {
+     "FromDssmViking": 12,
+     "FromMidLongTailDssmViking": 12
+    },
+    "rough_score": 0,
+    "score": 0.036089484393596646,
+    "target_score": {
+     "all_boost": 1.100000023841858,
+     "before_boost": 0.027340518310666084,
+     "csi_relevance_roughsort__base": 0.1,
+     "cvr_shoot_score": 0.1136484146118164,
+     "cvr_strict_publish_score": 0.15240108966827393,
+     "dssm_roughsort__base": 0.1,
+     "keyword_reward_model__total": 0,
+     "laplace_csi_qwen3_emb_6b_vllm__base": 0.1,
+     "multitasks_click_score": 0.13231626152992249,
+     "multitasks_collection_score": 0.005515038967132568,
+     "multitasks_info_collection_score": 0.005626857280731201,
+     "multitasks_info_shoot_score": 0.298814594745636,
+     "multitasks_shoot_score": 0.055596232414245605,
+     "multitasks_strict_publish_score": 0.06542220711708069,
+     "rank_relevance_score": 0.023814648389816284,
+     "recall_relevance_score": 0.5112082958221436,
+     "video_quality_publish_score": 0.02250993251800537,
+     "video_quality_strict_search_vv_score": 0.25112324953079224
+    }
+   },
+   "dislike_option_enabled": true,
+   "entity_id": 0,
+   "favorited_updated_at": 0,
+   "inspiration_types": [
+    "search"
+   ],
+   "is_favorited": false,
+   "order_popularity_seq": [],
+   "popularity": 51,
+   "popularity_updated_at": 1788271339,
+   "popularity_v2": 18001,
+   "query_id": 7492718416252387334,
+   "query_id_str": "7492718416252387334",
+   "query_labels": [],
+   "query_text": "having a secret account",
+   "rec_reason": {
+    "rec_reason_code": "BeginnerFriendly",
+    "rec_reason_detail_show_text": "A perfect topic for your first post. Try it out now!",
+    "rec_reason_short_show_text": "Great for a first post"
+   },
+   "rewrite_version": "",
+   "show_ai_canvas_entry": false,
+   "sug_id_str": "483268213871141371",
+   "textnet": {
+    "layer1": "TikTok's Featured Content",
+    "layer2": "Stories/Posting Captions",
+    "layer3": "",
+    "layer4": ""
+   },
+   "trending_seq": [
+    66,
+    41,
+    70,
+    65,
+    65,
+    67,
+    51
+   ],
+   "trending_seq_v2": [
+    66406,
+    4800,
+    108710,
+    51905,
+    57305,
+    73807,
+    18001
+   ],
+   "use_csi_api_for_related_videos": false,
+   "user_avatars": [],
+   "video_num": 6675
+  },
+  {
+   "business_types": [
+    "basic",
+    "experience",
+    "ecology_platform_easy_experience",
+    "llm_query_multi_lang",
+    "informative_exp"
+   ],
+   "cover_image": "",
+   "debug_info": {
+    "creator_category": [
+     {
+      "reason": "byFollowerCnt",
+      "type": "new_creator"
+     },
+     {
+      "type": "csi_new_user"
+     }
+    ],
+    "creator_lang": {
+     "infer_languages": [
+      "en"
+     ],
+     "use_mul_lang": false
+    },
+    "experiment": {
+     "csi_csi_dynamic_tab": "csi_dynamic_tab_v1",
+     "csi_csi_exp_vt": "csi_exp_vt_v2",
+     "csi_csi_feature_tab_reverse_0612_us": "csi_feature_tab_reverse_0612_us_v0",
+     "csi_csi_hot_recall_fanci": "csi_hot_recall_fanci_l1ctrl_v2_add",
+     "csi_csi_scatter_agg_v1": "csi_scatter_agg_v1_group1",
+     "csi_csi_useful_exp_gen": "csi_useful_exp_gen_v3",
+     "csi_item_token_bert_recall": "item_token_bert_recall_v1"
+    },
+    "language": "en",
+    "recall_scores": [
+     0.03104543685913086,
+     0.03104543685913086
+    ],
+    "recall_source": [
+     "FromDssmViking",
+     "FromMidLongTailDssmViking"
+    ],
+    "recall_source_position": {
+     "FromDssmViking": 21,
+     "FromMidLongTailDssmViking": 21
+    },
+    "rough_score": 0,
+    "score": 0.01561061069369316,
+    "target_score": {
+     "all_boost": 1.100000023841858,
+     "before_boost": 0.011826219968497753,
+     "csi_relevance_roughsort__base": 0.1,
+     "cvr_shoot_score": 0.11338543891906738,
+     "cvr_strict_publish_score": 0.15167054533958435,
+     "dssm_roughsort__base": 0.1,
+     "keyword_reward_model__total": 0,
+     "laplace_csi_qwen3_emb_6b_vllm__base": 0.1,
+     "multitasks_click_score": 0.08167171478271484,
+     "multitasks_collection_score": 0.004460334777832031,
+     "multitasks_info_collection_score": 0.0050334930419921875,
+     "multitasks_info_shoot_score": 0.22140398621559143,
+     "multitasks_shoot_score": 0.031305789947509766,
+     "multitasks_strict_publish_score": 0.03333336114883423,
+     "rank_relevance_score": 0.898770272731781,
+     "recall_relevance_score": 0.514106273651123,
+     "video_quality_publish_score": 0.008953988552093506,
+     "video_quality_strict_search_vv_score": 0.20594483613967896
+    }
+   },
+   "dislike_option_enabled": true,
+   "entity_id": 0,
+   "favorited_updated_at": 0,
+   "inspiration_types": [
+    "search"
+   ],
+   "is_favorited": false,
+   "order_popularity_seq": [],
+   "popularity": 70,
+   "popularity_updated_at": 1788271345,
+   "popularity_v2": 123287,
+   "query_id": 7448486464884572165,
+   "query_id_str": "7448486464884572165",
+   "query_labels": [
+    "content_gap"
+   ],
+   "query_text": "small content creators",
+   "rewrite_version": "",
+   "show_ai_canvas_entry": false,
+   "sug_id_str": "23851973073569386",
+   "textnet": {
+    "layer1": "Science and Technology",
+    "layer2": "Internet",
+    "layer3": "Internet Entrepreneurship Knowledge",
+    "layer4": "Self-Media Operation Knowledge"
+   },
+   "trending_seq": [
+    71,
+    74,
+    74,
+    68,
+    72,
+    67,
+    70
+   ],
+   "trending_seq_v2": [
+    165583,
+    298670,
+    296270,
+    80291,
+    187881,
+    71092,
+    123287
+   ],
+   "use_csi_api_for_related_videos": false,
+   "user_avatars": [],
+   "video_num": 108884
+  }
+ ],
+ "session_refresh_index": 6,
+ "status_code": 0,
+ "status_msg": ""
+}

@@ -1,0 +1,132 @@
+{
+ "code": 0,
+ "msg": "OK",
+ "data": {
+  "materials": [
+   {
+    "ad_title": "World class formulas, personalised to you. That’s the Secret.",
+    "brand_name": "",
+    "cost": 2,
+    "ctr": 0.31,
+    "favorite": false,
+    "id": "7198057145040093186",
+    "industry_key": "label_14103000000",
+    "is_search": false,
+    "like": 512,
+    "objective_key": "campaign_objective_conversion",
+    "video_info": {
+     "vid": "v14033g50000d61s9v7og65oen16m41g",
+     "duration": 22.145,
+     "cover": "https://p19-common-sign.tiktokcdn.com/tos-alisg-p-0051c001-sg/oUxDyiDBgEkBJJriPzpNBBA4EdDcPgIUefySpU~tplv-noop.image?dr=18692&refresh_token=b16e854c&x-expires=1788296236&x-signature=OwN1RZL6y79FwPowxavNMZoPqKU%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=317596d8&idc=my&VideoID=v14033g50000d61s9v7og65oen16m41g",
+     "video_url": {
+      "720p": "https://v16m-default.tiktokcdn.com/80ae3c31787f160845dbfd87662d205d/6a973c2c/video/tos/alisg/tos-alisg-ve-0051c001-sg/oEOBJ9BFiDEfgFHpINQDABrDd4JIEUQPgpec2i/?a=0&bti=NTU4QDM1NGA%3D&&bt=1157&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=Nzk5PDUzNDw1NjM0NDg1OUBpajc5cXI5cnl2OTMzODYzNEAyLzYzNi1fXjQxYjYuXi1gYSMuai5iMmQ0Ni5hLS1kMDFzcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00078000"
+     },
+     "width": 576,
+     "height": 1024
+    }
+   },
+   {
+    "ad_title": "Microneedling at Home: Start Skincare Journey Now",
+    "brand_name": "Qure Skincare",
+    "cost": 2,
+    "ctr": 0.09,
+    "favorite": false,
+    "id": "7229593358557134849",
+    "industry_key": "label_14103000000",
+    "is_search": false,
+    "like": 27284,
+    "objective_key": "campaign_objective_conversion",
+    "video_info": {
+     "vid": "v10033g50000d27hh07og65gejf3sav0",
+     "duration": 54.849,
+     "cover": "https://p16-common-sign.tiktokcdn.com/tos-maliva-p-0051c799-us/o4gegKDcbOjHAdGR0Looerd34EBGBIQAg4jfCN~tplv-noop.image?dr=18692&refresh_token=7583c1ad&x-expires=1788296268&x-signature=dhEhTpck5kfkbZpg4WDd7MgpFho%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=317596d8&idc=my&VideoID=v10033g50000d27hh07og65gejf3sav0",
+     "video_url": {
+      "1080p": "https://v16m-default.tiktokcdn.com/d93e48f89f0fa883ea01300306768ce5/6a973c4c/video/tos/alisg/tos-alisg-v-0000/o0IBUfyPlAZqAyzHENZ59oQwh7rv4KCirJZAmR/?a=0&bti=NTU4QDM1NGA%3D&&bt=3876&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=NjY0PDZlZWk5ZDs8Nzg6aEBpM2Q2bWo5cjNrNTMzODYzNEAvMl8tNTItNjAxNDY1YjEuYSNzcGNiMmQ0ZTRhLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00048000",
+      "360p": "https://v16m-default.tiktokcdn.com/0b88fa563dd378ca66b2fa2ce7d16f7b/6a973c4c/video/tos/alisg/tos-alisg-v-0000/o8HzfAyPlBCpqlZUIQEPhN4iorKpyEAvvArmwF/?a=0&bti=NTU4QDM1NGA%3D&&bt=694&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=PDs0aDw5OWc7ZDM7OTo2NkBpM2Q2bWo5cjNrNTMzODYzNEBhM2EuNF9hNjQxLTRiL2EtYSNzcGNiMmQ0ZTRhLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00048000",
+      "480p": "https://v16m-default.tiktokcdn.com/2997899b99729793a0d01454446a3a27/6a973c4c/video/tos/alisg/tos-alisg-v-0000/oE1qggIRPKtmVCsrAH2eAUAgu49fcIDGfRgb5S/?a=0&bti=NTU4QDM1NGA%3D&&bt=1064&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=ZzhnaGVpM2k5NDQ6OGg8aEBpM2Q2bWo5cjNrNTMzODYzNEAxLzUzYzMwXmAxXjM0NTYwYSNzcGNiMmQ0ZTRhLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00048000",
+      "540p": "https://v16m-default.tiktokcdn.com/509342c4ebc639c934de926079fd55dd/6a973c4c/video/tos/maliva/tos-maliva-ve-0051c799-us/owFBEDAxAQXHtieDjPRGeMACHifvgxK8AApWob/?a=0&bti=NTU4QDM1NGA%3D&&bt=1126&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=aDplZzpnZTxlOWZlZmk4ZUBpM2Q2bWo5cjNrNTMzODYzNEAwX2BeMTRhNmExY18yYS5gYSNzcGNiMmQ0ZTRhLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00088000",
+      "720p": "https://v16m-default.tiktokcdn.com/30ff75a691597783038776570fa4f6e4/6a973c4c/video/tos/alisg/tos-alisg-v-0000/oMPlPzKGEAoiPqQBCArhQrZOQIxmwRfyyUAv4N/?a=0&bti=NTU4QDM1NGA%3D&&bt=2132&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=NDhmZzQ4Ozk7OWk3NmVpaEBpM2Q2bWo5cjNrNTMzODYzNEAwNl5iMTIuX2AxMzAuNTUxYSNzcGNiMmQ0ZTRhLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00048000"
+     },
+     "width": 720,
+     "height": 1280
+    }
+   },
+   {
+    "ad_title": "wah ini sih bener bener definisi step 0 dari step 1-10 skincare sih! ternyata emang se gong itu yaa😱 #skincarestep0 #skincaretips ",
+    "brand_name": "",
+    "cost": 0,
+    "ctr": 0.85,
+    "favorite": false,
+    "id": "7571756238766620688",
+    "industry_key": "label_21102000000",
+    "is_search": false,
+    "like": 21,
+    "objective_key": "campaign_objective_reach",
+    "video_info": {
+     "vid": "v14044g50000d49ko0fog65mk1rm6t3g",
+     "duration": 77.434,
+     "cover": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0037/oUdTIaHv0IqUCJA2TAiiVwYiIdBBoQAjAwfLOH~tplv-noop.image?dr=18692&refresh_token=f8319aee&x-expires=1788296291&x-signature=ii8XFUuRuamOonJCigIbNyuoLjc%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=317596d8&idc=my&VideoID=v14044g50000d49ko0fog65mk1rm6t3g",
+     "video_url": {
+      "720p": "https://v16m-default.tiktokcdn.com/93b66291899aa278ea6d1589b4696522/6a973c63/video/tos/alisg/tos-alisg-pve-0037c001/o4I0dbiEIAw0ARifHTiqThcjHPYduCAoBAaIQ2/?a=0&bti=NTU4QDM1NGA%3D&&bt=933&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=ZGZnZzQzNzY5M2doOGg5PEBpandwNHA5cjNuNzMzODczNEAwMF4zMjQ1Ni4xYC5hYDBfYSMwM29oMmRjbDZhLS1kMTFzcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000"
+     },
+     "width": 576,
+     "height": 1024
+    }
+   },
+   {
+    "ad_title": "Cara ngatasi jerawat on off, padahal udah basic skincare!? #kokohskincare #WardahAcneSerum #AcneSerumEra #SerumViral @Wardah Beauty Official ",
+    "brand_name": "",
+    "cost": 2,
+    "ctr": 0.18,
+    "favorite": false,
+    "id": "7587345659210547217",
+    "industry_key": "label_14103000000",
+    "is_search": false,
+    "like": 7528,
+    "objective_key": "campaign_objective_video_view",
+    "video_info": {
+     "vid": "v14044g50000d55qggvog65r0jp20iu0",
+     "duration": 46.167,
+     "cover": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0037/oMBBSAfilwpH0h8qBIAQIgARHPENiIC6B7ddqL~tplv-noop.image?dr=18692&refresh_token=2b63db84&x-expires=1788296260&x-signature=7g6t7ILG%2BNlKfLrc0z0xxyAMwZs%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=317596d8&idc=my&VideoID=v14044g50000d55qggvog65r0jp20iu0",
+     "video_url": {
+      "720p": "https://v16m-default.tiktokcdn.com/4c5a8440782842f4135df87388d84cbd/6a973c44/video/tos/alisg/tos-alisg-pve-0037c001/ocFd0AE7QQBgwIAhIcZCAiPR8qiRIpSiGFPBf1/?a=0&bti=NTU4QDM1NGA%3D&&bt=1035&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=OjRnPDZkZzU5ZTNkNDVlOkBpM2w1bXU5cmp0ODMzODczNEBgMzUvM2JeNTIxYmJiYC82YSNyLW0tMmRzZDJhLS1kMTFzcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00050000"
+     },
+     "width": 576,
+     "height": 1024
+    }
+   },
+   {
+    "ad_title": "Upgrade your skincare routine. Science meets results. Get 10% off today using code HINBL.",
+    "brand_name": "",
+    "cost": 1,
+    "ctr": 0.66,
+    "favorite": false,
+    "id": "7563665172503314448",
+    "industry_key": "label_14103000000",
+    "is_search": false,
+    "like": 144,
+    "objective_key": "campaign_objective_video_view",
+    "video_info": {
+     "vid": "v10033g50000d3roofvog65g127deeh0",
+     "duration": 80.619,
+     "cover": "https://p16-common-sign.tiktokcdn.com/tos-no1a-p-51c710-no/ooWKECLpQogt1ZC3DBGAIK7ebeRAiCHGKxIVeF~tplv-noop.image?dr=18692&refresh_token=89fa6223&x-expires=1788296294&x-signature=z8HGGBde%2FrrqZW224ZQ6TH8nCco%3D&t=9276707c&ps=14f1eb3e&shp=9e36835a&shcp=317596d8&idc=my&VideoID=v10033g50000d3roofvog65g127deeh0",
+     "video_url": {
+      "1080p": "https://v16m-default.tiktokcdn.com/ddc9ee20bbc4c58591d23dcdcbd5738f/6a973c66/video/tos/no1a/tos-no1a-ve-51c710-no/oEG3IgHtECK7VIIgZebiGUeDDKYCxAZoQeAYLR/?a=0&bti=NTU4QDM1NGA%3D&&bt=2451&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=OjY4MzpnPGhpPDplZjQ0Z0BpM2hnNWo5cmlyNjMzODYzNEBfMjBeYjUvXzMxNGBgLTRfYSNlYjQuMmRzbG9hLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000",
+      "360p": "https://v16m-default.tiktokcdn.com/3ace0f85fb8b9f74f3dc4fd6deadb849/6a973c66/video/tos/no1a/tos-no1a-ve-51c710-no/oQDoERxCeKKIGjLbAZEQVOAgViAeCte3qv7IZG/?a=0&bti=NTU4QDM1NGA%3D&&bt=474&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=MzVkZzhkNjs4OWhkZTU6ZEBpM2hnNWo5cmlyNjMzODYzNEBfMzE2YDUuXjIxMGIzYjUtYSNlYjQuMmRzbG9hLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000",
+      "480p": "https://v16m-default.tiktokcdn.com/f58eefb8dc81892c8c868a7058a36fd5/6a973c66/video/tos/no1a/tos-no1a-ve-51c710-no/oYAQ3LKtK7eaGiRGbeoCxnGeAgIvDLtEZRoVIC/?a=0&bti=NTU4QDM1NGA%3D&&bt=681&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=Nmg1PGg3aWZoNzk1ZDZpNkBpM2hnNWo5cmlyNjMzODYzNEBeXjQwNi4vX14xYzQuMDFgYSNlYjQuMmRzbG9hLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000",
+      "540p": "https://v16m-default.tiktokcdn.com/098513601f3c0203064d0f1633d23f1a/6a973c66/video/tos/no1a/tos-no1a-ve-51c710-no/oot2Ied7AKebAIVaRIEHoBLxGKD3gxeiCZQCGt/?a=0&bti=NTU4QDM1NGA%3D&&bt=884&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=ZmlmNTc5ZTtlOGVmM2VnOEBpM2hnNWo5cmlyNjMzODYzNEBhLTNfMTM0Ni0xYi41YC82YSNlYjQuMmRzbG9hLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000",
+      "720p": "https://v16m-default.tiktokcdn.com/a6278b5139fad0fa462bcc4f9bdb4e6c/6a973c66/video/tos/no1a/tos-no1a-ve-51c710-no/oUCbe7I3VMe7b3gbGoKtiCAIGeAZLDQZKC0RxE/?a=0&bti=NTU4QDM1NGA%3D&&bt=1303&ft=cApXJCz7ThWHewhoLGZmo0P&mime_type=video_mp4&rc=NDw0ZjRmODQzPGk0ODg8NUBpM2hnNWo5cmlyNjMzODYzNEAzNl9gNl4zNl4xLjUvYTEuYSNlYjQuMmRzbG9hLS1kMC1zcw%3D%3D&vvpl=1&l=20260901225653857A174EEC37EFA1892E&btag=e00090000"
+     },
+     "width": 720,
+     "height": 1280
+    }
+   }
+  ],
+  "pagination": {
+   "has_more": true,
+   "page": 1,
+   "size": 5,
+   "total_count": 313
+  }
+ }
+}
