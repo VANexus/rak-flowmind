@@ -10,7 +10,7 @@
 - 图像生成后端:MockBackend(确定性占位)/ AllInApiBackend(模型 gpt-image-2)。
 
 安全:AllInApiBackend / ChatExtractor 的 API key 只从环境变量读取,
-不进 config 文件、不进 commit。生产部署由运维导出 ALLIN_API_KEY。
+不进 config 文件、不进 commit。生产部署由运维导出 AI_IMAGE_API_KEY。
 """
 from __future__ import annotations
 
@@ -300,7 +300,7 @@ def _build_rules(cfg: MarketingImageConfig) -> list[Rule]:
 
 
 def _select_image_backend(inp_backend: str | None, cfg: MarketingImageConfig):
-    """根据入参 + cfg 选后端。auto 在无 ALLIN_API_KEY 时回落 mock。"""
+    """根据入参 + cfg 选后端。auto 在无 AI_IMAGE_API_KEY 时回落 mock。"""
     return select_backend(
         requested=inp_backend,
         cfg_allin_key_env=cfg.allin_api_key_env,
@@ -450,7 +450,7 @@ def marketing_image_gen(inp: MarketingImageInput) -> SkillOutput[MarketingImageP
             f"命中 {len(hits)} 条规则,按既定优先级推断参数。"
         ),
         risk_note=(
-            "本技能默认后端优先 allin_api(若环境变量 ALLIN_API_KEY 已设置),"
+            "本技能默认后端优先 allin_api(若环境变量 AI_IMAGE_API_KEY 已设置),"
             "否则回落 mock。真实出图非确定性,仅作为创意草稿;"
             "正式投放前请人工挑选或调整 prompt 重试。"
         ),

@@ -2,7 +2,7 @@
 
 去 mock 原则：
 - backend="mock" 与 auto 无 key 都抛 ValueError（显式 mock 已禁用）
-- 有 ALLIN_API_KEY 时 auto/allin_api → AllInApiBackend
+- 有 AI_IMAGE_API_KEY 时 auto/allin_api → AllInApiBackend
 - httpx 全程打桩，测抽取 + 出图完整链路
 - 离线测试必须显式 monkeypatch 掉 select_backend，不能走 MockBackend
 """
@@ -111,7 +111,7 @@ def _force_allin_stub(client: httpx.Client, api_key: str = "sk-test"):
 def test_no_marketing_copy_yields_user_prompt_source(tmp_path, monkeypatch):
     """只给 prompt → prompt_source=user_prompt；后端强制 AllIn mock httpx 出图。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
 
     captured: dict[str, Any] = {}
     client = _mock_client(_img_handler(captured))
@@ -130,7 +130,7 @@ def test_no_marketing_copy_yields_user_prompt_source(tmp_path, monkeypatch):
 def test_marketing_copy_passthrough_yields_merged(tmp_path, monkeypatch):
     """marketing_copy + prompt + passthrough 抽取 → merged。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
 
     cfg_path = tmp_path / "flowmind.config.toml"
     save_config(
@@ -160,7 +160,7 @@ def test_marketing_copy_passthrough_yields_merged(tmp_path, monkeypatch):
 def test_marketing_copy_alone_yields_extracted_from_copy(tmp_path, monkeypatch):
     """只给 marketing_copy → extracted_from_copy。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
     save_config(
         FlowmindConfig(marketing_image=MarketingImageConfig(extractor_mode="passthrough")),
         path=tmp_path / "flowmind.config.toml",
@@ -185,7 +185,7 @@ def test_marketing_copy_alone_yields_extracted_from_copy(tmp_path, monkeypatch):
 def test_marketing_copy_with_prompt_yields_merged(tmp_path, monkeypatch):
     """marketing_copy + prompt → merged；resolved_prompt 含「附加要求/原始文案」。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
 
     cfg_path = tmp_path / "flowmind.config.toml"
     save_config(
@@ -254,7 +254,7 @@ def test_chat_extractor_appends_hint():
 
 def test_chat_extractor_raises_on_empty_key():
     ext = ChatExtractor(api_key="")
-    with pytest.raises(ValueError, match="ALLIN_API_KEY"):
+    with pytest.raises(ValueError, match="AI_IMAGE_API_KEY"):
         ext.extract(marketing_copy="x")
 
 
@@ -298,7 +298,7 @@ def test_allin_api_backend_merges_negative_prompt():
 
 def test_allin_api_backend_raises_on_empty_key():
     backend = AllInApiBackend(api_key="")
-    with pytest.raises(ValueError, match="ALLIN_API_KEY"):
+    with pytest.raises(ValueError, match="AI_IMAGE_API_KEY"):
         backend.generate(
             prompt="x", negative_prompt="", width=512, height=512,
             n=1, seed=None, save_dir=None,
@@ -337,11 +337,11 @@ def test_allin_api_backend_handles_b64_fallback():
 
 def test_select_backend_mock_explicitly_disabled(monkeypatch):
     """显式 backend="mock" → 必须抛 ValueError（云优先：一切生图走云 API）。"""
-    monkeypatch.setenv("ALLIN_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_IMAGE_API_KEY", "sk-test")
     with pytest.raises(ValueError, match="显式 mock 出图后端已禁用"):
         select_backend(
             requested="mock",
-            cfg_allin_key_env="ALLIN_API_KEY",
+            cfg_allin_key_env="AI_IMAGE_API_KEY",
             cfg_allin_base="https://allin-api.com",
             cfg_allin_model="gpt-image-2",
             cfg_allin_timeout_s=60.0,
@@ -350,11 +350,11 @@ def test_select_backend_mock_explicitly_disabled(monkeypatch):
 
 def test_select_backend_auto_raises_without_key(monkeypatch):
     """auto + 无 key → ValueError，不再静默降级 mock。"""
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
-    with pytest.raises(ValueError, match="ALLIN_API_KEY"):
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="AI_IMAGE_API_KEY"):
         select_backend(
             requested=None,
-            cfg_allin_key_env="ALLIN_API_KEY",
+            cfg_allin_key_env="AI_IMAGE_API_KEY",
             cfg_allin_base="https://allin-api.com",
             cfg_allin_model="gpt-image-2",
             cfg_allin_timeout_s=60.0,
@@ -362,10 +362,10 @@ def test_select_backend_auto_raises_without_key(monkeypatch):
 
 
 def test_select_backend_auto_uses_allin_api_with_key(monkeypatch):
-    monkeypatch.setenv("ALLIN_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_IMAGE_API_KEY", "sk-test")
     backend = select_backend(
         requested=None,
-        cfg_allin_key_env="ALLIN_API_KEY",
+        cfg_allin_key_env="AI_IMAGE_API_KEY",
         cfg_allin_base="https://allin-api.com",
         cfg_allin_model="gpt-image-2",
         cfg_allin_timeout_s=60.0,
@@ -376,10 +376,10 @@ def test_select_backend_auto_uses_allin_api_with_key(monkeypatch):
 
 
 def test_select_backend_allin_api_force_uses_env_key(monkeypatch):
-    monkeypatch.setenv("ALLIN_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_IMAGE_API_KEY", "sk-test")
     backend = select_backend(
         requested="allin_api",
-        cfg_allin_key_env="ALLIN_API_KEY",
+        cfg_allin_key_env="AI_IMAGE_API_KEY",
         cfg_allin_base="https://allin-api.com",
         cfg_allin_model="gpt-image-2",
         cfg_allin_timeout_s=60.0,
@@ -391,7 +391,7 @@ def test_select_backend_unknown_raises():
     with pytest.raises(ValueError, match="未知 backend"):
         select_backend(
             requested="magic",
-            cfg_allin_key_env="ALLIN_API_KEY",
+            cfg_allin_key_env="AI_IMAGE_API_KEY",
             cfg_allin_base="https://allin-api.com",
             cfg_allin_model="gpt-image-2",
             cfg_allin_timeout_s=60.0,
@@ -399,10 +399,10 @@ def test_select_backend_unknown_raises():
 
 
 def test_resolve_api_key_strips_whitespace():
-    os.environ["ALLIN_API_KEY"] = "  sk-test  "
-    assert resolve_api_key("ALLIN_API_KEY") == "sk-test"
-    os.environ["ALLIN_API_KEY"] = "   "
-    assert resolve_api_key("ALLIN_API_KEY") is None
+    os.environ["AI_IMAGE_API_KEY"] = "  sk-test  "
+    assert resolve_api_key("AI_IMAGE_API_KEY") == "sk-test"
+    os.environ["AI_IMAGE_API_KEY"] = "   "
+    assert resolve_api_key("AI_IMAGE_API_KEY") is None
 
 
 # =========================================================================
@@ -412,7 +412,7 @@ def test_resolve_api_key_strips_whitespace():
 def test_end_to_end_with_real_backend_and_passthrough(tmp_path, monkeypatch):
     """端到端：chat 抽 + allin_api 出图，httpx 全程 mock。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("ALLIN_API_KEY", "sk-test")
+    monkeypatch.setenv("AI_IMAGE_API_KEY", "sk-test")
 
     img_captured: dict[str, Any] = {}
     chat_captured: dict[str, Any] = {}
@@ -481,7 +481,7 @@ def test_end_to_end_with_real_backend_and_passthrough(tmp_path, monkeypatch):
 def test_end_to_end_explicit_mock_disabled(tmp_path, monkeypatch):
     """显式 backend="mock" 必须 ValueError（云优先：绝无离线占位图）。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
     save_config(
         FlowmindConfig(marketing_image=MarketingImageConfig(extractor_mode="passthrough")),
         path=tmp_path / "flowmind.config.toml",
@@ -520,7 +520,7 @@ def test_input_rejects_both_empty():
 def test_marketing_copy_optional_in_input(tmp_path, monkeypatch):
     """无 marketing_copy，纯 prompt 路径 → user_prompt；后端强制打桩 AllIn mock httpx。"""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ALLIN_API_KEY", raising=False)
+    monkeypatch.delenv("AI_IMAGE_API_KEY", raising=False)
 
     captured: dict[str, Any] = {}
     client = _mock_client(_img_handler(captured))

@@ -26,8 +26,8 @@ from flowmind.skills._secrets import get_api_key  # noqa: F401 进程 env 优先
 
 _VERSION = "0.1.0"
 
-KEY_DASHSCOPE = "DASHSCOPE_API_KEY"
-KEY_LONGCAT = "LONGCAT_API_KEY"
+KEY_SPEECH = "AI_SPEECH_API_KEY"
+KEY_LLM = "AI_LLM_API_KEY"
 
 
 class LocalizeVideoInput(BaseModel):
@@ -74,8 +74,8 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     双匹配策略：OCR 负责定位原字幕区域（供擦除）；翻译文本一律以 ASR 为准。
     """
     cfg = load_config().localizer
-    dashscope_key = get_api_key(KEY_DASHSCOPE)
-    longcat_key = get_api_key(KEY_LONGCAT)
+    speech_key = get_api_key(KEY_SPEECH)
+    llm_key = get_api_key(KEY_LLM)
 
     # ── 预检（确定性，不调云）──
     is_url = inp.video_path.startswith(("http://", "https://"))
@@ -86,10 +86,10 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         ext = Path(src).suffix.lower()
         if ext not in {e.lower() for e in cfg.allowed_extensions}:
             return _fail(inp, f"扩展名 {ext} 不在允许列表 {cfg.allowed_extensions}", "video")
-    if not dashscope_key:
-        return _fail(inp, f"未设置环境变量 {KEY_DASHSCOPE}（ASR/TTS/OCR 需要）", "environment")
-    if not longcat_key:
-        return _fail(inp, f"未设置环境变量 {KEY_LONGCAT}（翻译需要）", "environment")
+    if not speech_key:
+        return _fail(inp, f"未设置环境变量 {KEY_SPEECH}（ASR/TTS/OCR 需要）", "environment")
+    if not llm_key:
+        return _fail(inp, f"未设置环境变量 {KEY_LLM}（翻译需要）", "environment")
 
     workdir = Path("._lv_work") / os.urandom(4).hex()
     workdir.mkdir(parents=True, exist_ok=True)
@@ -103,7 +103,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
 
         # ── 2) ASR（句级时间戳；本地 wav 经 WS 流式直推云端，无需公网 URL）──
         segments = _cloud_asr.transcribe_local(
-            audio_path, api_key=dashscope_key,
+            audio_path, api_key=speech_key,
             sample_rate=cfg.asr_sample_rate,
             language_hints=[inp.source_lang or cfg.source_lang_default],
         )
@@ -118,7 +118,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             duration_s = segments[-1]["end"]
 
         # ── 3) OCR 定位原字幕区（离线抽样 N 帧，非逐帧实时——见 _locate_region）──
-        region = _locate_region(src, duration_s, workdir, dashscope_key, cfg,
+        region = _locate_region(src, duration_s, workdir, speech_key, cfg,
                                 width=width, height=height)
 
         # ── 3.5) 长句拆分（避免"一坨字幕"覆盖全视频）──
@@ -132,7 +132,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
                 display_segments,
                 target_lang=inp.target_lang or cfg.target_lang_default,
                 source_lang=inp.source_lang or cfg.source_lang_default,
-                api_key=longcat_key,
+                api_key=llm_key,
             )
         except Exception as e:
             print(f"[LV] TRANSLATE ERROR: {type(e).__name__}: {e}")
@@ -175,7 +175,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             try:
                 dubs = _cloud_tts.synthesize_segments(
                     tts_segs, voice_id=eff_voice,
-                    out_dir=str(workdir / "dubs"), api_key=dashscope_key,
+                    out_dir=str(workdir / "dubs"), api_key=speech_key,
                     target_model=cfg.localize_tts_model,
                 )
             except Exception as e:

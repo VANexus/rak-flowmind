@@ -186,18 +186,18 @@ def test_explicit_mock_backend_rejected():
 
 @pytest.mark.real_backend
 def test_backend_auto_requires_key():
-    """云优先：backend 缺省（auto）且无 ALLIN_API_KEY → 显式报错，不静默降级 mock。"""
+    """云优先：backend 缺省（auto）且无 AI_IMAGE_API_KEY → 显式报错，不静默降级 mock。"""
     import os
 
-    saved = os.environ.pop("ALLIN_API_KEY", None)
+    saved = os.environ.pop("AI_IMAGE_API_KEY", None)
     try:
         result = invoke("marketing_image_gen", {"prompt": "测试"})
         assert result.ok is False
         assert result.error.code == "INTERNAL"
-        assert "ALLIN_API_KEY" in result.error.message
+        assert "AI_IMAGE_API_KEY" in result.error.message
     finally:
         if saved is not None:
-            os.environ["ALLIN_API_KEY"] = saved
+            os.environ["AI_IMAGE_API_KEY"] = saved
 
 
 # ---------- 多版本 / 尺寸 / 成本 ----------

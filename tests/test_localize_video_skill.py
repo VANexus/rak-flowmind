@@ -28,8 +28,8 @@ def test_skills_registered():
 
 @pytest.fixture
 def no_keys(monkeypatch):
-    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
-    monkeypatch.delenv("LONGCAT_API_KEY", raising=False)
+    monkeypatch.delenv("AI_SPEECH_API_KEY", raising=False)
+    monkeypatch.delenv("AI_LLM_API_KEY", raising=False)
 
 
 @pytest.fixture
