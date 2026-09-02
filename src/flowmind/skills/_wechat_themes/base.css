@@ -1,0 +1,49 @@
+/**
+ * MD base theme styles
+ * Base element styles and CSS variable definitions
+ */
+
+/* ==================== Container ==================== */
+section,
+#output .container {
+  font-family: var(--md-font-family);
+  font-size: var(--md-font-size);
+  line-height: var(--md-line-height);
+  text-align: left;
+}
+
+#output {
+  font-family: var(--md-font-family);
+  font-size: var(--md-font-size);
+  line-height: var(--md-line-height);
+  text-align: left;
+}
+
+#output section > :first-child {
+  margin-top: 0 !important;
+}
+
+/*
+ * Reset for exported HTML / share pages / VSCode preview (no Tailwind preflight).
+ * Browser defaults leak in (e.g. blockquote 40px side margins, table border-collapse: separate).
+ * Reset horizontal (and top) margins so export matches in-app preview.
+ * Vertical spacing comes from theme blockquote { margin-bottom }; do not zero all margins here.
+ * section selector covers VSCode preview (no #output; content in section.container).
+ */
+#output blockquote,
+section blockquote {
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+}
+
+#output table,
+section table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.mermaid-diagram .nodeLabel p {
+  color: unset !important;
+  letter-spacing: unset !important;
+}

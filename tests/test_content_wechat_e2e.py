@@ -40,6 +40,7 @@ def test_wechat_e2e_degrades_without_credentials():
         from flowmind.skills.content_copywrite import ContentCopyPlan
         from flowmind.skills.content_image_gen import ContentImagePlan, ContentImageResult
         from flowmind.skills.content_publish_check import PublishCheckResult
+        from flowmind.skills.content_typeset import TypesetResult
 
         if skill_id == "content_idea_design":
             data = ContentIdeaPlan(
@@ -62,6 +63,11 @@ def test_wechat_e2e_degrades_without_credentials():
             data = PublishCheckResult(
                 platform="wechat", can_publish=True, title_length=6,
                 body_length=200, image_count=1, limit_warnings=[], rule_findings=[],
+            )
+        elif skill_id == "content_typeset":
+            data = TypesetResult(
+                html="<section><p>正文内容</p></section>", theme="default",
+                theme_label="经典", stats={"chars": 80},
             )
         elif skill_id == "content_wechat_publish":
             # 模拟无凭证：get_api_key 已 patch 为 None，这里会真实调用并失败

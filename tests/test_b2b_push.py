@@ -232,7 +232,7 @@ def test_digest_longtail_failure_does_not_block(monkeypatch):
         if skill_id == "b2b_keyword_trends":
             return _trend_result(raw_args["platform"], [("skincare", 100)])
         if skill_id == "b2b_longtail_keywords":
-            return _err_res("INTERNAL", "未设置 LONGCAT_API_KEY")
+            return _err_res("INTERNAL", "未设置 AI_LLM_API_KEY")
         if skill_id == "b2b_push_feishu":
             return _res(SimpleNamespace(ok=True, latency_ms=100.0, error=None))
         raise AssertionError(f"unexpected skill {skill_id}")
@@ -241,7 +241,7 @@ def test_digest_longtail_failure_does_not_block(monkeypatch):
     r = invoke("b2b_daily_digest", {"push_feishu": True})
     assert r.ok is True
     assert r.data.longtail_words == []
-    assert r.data.longtail_error and "LONGCAT_API_KEY" in r.data.longtail_error
+    assert r.data.longtail_error and "AI_LLM_API_KEY" in r.data.longtail_error
     assert r.data.pushes[0].ok is True  # 长尾失败仍推送趋势摘要
 
 

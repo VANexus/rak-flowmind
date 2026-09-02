@@ -19,6 +19,9 @@ dependencies = [
     "httpx>=0.27",
     "python-dotenv>=1.2.2",
     "dashscope>=1.27.1",
+    # content_typeset 技能：公众号 Markdown -> 内联样式 HTML（doocs/md 主题）
+    "markdown-it-py>=4.0",
+    "css-inline>=0.20",
     # content_* 技能 + flowmind-mcp-http（Streamable HTTP transport 起服务）
     "uvicorn>=0.30",
     # A2A 协议层

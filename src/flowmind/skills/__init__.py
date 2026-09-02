@@ -15,7 +15,10 @@ from flowmind.skills import content_hot_topics  # noqa: F401
 from flowmind.skills import content_idea_design  # noqa: F401
 from flowmind.skills import content_image_gen  # noqa: F401
 from flowmind.skills import content_publish_check  # noqa: F401
+from flowmind.skills import content_typeset  # noqa: F401
+from flowmind.skills import content_wechat_account_test  # noqa: F401
 from flowmind.skills import content_wechat_e2e  # noqa: F401
+from flowmind.skills import content_wechat_publish_status  # noqa: F401
 from flowmind.skills import content_wechat_publish  # noqa: F401
 from flowmind.skills import content_web_fetch  # noqa: F401
 from flowmind.skills import content_xhs_draft  # noqa: F401
@@ -34,3 +37,6 @@ from flowmind.skills import localize_retry      # noqa: F401
 from flowmind.skills import localize_status     # noqa: F401
 from flowmind.skills import localize_video      # noqa: F401
 from flowmind.skills import marketing_image_gen  # noqa: F401
+from flowmind.skills import tiktok_ad_intel      # noqa: F401
+from flowmind.skills import tiktok_content_intel  # noqa: F401
+from flowmind.skills import tiktok_shop_intel    # noqa: F401

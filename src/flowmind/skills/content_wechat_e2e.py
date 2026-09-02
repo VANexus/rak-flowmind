@@ -1,26 +1,38 @@
 """content_wechat_e2e 技能：微信公众号端到端发布。
 
-串联流程：选题 → 文案 → 配图 → 合规检查 → 发布。
+串联流程：选题 → 文案（结构化 Markdown）→ 配图 → 合规检查 → 排版（Markdown→内联样式 HTML）
+→ 发布/群发（草稿 / 定时）。
+
 每个子步骤调用对应 skill 的 invoke()，最终输出发布结果。
 失败契约：HTTP 依赖类 — r.ok=True + metrics.degraded + data.failure_category。
 """
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from flowmind.contracts import ReasoningChain, SkillOutput
 from flowmind.skill import invoke, skill
 
-_VERSION = "0.1.0"
+_VERSION = "0.2.0"
+
+_CHANNELS = Literal["publish", "mass"]
 
 
 class WechatE2EInput(BaseModel):
     """微信公众号端到端入参。"""
+
     subject: str = Field(min_length=1, max_length=200, description="产品 / 主题")
     angle: str | None = Field(default=None, max_length=100, description="选题角度（可选）")
     tone: str | None = Field(default=None, max_length=200, description="语气 / 风格补充")
     keywords: list[str] | None = Field(default=None, max_length=10, description="需融入的关键词")
     auto_publish: bool = Field(default=True, description="是否自动发布（False=只存草稿）")
+    channel: _CHANNELS = Field(default="publish", description="publish=发布；mass=群发")
+    theme: str = Field(default="default", description="排版主题：default / grace / simple")
+    publish_time: int | None = Field(default=None, description="定时发布时间（Unix 秒，需账号开通定时权限）")
+    # 账号 override（前端账号管理自填），不传回落环境变量
+    app_id: str | None = Field(default=None, description="AppID override")
+    app_secret: str | None = Field(default=None, description="AppSecret override")
 
 
 class StepResult(BaseModel):
@@ -36,23 +48,25 @@ class WechatE2EResult(BaseModel):
     subject: str
     steps: list[StepResult]
     title: str = ""
-    body: str = ""
+    body_markdown: str = ""
+    body_html: str = ""
     tags: list[str] = Field(default_factory=list)
     image_urls: list[str] = Field(default_factory=list)
     media_id: str = ""
     publish_id: str | None = None
-    status: str = "pending"            # "published" | "drafted" | "failed"
+    msg_id: str | None = None
+    status: str = "pending"            # "published" | "mass_sent" | "drafted" | "failed"
     # 降级时填充
     failure_category: str | None = None
     retriable: bool = False
     warning: str | None = None
 
 
-@skill(id="content_wechat_e2e", name="微信公众号端到端发布", version=_VERSION)
+@skill(id="content_wechat_e2e", name="微信公众号端到端发布", version=_VERSION, category="内容创作")
 def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
-    """微信公众号端到端：选题 → 文案 → 配图 → 合规检查 → 发布。
+    """微信公众号端到端：选题 → 文案 → 配图 → 合规检查 → 排版 → 发布/群发。
 
-    数据流：串联 5 个子技能，任一步失败即停止并返回 degraded。
+    数据流：串联 6 个子技能，任一步失败即停止并返回 degraded。
     """
     steps: list[StepResult] = []
     result = WechatE2EResult(subject=inp.subject, steps=steps)
@@ -68,7 +82,7 @@ def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
     except Exception as exc:
         return _e2e_failed(result, "idea_design", f"选题异常：{exc}")
 
-    # Step 2: 文案
+    # Step 2: 文案（结构化 Markdown 正文）
     try:
         r = invoke("content_copywrite", {
             "platform": "wechat",
@@ -79,7 +93,7 @@ def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
         })
         if not r.ok:
             return _e2e_failed(result, "copywrite", "文案生成失败", r)
-        result.body = r.data.body
+        result.body_markdown = r.data.body
         result.tags = r.data.tags
         if not result.title:
             result.title = r.data.title
@@ -107,7 +121,7 @@ def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
         r = invoke("content_publish_check", {
             "platform": "wechat",
             "title": result.title,
-            "body": result.body,
+            "body": result.body_markdown,
             "tags": result.tags,
             "image_count": len(result.image_urls),
         })
@@ -117,17 +131,37 @@ def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
     except Exception as exc:
         return _e2e_failed(result, "publish_check", f"合规检查异常：{exc}")
 
-    # Step 5: 发布
+    # Step 5: 排版（Markdown → 公众号内联样式 HTML）
+    try:
+        r = invoke("content_typeset", {"markdown": result.body_markdown, "theme": inp.theme})
+        if r.ok and r.data.html:
+            result.body_html = r.data.html
+            steps.append(StepResult(
+                step="typeset", ok=True,
+                summary=f"主题「{r.data.theme_label}」，{r.data.stats.get('chars', 0)} 字",
+            ))
+        else:
+            return _e2e_failed(result, "typeset", r.error.message if r.error else "排版失败", r)
+    except Exception as exc:
+        return _e2e_failed(result, "typeset", f"排版异常：{exc}")
+
+    # Step 6: 发布 / 群发
     try:
         r = invoke("content_wechat_publish", {
             "title": result.title,
-            "content": _to_html(result.body, result.image_urls),
+            "content": result.body_html,
             "thumb_image_url": result.image_urls[0] if result.image_urls else "https://flowmind.local/mock/cover.jpg",
+            "summary": result.tags[:3] and "、".join(result.tags[:3]) or None,
             "publish": inp.auto_publish,
+            "channel": inp.channel,
+            "publish_time": inp.publish_time,
+            "app_id": inp.app_id,
+            "app_secret": inp.app_secret,
         })
         if r.ok and not r.metrics.degraded:
             result.media_id = r.data.media_id
             result.publish_id = r.data.publish_id
+            result.msg_id = r.data.msg_id
             result.status = r.data.status
             steps.append(StepResult(step="publish", ok=True, summary=result.status))
         else:
@@ -137,9 +171,8 @@ def content_wechat_e2e(inp: WechatE2EInput) -> SkillOutput[WechatE2EResult]:
 
     chain = ReasoningChain(
         conclusion=f"微信公众号「{result.title}」{result.status}（{len(steps)} 步完成）",
-        evidence=[],
-        causal_analysis=" → ".join(s.step for s in steps),
-        risk_note="发布后请在微信公众平台后台确认文章状态。",
+        evidence=[], causal_analysis=" → ".join(s.step for s in steps),
+        risk_note="发布/群发为异步过程，请在公众号后台确认最终状态。",
     )
     return SkillOutput(data=result, reasoning=[chain], confidence=0.9, sample_size=len(steps))
 
@@ -162,16 +195,3 @@ def _e2e_failed(result: WechatE2EResult, step: str, warning: str, r=None) -> Ski
         sample_size=len(result.steps), degraded=True,
         degradation_reason=result.failure_category or "unknown",
     )
-
-
-def _to_html(body: str, image_urls: list[str]) -> str:
-    """把纯文本正文 + 图片 URL 拼成微信公众号 HTML。"""
-    paragraphs = body.split("\n")
-    html_parts: list[str] = []
-    for p in paragraphs:
-        p = p.strip()
-        if p:
-            html_parts.append(f"<p>{p}</p>")
-    for url in image_urls:
-        html_parts.append(f'<p><img src="{url}" /></p>')
-    return "\n".join(html_parts)
