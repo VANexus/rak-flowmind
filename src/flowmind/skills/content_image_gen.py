@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from flowmind.config import load_config
 from flowmind.contracts import SkillOutput
 from flowmind.skill import skill
-from flowmind.skills._content_common import ContentPlatform, PLATFORMS, build_chain
+from flowmind.skills._content_common import PLATFORMS, ContentPlatform, build_chain
 from flowmind.skills._image_backend import AllInApiBackend, MockBackend
 from flowmind.skills._secrets import get_api_key
 

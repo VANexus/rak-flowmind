@@ -9,9 +9,9 @@ HTTP 层统一走 VLClient（vl_client.py），本文件不直接发请求。
 """
 from __future__ import annotations
 
-import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
 from datetime import datetime, timezone
 
+import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
 from pydantic import BaseModel, Field
 
 from flowmind.config import LocalizerConfig, load_config

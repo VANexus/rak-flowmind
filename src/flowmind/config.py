@@ -31,6 +31,12 @@ class FeishuKbConfig(BaseModel):
     min_top1_score: float = 0.015       # hard-gate 阈值：Top-1 final_score 低于此值 → 转人工
                                          # 默认值由 ~113 条 FAQ 真实分布校准：正常命中 0.05-0.20，
                                          # 话题外噪声 0.00-0.01。0.015 为分隔点。
+    # ── 本地向量嵌入（GPU 化升级：三路召回第三路）──
+    # auto = sentence-transformers 可导入则启用向量路，否则回落 BM25+TF-IDF 双路
+    # on   = 必须可用，否则显式报错；off = 显式禁用向量路
+    embed_backend: str = "auto"
+    embed_model: str = "BAAI/bge-small-zh-v1.5"
+    embed_device: str = "cuda"
 
 
 class MarketingImageConfig(BaseModel):
@@ -131,6 +137,14 @@ class LocalizerConfig(BaseModel):
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
     localize_tts_model: str = "qwen-audio-3.0-tts-flash"  # 配音 TTS 模型
     localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
+
+    # ── 本地/云后端开关（GPU 化升级：本地优先，云为回落）──
+    # auto = 本地库可导入即用本地，否则回落云；两端都不可用显式报错（不静默降级）
+    # local = 强制本地（库缺失显式报错）；cloud = 强制云
+    asr_backend: str = "auto"           # ASR：local(faster-whisper) / cloud(dashscope) / auto
+    local_asr_model: str = "small"      # faster-whisper 模型名（small/medium；8GB 显存够 medium）
+    local_asr_device: str = "cuda"      # cuda / cpu
+    ocr_backend: str = "auto"           # OCR：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto
 
 
 class ContentConfig(BaseModel):

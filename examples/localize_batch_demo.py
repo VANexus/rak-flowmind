@@ -41,11 +41,12 @@ def install_healthy_backend() -> list[dict]:
         return _R()
     def fake_post(url, json=None, timeout=None, **_kw):
         posts.append({"url": url, "payload": json})
+        n_videos = len(json["video_paths"])  # 类体内取不到闭包参数，先在函数作用域算好
         class _R:
             status_code = 200
             _json = {"batch_id": f"batch-{int(time.time()*1000)}",
-                     "job_ids": [f"job-{i}" for i in range(len(json["video_paths"]))],
-                     "total": len(json["video_paths"]), "message": "submitted"}
+                     "job_ids": [f"job-{i}" for i in range(n_videos)],
+                     "total": n_videos, "message": "submitted"}
             def raise_for_status(self): pass
             def json(self): return self._json
         return _R()
@@ -60,8 +61,9 @@ def install_failing_backend(status_code: int) -> None:
         "status_code": 200, "raise_for_status": lambda self: None,
         "json": lambda self: {"status": "ok"}})()
     def fake_post(url, json=None, timeout=None, **_kw):
+        code = status_code  # 类体内取不到闭包参数，先在函数作用域绑定
         class _R:
-            status_code = status_code
+            status_code = code
             def raise_for_status(self): pass
             def json(self): return {}
         return _R()

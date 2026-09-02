@@ -7,13 +7,19 @@
 ## 30 秒上手
 
 ```bash
-make install         # 装依赖
-make test            # 跑 71 个测试（必须全绿）
-make demo            # 跑 3 个技能 demo（看实际输出）
-make help            # 看所有可用命令
+conda env update -n flowmind -f environment.yml   # 装依赖（environment.yml 是依赖真源）
+conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
+conda run -n flowmind ruff check src              # lint（必须通过）
+for f in examples/*_demo.py; do conda run -n flowmind python "$f"; done  # 跑 demo 冒烟
 ```
 
 如果遇到任何概念不清楚，先看本文件对应章节，再问。
+
+> **环境注意**（2026-09 GPU 化升级后）：依赖真源已从 uv 迁到 **conda（environment.yml）**，`uv.lock` 已删除；
+> **测试目录已删除**（用户决定：不做单测，验证靠 `examples/*_demo.py` 冒烟 + 真实调用），
+> 本仓库**没有 Makefile / pytest**（历史文档中的 `make test` / `pytest` 均已失效，用上面的命令）。
+> GPU（P104-100，Pascal 6.1）本地模型约定见 `CLAUDE.md`「本地模型」段：ASR/OCR/向量嵌入本地优先，
+> LLM/TTS/生图走云 API，后端开关 local/cloud/auto 在 `flowmind.config.toml`。
 
 ## 仓库速览
 
@@ -30,22 +36,19 @@ src/flowmind/
     ├── inventory_risk.py         # 参考：纯确定性
     ├── marketing_image_gen.py    # 参考：确定性 mock 后端
     └── feishu_kb_search.py       # 参考：BM25+TF-IDF，引入外部依赖
-tests/                 # 71 个测试，每个技能一个文件
-examples/              # 3 个可跑 demo + MCP 配置模板（无需 MCP 客户端）
+examples/              # 可跑 demo（冒烟验证的唯一手段，本仓库无单测）
 docs/                  # 设计文档 / 集成指南 / 技能开发配方
-Makefile               # dev 命令入口
-scripts/setup.sh       # 一键 setup（依赖 + 测试 + demo + 配置）
+scripts/setup.sh       # 一键 setup（依赖 + demo + 配置）
 ```
 
 ## 典型任务与工作流
 
 ### 任务 1：修一个 bug
 
-1. `make test` 重现失败（如果有现成测试覆盖）
-2. 否则在 `tests/<skill>_test.py` 加一个失败用例（TDD 红）
-3. 修源码 → 测试转绿
-4. `make check`（lint + test）再 commit
-5. 提交格式 `<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`
+1. 写一个最小复现脚本（或直接调 `invoke("<id>", args)`）重现问题
+2. 修源码 → 复现脚本确认修复
+3. `conda run -n flowmind ruff check src` 通过再 commit
+4. 提交格式 `<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`
 
 ### 任务 2：加一个新技能
 
@@ -54,9 +57,8 @@ scripts/setup.sh       # 一键 setup（依赖 + 测试 + demo + 配置）
 1. 在 `src/flowmind/skills/<name>.py` 写 `@skill` 函数，遵循**现有技能模板**（优先复制 `inventory_risk.py` —— 最简）
 2. 在 `src/flowmind/skills/__init__.py` 末尾追加 `from flowmind.skills import <name>  # noqa: F401`
 3. 若有可调参数：在 `src/flowmind/config.py` 加一个 `XxxConfig` 类 + 纳入 `FlowmindConfig`
-4. 在 `tests/test_<name>.py` 写测试，**优先通过 `invoke("<id>", args)` 端到端断言**（不要直接调函数）
-5. 在 `examples/<name>_demo.py` 加 demo（沿用三段式：happy / 默认 / 错误）
-6. `make check` 全绿 → commit
+4. 在 `examples/<name>_demo.py` 加 demo（沿用三段式：happy / 默认 / 错误）—— demo 就是本仓库的「测试」
+5. `ruff check src` 全绿 + demo 跑通 → commit
 
 **铁律**：
 - ❌ 不改 `server.py` / `contracts.py` / `manifest.py` / `skill.py`（除非改对外契约）
@@ -67,25 +69,26 @@ scripts/setup.sh       # 一键 setup（依赖 + 测试 + demo + 配置）
 
 1. 用 `LSP` 工具查定义（goToDefinition / hover）
 2. 看 `CLAUDE.md`「架构」段对每个文件的角色说明
-3. 看 `tests/test_<file>.py` —— 测试是行为的最佳文档
-4. 跑 `make demo` 或 `examples/*_demo.py` 看实际输出
+3. 跑 `examples/*_demo.py` 看实际输出
+4. 直接 `invoke("<id>", args)` 打一遍看 envelope（trace / metrics / error）
 
 ### 任务 4：升级某个依赖
 
 ```bash
-uv add <pkg>~=<new-version>    # 改 pyproject.toml + uv.lock + 重装
-make test                       # 验证不破坏
-make lint                       # 验证类型/风格
+# 1) 改 environment.yml（依赖真源）：加/升级 <pkg>
+# 2) conda env update -n flowmind -f environment.yml   # 重装
+for f in examples/*_demo.py; do conda run -n flowmind python "$f"; done  # 验证不破坏
+conda run -n flowmind ruff check src                                     # 验证风格
 ```
 
-**不要手改 `pyproject.toml` 加依赖后忘了 `uv sync` 重新锁 uv.lock**。我刚在合并 PR #2 时踩过 —— `git status` 永远检一下 lock 文件是不是脏。
+**依赖真源是 `environment.yml`（conda）**。不要改 `pyproject.toml` 的 dependencies —— 那只是元数据兜底，改了 environment.yml 不 `conda env update` 等于没改。GPU 相关版本（torch cu121）有 Pascal 6.1 约束，见文件头注释。
 
 ### 任务 5：合并一个 PR（maintainer 视角）
 
 1. `gh pr view <N>` 看改动 + CI
 2. `gh pr view <N> --json files` 看共享文件（`config.py` / `skills/__init__.py`）冲突风险
 3. `gh pr diff <N>` 看实际改动
-4. **没有 CI 的项目**（本仓库当前）：本地 `git fetch origin pull/<N>/head:pr-<N>` → 切到分支跑 `make check` → 本地合并（`git merge --no-ff`）→ 推送
+4. **没有 CI 的项目**（本仓库当前）：本地 `git fetch origin pull/<N>/head:pr-<N>` → 切到分支跑 ruff + demo → 本地合并（`git merge --no-ff`）→ 推送
 5. 共享文件冲突：保留**双方新增**，import 按字母序
 
 ## 调试技巧
@@ -104,14 +107,11 @@ make lint                       # 验证类型/风格
 ### 单步追踪
 
 ```bash
-# 跑单个测试 + 详细输出
-make test-one T=tests/test_inventory_risk.py::test_xxx
-
-# 加断点（任意测试文件）
+# 加断点（任意源码位置）
 import pdb; pdb.set_trace()
 
 # 看真实 trace_id 是否贯穿
-uv run python -c "
+conda run -n flowmind python -c "
 import flowmind.skills
 from flowmind.skill import invoke
 r = invoke('inventory_risk', {'items': [{'sku':'A','on_hand':10,'unit_cost':1,'sales_30d':1}]})
@@ -123,10 +123,10 @@ print(r.trace.trace_id, r.error, r.metrics.latency_ms)
 
 ```bash
 # 起一个 stdio MCP server，前台跑
-make mcp-launch
+conda run -n flowmind flowmind-mcp
 
 # 另开终端，用 MCP 客户端连
-uv run python /tmp/probe_mcp.py    # 见 agent-integration.md 里的 probe 脚本
+conda run -n flowmind python /tmp/probe_mcp.py    # 见 agent-integration.md 里的 probe 脚本
 ```
 
 ## 千万别做（Anti-patterns）
@@ -137,16 +137,15 @@ uv run python /tmp/probe_mcp.py    # 见 agent-integration.md 里的 probe 脚�
 | 修改 `SkillResult` 信封字段 | 对外契约变更，所有 Agent 都要适配 |
 | 写代码 TODO 留给用户 | 违反"不留 TODO 给下游"约定；可调项走 config |
 | 在技能函数里 `try/except: pass` | 违反"错误永不静默"铁律 |
-| 测试不通过 `invoke()` 端到端断言 | 跳过 envelope 层等于跳过了 trace/latency/error 处理 |
-| 跳过 `make lint` 直接 commit | ruff 检查会卡 PR |
+| 跳过 `ruff check src` 直接 commit | lint 是合并前唯一的质量门 |
 | 把 `flowmind.config.toml` 提交进 git | 它是 gitignored 的用户私有配置 |
 
 ## 提交前 Checklist
 
-- [ ] `make check`（lint + test）全绿
-- [ ] 若是新技能：测试用 `invoke("<id>", args)`、demo 三段式齐备
+- [ ] `conda run -n flowmind ruff check src` 全绿
+- [ ] 若是新技能 / 改了技能行为：对应 `examples/*_demo.py` 跑通
 - [ ] 提交信息 `<type>: <中文描述>`
-- [ ] 若改了 `pyproject.toml`：确认 `uv.lock` 已同步并一起提交
+- [ ] 若改了 `environment.yml`：确认已 `conda env update` 且 demo 通过
 - [ ] 若改了 `config.py` / `skills/__init__.py`：留意 merge conflict hotspot
 
 ## 给 Claude Code 的额外提示
@@ -154,7 +153,7 @@ uv run python /tmp/probe_mcp.py    # 见 agent-integration.md 里的 probe 脚�
 - **优先用 LSP** 查定义 / 重构（rename / go-to-impl / find-refs），比 grep 准
 - **改架构前先读 `CLAUDE.md`** 「关键约定」段 —— 那里有不变量
 - **大改动进 plan mode** 让用户先看方案再下手
-- **改完跑 `make demo`** —— 三个 demo 跑通 = 三个技能都没被破坏（最快冒烟测试）
+- **改完跑 `examples/*_demo.py`** —— demo 跑通 = 技能没被破坏（最快冒烟测试）
 - **`@skill` 重复 id** 会抛 `ValueError`，加新技能前 `grep -r "id=\"" src/flowmind/skills/`
 
 ## 🤖 第一次拿到这个项目（FRESH AGENT）
@@ -169,6 +168,6 @@ uv run python /tmp/probe_mcp.py    # 见 agent-integration.md 里的 probe 脚�
    - **不要问** Agent 平台 —— 用户发给你就是选了你
    - **不要问** 要不要 MCP —— Agent 接 SDK 就必须装
 2. 按答案自动跑（视频本地化调 `run_interactive_init(ask_fn=...)`；其他什么都不配）
-3. `uv sync --extra dev` + `pytest` + `examples/*_demo.py` 验证
+3. `conda env update -n flowmind -f environment.yml` + `conda run -n flowmind pip install -e . --no-deps` + `examples/*_demo.py` 验证
 4. 起 MCP server + **自动检测 Agent 平台**（`~/.claude` / `~/.cursor` / `~/.config/cline`）写 stdio 配置
 5. 给用户交付摘要

@@ -8,7 +8,6 @@ environment 中的哪一类。
 from __future__ import annotations
 
 import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
-
 from pydantic import BaseModel, Field
 
 from flowmind.config import load_config

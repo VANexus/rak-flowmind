@@ -41,3 +41,6 @@ cc_debug.png
 
 # TikHub response disk cache (runtime artifact, not committed)
 .cache/
+
+# Trae IDE 本地过程产物
+.trae/

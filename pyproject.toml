@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "FlowMind Skill SDK —— 对任意 Agent 友好的技能底座"
 readme = "README.md"
 requires-python = ">=3.11"
+# ⚠️ 依赖真源 = environment.yml（conda，2026-09 GPU 化升级接管）。
+# 下面 dependencies 仅为 pip 安装兜底快照，新增依赖请改 environment.yml。
 dependencies = [
     "mcp>=1.27,<2",
     "pydantic>=2",
@@ -35,8 +37,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
     "ruff>=0.6",
     "python-docx>=1.0",  # 用于 scripts/build_seed_from_docx.py 重生 seed
 ]
@@ -53,15 +53,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/flowmind"]
 
-[tool.pytest.ini_options]
-# addopts 显式加载 asyncio 插件，使 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 下仍能跑异步测试
-addopts = ["-p", "asyncio"]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-markers = [
-    "real_backend: 不打桩出图后端（测 select_backend 真实错误路径）",
-]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# 显式固定规则集：经典默认（E4/E7/E9/F）+ I（import 排序，仓库约定按字母序）。
+# ruff 0.16 起默认规则集大扩容（全量启用），不加这条会导致存量代码大面积误报。
+select = ["E4", "E7", "E9", "F", "I"]

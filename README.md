@@ -10,7 +10,7 @@
 
 **你是被用户部署到本项目的 Agent（Claude Code / Cursor / Cline / OpenClaw / 任何 MCP 客户端）。**
 
-不要立刻跑 `uv run` / `make install` / 写代码。本节是**给你看的部署协议**，按下面的顺序与用户对话，再执行。
+不要立刻跑 `conda run` / 写代码。本节是**给你看的部署协议**，按下面的顺序与用户对话，再执行。
 
 ### 协议第 0 步：用一句话自我介绍并告诉用户你要做什么
 
@@ -49,19 +49,20 @@ cfg = run_interactive_init(ask_fn=my_chat_ask_fn)
 ### 协议第 3 步：装依赖 + 跑测试 + 跑 demos（不问）
 
 ```bash
-# 1. 装依赖
-uv sync --extra dev
+# 1. 装依赖（environment.yml 是依赖真源，含 GPU 本地模型栈）
+conda env update -n flowmind -f environment.yml
+conda run -n flowmind pip install -e . --no-deps
 
-# 2. 跑 14 个技能的全部测试（必须全绿）
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio
+# 2. lint（必须通过；本仓库无单测，验证靠 demo）
+conda run -n flowmind ruff check src
 
 # 3. 跑全部 demo 看真实输出
 for f in examples/*_demo.py; do
-  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run python "$f"
+  conda run -n flowmind python "$f"
 done
 
 # 4. 发现能力（schema 驱动，避免猜字段）
-uv run python -c "
+conda run -n flowmind python -c "
 from flowmind import discover
 for s in discover():
     print(s['id'], '-', s['description'])
@@ -76,7 +77,7 @@ for s in discover():
 
 ```bash
 # 后台启动（stdio 传输）
-nohup uv run flowmind-mcp > /tmp/flowmind-mcp.log 2>&1 &
+nohup conda run -n flowmind flowmind-mcp > /tmp/flowmind-mcp.log 2>&1 &
 ```
 
 **自动检测 Agent 平台并写配置**（不要问）：
@@ -127,13 +128,14 @@ mcp_config = {
 ## 安装
 
 ```bash
-uv sync --extra dev
+conda env update -n flowmind -f environment.yml   # 依赖真源 = environment.yml
+conda run -n flowmind pip install -e . --no-deps
 ```
 
 ## 作为 MCP 服务器运行
 
 ```bash
-uv run flowmind-mcp   # stdio 传输
+conda run -n flowmind flowmind-mcp   # stdio 传输
 ```
 
 ## 直接调用（非 MCP）
@@ -168,7 +170,7 @@ MCP 默认 stdio；供 Web 前端（如 cross-dashboard）等 HTTP 客户端消�
 
 ```bash
 # 后台启动（Streamable HTTP，默认 http://127.0.0.1:8001/mcp）
-FLOWMIND_MCP_HOST=127.0.0.1 FLOWMIND_MCP_PORT=8001 nohup uv run flowmind-mcp-http > /tmp/flowmind-mcp-http.log 2>&1 &
+FLOWMIND_MCP_HOST=127.0.0.1 FLOWMIND_MCP_PORT=8001 nohup conda run -n flowmind flowmind-mcp-http > /tmp/flowmind-mcp-http.log 2>&1 &
 ```
 
 ## 作为 A2A Agent 运行
@@ -177,7 +179,7 @@ FlowMind 同时实现 [Google A2A 协议](https://github.com/google/A2A)，可�
 
 ```bash
 # 启动 HTTP 服务器（MCP + A2A 双协议，单端口 8001）
-uv run flowmind-mcp-http
+conda run -n flowmind flowmind-mcp-http
 ```
 
 **1. 发现 Agent Card**（A2A 客户端自发现入口）：
@@ -248,7 +250,7 @@ save_config(FlowmindConfig(inventory=InventoryConfig(
 **或者用对话式向导（推荐）**：
 
 ```bash
-uv run flowmind-init      # CLI 9 步向导
+conda run -n flowmind flowmind-init      # CLI 9 步向导
 ```
 
 或 Agent 调：

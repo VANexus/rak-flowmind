@@ -1,6 +1,6 @@
 """飞书知识库 FAQ 检索技能：把飞书 Wiki/知识库同步到本地，对用户提问做
-4 类意图分类 + BM25+TF-IDF 双路召回 + RRF 融合 + 重排，输出 Top 3 命中
-与四段式因果推理链。
+4 类意图分类 + BM25+TF-IDF（+本地向量嵌入，GPU 可用时）多路召回 + RRF 融合
++ 重排，输出 Top 3 命中与四段式因果推理链。
 
 设计要点（遵循 FlowMind 约定）：
 - 输入用 pydantic 模型校验，输出 SkillOutput[T] 套 SkillResult 信封
@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
@@ -29,6 +30,7 @@ from flowmind.config import load_config
 from flowmind.contracts import Evidence, ReasoningChain, SkillOutput
 from flowmind.rules import Rule, evaluate_rules
 from flowmind.skill import skill
+from flowmind.skills import _local_embed
 
 _VERSION = "0.1.0"
 
@@ -476,10 +478,48 @@ class _Candidate:
     bm25_score: float
     vector_score: float
     rrf_score: float
+    embed_score: float = 0.0   # 本地向量余弦（第三路；无向量路时为 0）
 
 
-def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidate]:
-    """BM25 + TF-IDF 双路召回 + RRF 融合。
+# 语料向量进程内缓存：key=(model, device, docs 哈希)，FAQ 语料不变则不重算
+_DOC_EMBED_CACHE: dict[tuple, np.ndarray] = {}
+
+
+def _make_embed_fn(cfg):
+    """按 cfg.embed_backend 决定向量路。返回 encode(texts)->ndarray 或 None。
+
+    - off  = 显式禁用
+    - on   = 必须可用，否则显式报错（错误永不静默）
+    - auto = sentence-transformers 可导入则启用，否则 None（回落双路）
+    """
+    chosen = (cfg.embed_backend or "auto").lower()
+    if chosen == "off":
+        return None
+    if chosen == "on":
+        if not _local_embed.embed_available():
+            raise _local_embed.EmbedError(
+                "embed_backend=on 但 sentence-transformers/torch 不可用", category="environment")
+        return lambda texts: _local_embed.encode(
+            texts, model=cfg.embed_model, device=cfg.embed_device)
+    if _local_embed.embed_available():
+        return lambda texts: _local_embed.encode(
+            texts, model=cfg.embed_model, device=cfg.embed_device)
+    return None
+
+
+def _embed_docs(embed_fn, docs: list[str], model: str, device: str) -> np.ndarray:
+    """FAQ 语料嵌入（进程内缓存，FAQ 集不变则只算一次）。"""
+    key = (model, device, hashlib.sha1("\x1e".join(docs).encode("utf-8")).hexdigest())
+    if key not in _DOC_EMBED_CACHE:
+        _DOC_EMBED_CACHE[key] = embed_fn(docs)
+    return _DOC_EMBED_CACHE[key]
+
+
+def _hybrid_search(
+    faqs: list[dict], cleaned: str, top_n: int,
+    embed_fn=None, *, embed_model: str = "", embed_device: str = "",
+) -> list[_Candidate]:
+    """多路召回 + RRF 融合：BM25 + TF-IDF（+ 本地向量余弦，embed_fn 提供）。
 
     长 answer bias 防御（标题加权 + 中文短语匹配 bonus）：
     1) title 在 BM25 语料里复制 2 遍 —— 让 title token 在长文档里占比更高
@@ -519,6 +559,15 @@ def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidat
     except ValueError:
         vec_results = []
 
+    # 第三路：本地向量余弦（bge L2 归一化 → 内积即余弦）。embed_fn=None 时跳过。
+    embed_results: list[tuple[int, float]] = []
+    if embed_fn is not None:
+        doc_vecs = _embed_docs(embed_fn, docs, embed_model, embed_device)
+        q_emb = embed_fn([cleaned])[0]
+        e_sims = np.asarray(doc_vecs @ q_emb, dtype="float32").flatten()
+        e_order = np.argsort(-e_sims)[:top_n]
+        embed_results = [(int(i), float(e_sims[i])) for i in e_order if e_sims[i] > 0]
+
     # RRF 融合
     by_idx: dict[int, _Candidate] = {}
     for rank, (i, raw) in enumerate(bm25_results, start=1):
@@ -542,6 +591,17 @@ def _hybrid_search(faqs: list[dict], cleaned: str, top_n: int) -> list[_Candidat
             bm25_score=0.0, vector_score=0.0, rrf_score=0.0,
         ))
         c.vector_score = raw
+        c.rrf_score += 1.0 / (60 + rank)
+    for rank, (i, raw) in enumerate(embed_results, start=1):
+        c = by_idx.setdefault(i, _Candidate(
+            faq_id=faqs[i].get("id", f"FAQ-{i:04d}"),
+            category=faqs[i].get("category", "未分类"),
+            question=faqs[i].get("question", ""),
+            answer=faqs[i].get("answer", ""),
+            source_url=faqs[i].get("source_url", ""),
+            bm25_score=0.0, vector_score=0.0, rrf_score=0.0,
+        ))
+        c.embed_score = raw
         c.rrf_score += 1.0 / (60 + rank)
     return sorted(by_idx.values(), key=lambda x: x.rrf_score, reverse=True)
 
@@ -679,6 +739,7 @@ def _build_chain(
     intent_confidence: float,
     matched_keywords: list[str],
     top_k: list[FaqItem],
+    retrieval_desc: str = "BM25 + TF-IDF 双路召回",
 ) -> ReasoningChain:
     """组装四段式因果推理链。"""
     has_hits = len(top_k) > 0
@@ -699,7 +760,7 @@ def _build_chain(
     causal = (
         f"用户问题归类为「{intent_category}」（置信度 {intent_confidence}，"
         f"命中关键词 {matched_keywords or '无'}）。"
-        f"通过 BM25 + TF-IDF 双路召回、RRF 融合（k=60）、"
+        f"通过 {retrieval_desc}、RRF 融合（k=60）、"
         f"类别命中加权 + 跨类多样重排，取 Top {len(top_k)}。"
     )
     risk = (
@@ -768,8 +829,8 @@ def _agent_reply_hint(query: str, intent_category: str, top_k: list[FaqItem]) ->
 @skill(id="feishu_kb_search", name="飞书知识库 FAQ 检索", version=_VERSION)
 def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
     """把飞书知识库 FAQ 同步到本地，对用户提问做 4 类意图分类 +
-    BM25+TF-IDF 双路召回 + RRF 融合 + 类别加权重排，输出 Top K 命中
-    与四段式因果推理链。
+    BM25+TF-IDF（+本地向量，GPU 可用时）多路召回 + RRF 融合 + 类别加权重排，
+    输出 Top K 命中与四段式因果推理链。
 
     适用场景：车企 FAQ 智能客服、knowledge base 检索、客服意图分发。
     依赖：jieba（中文分词）+ rank-bm25 + scikit-learn + numpy（见 pyproject.toml）。
@@ -780,6 +841,13 @@ def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
     # 三语支持：非中文 query 在检索前做关键词扩展(EN/TH→ZH 同义词),让 BM25 能命中中文 FAQ
     retrieval_query = _expand_query_for_cross_lang(cleaned, lang)
     intent_category, intent_conf, matched = _classify(retrieval_query)
+
+    # 向量路（GPU 本地嵌入）：auto/on/off 语义见 _make_embed_fn
+    embed_fn = _make_embed_fn(cfg)
+    retrieval_desc = (
+        "BM25 + TF-IDF + 本地向量 三路召回" if embed_fn is not None
+        else "BM25 + TF-IDF 双路召回"
+    )
 
     # 加载 FAQ：优先用 cfg.data_path；未配置时用内置真实企业 FAQ（docx 解析产物，非演示数据）
     faqs = list(_load_faqs_from_path(cfg.data_path)) if cfg.data_path else list(_load_default_faqs())
@@ -794,13 +862,17 @@ def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
                 translation_required=lang != "zh",
                 translation_directive=_build_translation_directive(lang),
             ),
-            reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, [])],
+            reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, [],
+                                    retrieval_desc)],
             confidence=0.0, sample_size=0, degraded=True,
             degradation_reason="FAQ 数据未配置或文件不存在",
         )
 
     # 检索 + 重排
-    candidates = _hybrid_search(faqs, retrieval_query, top_n=cfg.retrieval_top_n)
+    candidates = _hybrid_search(
+        faqs, retrieval_query, top_n=cfg.retrieval_top_n,
+        embed_fn=embed_fn, embed_model=cfg.embed_model, embed_device=cfg.embed_device,
+    )
     top_k = _rerank(candidates, retrieval_query=retrieval_query, intent_category=intent_category, top_k=inp.top_k)
 
     # ★ Hard-gate：意图分类置信度=0（4 类关键词都没命中）→ 必转人工。
@@ -834,7 +906,8 @@ def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
                 translation_required=lang != "zh",
                 translation_directive=_build_translation_directive(lang),
             ),
-            reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, [])],
+            reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, [],
+                                    retrieval_desc)],
             confidence=0.0,
             sample_size=len(faqs),
             degraded=True,
@@ -856,7 +929,8 @@ def feishu_kb_search(inp: FeishuKbInput) -> SkillOutput[FeishuKbReport]:
             translation_required=lang != "zh",
             translation_directive=_build_translation_directive(lang),
         ),
-        reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, top_k)],
+        reasoning=[_build_chain(inp.query, intent_category, intent_conf, matched, top_k,
+                                retrieval_desc)],
         confidence=intent_conf,
         sample_size=len(faqs),
         degraded=len(top_k) == 0,

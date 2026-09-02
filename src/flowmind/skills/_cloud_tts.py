@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 DEFAULT_BASE = "https://dashscope.aliyuncs.com/api/v1"
 TARGET_MODEL = "qwen-audio-3.0-tts-flash"
 DEFAULT_VOICE = "longanhuan_v3.6"

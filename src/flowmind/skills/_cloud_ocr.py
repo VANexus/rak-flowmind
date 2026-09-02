@@ -128,39 +128,17 @@ def _bbox(boxes: list[tuple[int, int, int, int]]) -> dict:
     }
 
 
-def locate_subtitle_region(
-    frame_paths: list[str], *, api_key: str,
-    frame_width: int | None = None, frame_height: int | None = None,
+def _aggregate_regions(
+    boxes: list[tuple[int, int, int, int]],
+    frame_width: int | None,
+    frame_height: int | None,
 ) -> list[dict]:
-    """多帧聚合出字幕擦除区列表 [{x,y,w,h}, ...]（外扩 padding 防描边残留）。
+    """像素框列表 → 擦除区列表 [{x,y,w,h}, ...]（外扩 padding 防描边残留）。
 
     返回多个独立区域：竖排视频里标题（顶部）与歌词（底部）可能落在同一
     垂直线上但 y 位置分开，需分别擦除，避免全屏高的一条竖带误伤画面主体。
-    全部帧无字幕返回空列表。
+    空 boxes 返回空列表。云/本地 OCR 后端共用本聚合逻辑。
     """
-    if not api_key:
-        raise ValueError("收到空 API key。请检查 AI_SPEECH_API_KEY 是否设置（项目 .env）。")
-
-    boxes: list[tuple[int, int, int, int]] = []
-    for path in frame_paths:
-        for entry in _ocr_frame(path, api_key):
-            if frame_width is None or frame_height is None:
-                continue
-            px = _rect_to_pixels(entry, frame_width, frame_height)
-            if px is None:
-                continue
-            x1, y1, x2, y2 = px
-            bw, bh = x2 - x1, y2 - y1
-            # 尺寸先验：取长边（兼容竖排字幕——宽 23px 但高 477px）。
-            # 短边可能是旋转 90° 的细高文字，不应因"窄"被丢弃。
-            if frame_width is not None and max(bw, bh) < frame_width * 0.1:
-                continue
-            # 底部区域先验：bbox 底边应进入画面下部 40%（用 y2 而非 y1，
-            # 否则顶部起始的竖排标题 y1=760 刚好落在阈值 768 之上被误杀）。
-            if frame_height is not None and y2 < frame_height * 0.6:
-                continue
-            boxes.append((x1, y1, x2, y2))
-
     if not boxes:
         return []
 
@@ -202,3 +180,38 @@ def locate_subtitle_region(
         for r in regions:
             r["h"] = min(r["h"], frame_height - r["y"])
     return regions
+
+
+def locate_subtitle_region(
+    frame_paths: list[str], *, api_key: str,
+    frame_width: int | None = None, frame_height: int | None = None,
+) -> list[dict]:
+    """多帧聚合出字幕擦除区列表 [{x,y,w,h}, ...]（外扩 padding 防描边残留）。
+
+    云路径：抽样帧 → qwen3.5-ocr 检测底部字幕条 bbox → 共享聚合逻辑。
+    全部帧无字幕返回空列表。
+    """
+    if not api_key:
+        raise ValueError("收到空 API key。请检查 AI_SPEECH_API_KEY 是否设置（项目 .env）。")
+
+    boxes: list[tuple[int, int, int, int]] = []
+    for path in frame_paths:
+        for entry in _ocr_frame(path, api_key):
+            if frame_width is None or frame_height is None:
+                continue
+            px = _rect_to_pixels(entry, frame_width, frame_height)
+            if px is None:
+                continue
+            x1, y1, x2, y2 = px
+            bw, bh = x2 - x1, y2 - y1
+            # 尺寸先验：取长边（兼容竖排字幕——宽 23px 但高 477px）。
+            # 短边可能是旋转 90° 的细高文字，不应因"窄"被丢弃。
+            if frame_width is not None and max(bw, bh) < frame_width * 0.1:
+                continue
+            # 底部区域先验：bbox 底边应进入画面下部 40%（用 y2 而非 y1，
+            # 否则顶部起始的竖排标题 y1=760 刚好落在阈值 768 之上被误杀）。
+            if frame_height is not None and y2 < frame_height * 0.6:
+                continue
+            boxes.append((x1, y1, x2, y2))
+
+    return _aggregate_regions(boxes, frame_width, frame_height)

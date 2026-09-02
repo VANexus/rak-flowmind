@@ -23,8 +23,12 @@ from flowmind.skill import skill
 from flowmind.skills._content_common import build_chain
 from flowmind.skills._intel_common import fail_fields, intel_client
 from flowmind.skills._tikhub_intel_parse import (
-    parse_creator_insights, parse_ig_hashtag_posts, parse_music_chart,
-    parse_trending_searchwords, parse_user_profile, parse_video_search,
+    parse_creator_insights,
+    parse_ig_hashtag_posts,
+    parse_music_chart,
+    parse_trending_searchwords,
+    parse_user_profile,
+    parse_video_search,
 )
 
 _VERSION = "0.1.0"

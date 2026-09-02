@@ -140,9 +140,9 @@ SkillResult(
 | 内存占用（8 条） | < 10MB |
 | 启动开销 | 无（无模型加载） |
 
-## 测试覆盖
+## 验证
 
-`tests/test_feishu_kb.py`（10 用例）：
+通过 `examples/` 冒烟 + 直接 `invoke()` 覆盖：
 
 - 4 大类各覆盖
 - 空 query 校验失败

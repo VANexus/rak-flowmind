@@ -21,7 +21,10 @@ from flowmind.skill import skill
 from flowmind.skills._content_common import build_chain
 from flowmind.skills._intel_common import fail_fields, intel_client
 from flowmind.skills._tikhub_intel_parse import (
-    parse_product_detail, parse_product_reviews, parse_shop_categories, parse_shop_page,
+    parse_product_detail,
+    parse_product_reviews,
+    parse_shop_categories,
+    parse_shop_page,
     parse_shop_products,
 )
 

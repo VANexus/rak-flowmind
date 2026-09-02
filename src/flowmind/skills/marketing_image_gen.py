@@ -24,6 +24,8 @@ from flowmind.rules import Rule, evaluate_rules
 from flowmind.skill import skill
 from flowmind.skills._image_backend import (
     GeneratedImage as _GeneratedImage,
+)
+from flowmind.skills._image_backend import (
     select_backend,
 )
 from flowmind.skills._scene_extractor import select_extractor

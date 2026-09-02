@@ -13,16 +13,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 常用命令
 
 ```bash
-uv sync --extra dev                                    # 装运行时 + 开发依赖（httpx / requests / pytest / ruff）
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio                              # 全量测试（314 passed / 1 skipped，2026-08 当前）— 注意是 `-p asyncio` 不是 `-p pytest_asyncio`
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/test_inventory_risk.py -v          # 单文件
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/test_skill.py::test_xxx -v        # 单个测试
-uv run ruff check src tests                            # lint（必须通过）
-uv run flowmind-mcp                                    # 启动 MCP 服务器（stdio 传输）
-uv run flowmind-init                                   # 9 步对话式初始化向导（用户跑）
+conda env update -n flowmind -f environment.yml          # 装/更新依赖（environment.yml 是依赖真源）
+conda run -n flowmind pip install -e . --no-deps          # 包本体 + entry points（依赖全由 environment.yml 管）
+conda run -n flowmind ruff check src                      # lint（必须通过）
+for f in examples/*_demo.py; do conda run -n flowmind python "$f"; done  # demo 冒烟（本仓库无单测）
+conda run -n flowmind flowmind-mcp                        # 启动 MCP 服务器（stdio 传输）
+conda run -n flowmind flowmind-init                       # 9 步对话式初始化向导（用户跑）
 ```
 
-**Python 3.11**（`.python-version`）。**不用 Makefile / Docker / n8n**。ROS 环境下跑 pytest 必须 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`（ROS 插件 `launch_testing_ros_pytest_entrypoint` 与新版 pytest hookspec 不兼容）。
+**Python 3.12**（conda env `flowmind`）。**依赖真源 = `environment.yml`**（uv 已废弃，uv.lock 已删除）；`pyproject.toml` 只保留包元数据 / entry points / ruff 配置。**不用 Makefile / Docker / n8n / pytest**（tests/ 已删除，验证靠 demo + 真实 invoke）。
+
+## 本地模型（GPU 化，2026-09）
+
+硬件：NVIDIA P104-100（8GB，Compute Capability 6.1 / Pascal）。架构从「云优先」升级为「**本地优先（GPU 可行域内）+ LLM/TTS/生图继续云 API**」：
+
+| 能力 | 本地后端（默认优先） | 云回落 | 开关（flowmind.config.toml） |
+|---|---|---|---|
+| ASR | faster-whisper（CTranslate2，int8） | dashscope qwen-audio | `localizer.asr_backend` = local/cloud/auto |
+| OCR 字幕定位 | RapidOCR（onnxruntime，CPU） | dashscope qwen3.5-ocr | `localizer.ocr_backend` = local/cloud/auto |
+| FAQ 向量召回 | bge-small-zh-v1.5（sentence-transformers，GPU FP32） | 无（回落双路 BM25+TF-IDF） | `feishu_kb.embed_backend` = auto/on/off |
+| LLM / TTS / 生图 | —（不做本地） | LongCat / dashscope / ciyuansky | 维持云 API |
+
+关键约束与约定：
+
+- **Pascal 6.1 限制**：torch 锁 `2.5.1+cu121`（cu124+ 构建剔除 Pascal，勿升）；vLLM 不可用；CTranslate2 下限 CC 6.0，int8 走 dp4a。
+- **auto 语义**：本地库可导入即用本地，否则回落云；两端都不可用显式报错。实际使用的 backend 体现在 report 字段（`asr_backend` / `ocr_backend`）与 ReasoningChain 文本中，**不静默降级**。
+- **模型缓存与下载**：统一缓存 `HF_HOME=/srv/data/models` + `MODELSCOPE_CACHE=/srv/data/models`，HF 下载走本机代理 `http://127.0.0.1:7890`——均已写入 `~/.bashrc`（hf-mirror 会 302 回被墙主站，勿用）。新 shell 直接 import 库即生效，无需额外配置。
+- 模型实例进程内缓存（`_local_asr._models` / `_local_embed._models` / `_local_ocr._ocr_engine`），测试通过 monkeypatch `available()` / `encode()` 打桩，不打真实模型。
 
 ## 架构（大图）
 
@@ -70,18 +87,18 @@ FlowMind 同时是 Google A2A Agent：
 
 ## 关键约定
 
-- **云优先（一切皆 API，最高原则）**：**不做任何本地 AI 处理**。ASR / TTS / 翻译 / OCR / 生图 / LLM 等全部走云端 API，禁止引入本地模型推理（不装 torch / paddleocr / 本地 TTS 引擎等）。确定性 mock 后端仅作测试基建（须显式指定 `backend="mock"`），生产路径无 API key 时必须显式报错，**绝不静默降级到 mock 出假结果**。
+- **本地优先 + 云回落（GPU 化，2026-09 起，最高原则）**：ASR / OCR / 向量嵌入走本地模型（faster-whisper / RapidOCR / bge-small，P104-100 8GB Pascal 6.1），LLM / TTS / 生图继续云 API。后端开关走 config（local/cloud/auto，auto = 本地可用即用本地，无库回落云，两端都不可用显式报错）。确定性 mock 后端仅作测试基建（须显式指定），生产路径无任何可用后端时必须显式报错，**绝不静默降级出假结果**。
 - **语言**：注释 / 文档字符串 / 日志 / 提交信息用**中文**；标识符（变量/函数/类）用**英文**。
 - **提交格式**：`<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`。
 - **错误永不静默**：所有失败经 `SkillResult(ok=False, error=...)` 或 `degraded=True` 返回结构化结果，绝不吞异常、不返回半成品。`invoke()` 是这条铁律的统一执行点。
 - **不留代码 TODO 给下游开发者**：可调项全部实现并带通用默认，走 config；定制只发生在终端用户对话初始化。
 - **`trace_id` 贯穿**每次调用（透传优先，缺失则 `new_trace()` 生成）。
 - **DSI（周转天数）无动销（`sales_30d==0`）时取 `None`**，避免 `Infinity` 破坏 JSON 序列化。
-- **TDD**：先写失败测试，再实现；测试优先通过 `invoke("<id>", args)` 做端到端断言。
+- **验证靠真实运行**：本仓库无单测（tests/ 已删），改完跑 `examples/*_demo.py` + 直接 `invoke("<id>", args)` 看 envelope。
 - **API key 永不进 toml / commit**：视频本地化 `ALLIN_API_KEY`、营销生图 `ALLIN_API_KEY` 都只从环境变量读。代码里只有 `*_key_env: str = "ALLIN_API_KEY"` 这种 env var 名字。
 - **错误消息脱敏**：失败路径（`api_message` / `causal_analysis` / `warning`）不放完整异常详情或 `api_base` URL —— Agent 拿到 result 后能据此决策，但不泄漏内部 host / 凭证。
 
-## 失败返回的两种契约（测试必懂）
+## 失败返回的两种契约
 
 5 个 `localize_*` 的错误走 **degraded SkillOutput** 模式（**不是** raise）：
 ```python
@@ -101,42 +118,35 @@ r.metrics.degraded is False
 r.data.failure_category is None
 ```
 
-测试断言时**先看 skill 是哪一类**，再选对 expect_ok / expect_degraded / expect_category。
+调试 / 判断结果结构时**先看 skill 是哪一类**（degraded SkillOutput vs raise），再看对应字段。
 
-## 测试（两层）
+## 验证（demo 冒烟）
 
-### Layer 1 — 单元（pytest）
+本仓库**没有单测**（tests/ 已删除，用户决定：验证靠真实运行）：
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio
+for f in examples/*_demo.py; do conda run -n flowmind python "$f"; done
 ```
 
-> **注意**：pytest-asyncio 注册的 entry point 名是 `asyncio`（不是 `pytest_asyncio`）。`-p pytest_asyncio` 会加载"未知 plugin"，导致 `asyncio_mode = "auto"` 配置项不生效，`async def` 测试全部 fail（"async def functions are not natively supported"）。
-
-### Layer 2 — 端到端 Agent 视角（`flowmind-test-skill`）
-
-`.claude/skills/flowmind-test-skill/SKILL.md` 描述完整流程。本质：像真 Agent 一样用 `invoke()` 调 skill，覆盖 happy / boundary / 两种错误契约，输出 JSON + md 报告。**改完代码必跑**。
-
-每个 demo 脚本（`examples/<skill>_demo.py`）第一行都跑 `discover()` —— 这是真实字段名的来源。
+每个 demo 脚本（`examples/<skill>_demo.py`）第一行都跑 `discover()` —— 这是真实字段名的来源。改完技能 = 跑对应 demo；改动框架层 = 跑全部 demo。
 
 ## 贡献新技能
 
 1. `src/flowmind/skills/<name>.py` 写一个 `@skill` 函数返回 `SkillOutput`。
 2. `src/flowmind/skills/__init__.py` 加一行 `from flowmind.skills import <name>  # noqa: F401`。
 3. 可调参数加到 `config.py` 的 `XxxConfig` 类 + 纳入 `FlowmindConfig`。
-4. `tests/test_<name>.py` 用 `invoke("<id>", args)` 做端到端断言（不要直接调函数 —— 跳过 envelope 层 = 跳过 trace/latency/error 处理）。
-5. `examples/<name>_demo.py` 加 demo（happy / 默认 / 错误三段式）。
-6. 跑 Layer 1 + Layer 2 + `ruff check src tests`，全绿才 commit。
-7. 提交格式 `<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`。
+4. `examples/<name>_demo.py` 加 demo（happy / 默认 / 错误三段式），通过 `invoke("<id>", args)` 走 envelope 层。
+5. `ruff check src` 全绿 + demo 跑通才 commit。
+6. 提交格式 `<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`。
 
 具体配方 + 反例见 `.claude/skills/flowmind-test-skill/SKILL.md`（必读）和 `flowmind-onboard` skill。
 
 ## Agent / 用户工具
 
-- **CLI 向导**：`uv run flowmind-init`（用户跑 9 步问 9 个偏好）
+- **CLI 向导**：`conda run -n flowmind flowmind-init`（用户跑 9 步问 9 个偏好）
 - **Agent 对话式**：`from flowmind.interactive import run_interactive_init; run_interactive_init(ask_fn=my_llm_ask_fn)`
 - **Schema 发现**：`from flowmind import discover, field_names`
-- **MCP 起服务**：`nohup uv run flowmind-mcp > /tmp/flowmind-mcp.log 2>&1 &`
+- **MCP 起服务**：`nohup conda run -n flowmind flowmind-mcp > /tmp/flowmind-mcp.log 2>&1 &`
 - **真打 allin-api**（视频本地化 / 营销生图）：`export ALLIN_API_KEY="sk-..."` 后 backend 自动选真；无 key 自动 fallback mock。`examples/marketing_image_gen_real.py` 是真打集成 demo。
 
 ## 仓库特有目录

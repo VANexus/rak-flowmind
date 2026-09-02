@@ -25,7 +25,7 @@ import httpx
 from flowmind.skills._tikhub_cache import (
     _set_cache_meta,
     get_cache,
-    get_last_cache_meta,
+    get_last_cache_meta,  # noqa: F401  # re-export：b2b_keyword_trends 从本模块导入
 )
 
 # 热门标签榜单（Creative Center Trends → hashtag）

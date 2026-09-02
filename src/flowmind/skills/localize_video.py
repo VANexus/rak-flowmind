@@ -1,11 +1,12 @@
-"""localize_video 技能：全云端视频本地化流水线（单视频同步）。
+"""localize_video 技能：视频本地化流水线（单视频同步，本地优先）。
 
-流水线：ffmpeg 提音轨 → 百炼 Paraformer ASR（句级时间戳）
-→ 阿里云 OCR 定位原字幕区（双匹配：文本冲突以 ASR 为准）
-→ LongCat 翻译 → ffmpeg 擦除原字幕区 → CosyVoice 克隆音色逐句配音
-→ 混音 + ASS 字幕烧录。
+流水线：ffmpeg 提音轨 → ASR 句级时间戳（本地 faster-whisper GPU 优先，
+auto 回落百炼 Paraformer）→ OCR 定位原字幕区（本地 RapidOCR 优先，
+auto 回落 qwen3.5-ocr）→ LongCat 翻译 → ffmpeg 擦除原字幕区
+→ CosyVoice 克隆音色逐句配音 → 混音 + ASS 字幕烧录。
 
-一切智能环节走云 API；无 key 显式 degraded，绝不静默降级。
+后端由 config 后端开关控制（local/cloud/auto）；auto 两端都不可用时
+显式 degraded，绝不静默降级。
 失败契约遵循 HTTP 依赖类：r.ok=True + metrics.degraded + data.failure_category。
 """
 from __future__ import annotations
@@ -13,16 +14,23 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import requests  # noqa: F401  保留模块级引用：测试 fixture 打桩用
+import requests
 from pydantic import BaseModel, Field, field_validator
 
 from flowmind.config import load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
 from flowmind.errors import is_retriable
 from flowmind.skill import skill
-from flowmind.skills import _cloud_asr, _cloud_ocr, _cloud_tts, _llm_translate
-from flowmind.skills import _media
-from flowmind.skills._secrets import get_api_key  # noqa: F401 进程 env 优先，回落项目 .env
+from flowmind.skills import (
+    _cloud_asr,
+    _cloud_ocr,
+    _cloud_tts,
+    _llm_translate,
+    _local_asr,
+    _local_ocr,
+    _media,
+)
+from flowmind.skills._secrets import get_api_key
 
 _VERSION = "0.1.0"
 
@@ -62,12 +70,14 @@ class LocalizeVideoReport(BaseModel):
     asr_segment_count: int
     subtitle_region_erased: bool          # 是否定位到并擦除了原字幕区
     voice_used: str | None                # 实际使用的音色；None=未配音
+    asr_backend: str = "cloud"            # 实际使用的 ASR 后端（local/cloud）
+    ocr_backend: str = "cloud"            # 实际使用的 OCR 后端（local/cloud）
     failure_category: str | None = None
     retriable: bool = False
     warning: str | None = None
 
 
-@skill(id="localize_video", name="全云视频本地化流水线", version=_VERSION)
+@skill(id="localize_video", name="视频本地化流水线（本地优先）", version=_VERSION)
 def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     """ASR → LLM 翻译 → 原字幕擦除 → 克隆 TTS 配音 → 合成。
 
@@ -101,12 +111,10 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             sample_rate=cfg.asr_sample_rate,
         )
 
-        # ── 2) ASR（句级时间戳；本地 wav 经 WS 流式直推云端，无需公网 URL）──
-        segments = _cloud_asr.transcribe_local(
-            audio_path, api_key=speech_key,
-            sample_rate=cfg.asr_sample_rate,
-            language_hints=[inp.source_lang or cfg.source_lang_default],
-        )
+        # ── 2) ASR（本地优先：faster-whisper GPU；auto 回落 dashscope 流式）──
+        asr_backend, asr_fn = _select_asr(cfg, speech_key)
+        source_lang = inp.source_lang or cfg.source_lang_default
+        segments = asr_fn(audio_path, source_lang)
         duration_s, width, height = (None, None, None)
         if not is_url:
             duration_s, width, height = _media.probe_media(src)
@@ -117,8 +125,9 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         if duration_s is None:
             duration_s = segments[-1]["end"]
 
-        # ── 3) OCR 定位原字幕区（离线抽样 N 帧，非逐帧实时——见 _locate_region）──
-        region = _locate_region(src, duration_s, workdir, speech_key, cfg,
+        # ── 3) OCR 定位原字幕区（本地优先：RapidOCR CPU；auto 回落 qwen3.5-ocr）──
+        ocr_backend, ocr_fn = _select_ocr(cfg, speech_key)
+        region = _locate_region(src, duration_s, workdir, ocr_fn, cfg,
                                 width=width, height=height)
 
         # ── 3.5) 长句拆分（避免"一坨字幕"覆盖全视频）──
@@ -200,8 +209,8 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             ),
             triggered_rules=[], evidence=[],
             causal_analysis=(
-                f"Qwen-Audio-3.0 ASR {len(segments)} 句 → 拆分为 {len(display_segments)} 句 → "
-                f"LongCat 翻译 → qwen3.5-ocr 定位 → qwen-audio TTS → ffmpeg 合成"
+                f"ASR[{asr_backend}] {len(segments)} 句 → 拆分为 {len(display_segments)} 句 → "
+                f"LongCat 翻译 → OCR[{ocr_backend}] 定位 → qwen-audio TTS → ffmpeg 合成"
             ),
             risk_note="译文为 LLM 生成，正式投放前建议人工抽查。",
         )
@@ -212,6 +221,8 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
                 asr_segment_count=len(segments),
                 subtitle_region_erased=bool(regions),
                 voice_used=voice_used,
+                asr_backend=asr_backend,
+                ocr_backend=ocr_backend,
             ),
             reasoning=[chain], confidence=0.9, sample_size=len(segments),
         )
@@ -227,10 +238,70 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         return _fail(inp, f"媒体处理失败: {type(exc).__name__}", "video")
 
 
+def _select_asr(cfg, speech_key: str) -> tuple[str, object]:
+    """选择 ASR 后端。返回 (backend_name, fn(wav_path, language) -> segments)。
+
+    - local  = 强制本地 faster-whisper（库缺失时 transcribe 内部显式报错）
+    - cloud  = 强制 dashscope 流式
+    - auto   = 本地库可导入即用本地；否则回落云；两端都不可用显式报错
+    """
+    chosen = (cfg.asr_backend or "auto").lower()
+
+    def _local(p: str, lang: str | None) -> list[dict]:
+        return _local_asr.transcribe_local(
+            p, model=cfg.local_asr_model, device=cfg.local_asr_device, language=lang)
+
+    def _cloud(p: str, lang: str | None) -> list[dict]:
+        return _cloud_asr.transcribe_local(
+            p, api_key=speech_key, sample_rate=cfg.asr_sample_rate,
+            language_hints=[lang] if lang else None)
+
+    if chosen == "local":
+        return "local", _local
+    if chosen == "cloud":
+        return "cloud", _cloud
+    if _local_asr.available():
+        return "local", _local
+    if speech_key:
+        return "cloud", _cloud
+    raise _cloud_asr.ASRError(
+        "asr_backend=auto：faster-whisper 不可用且未设置 AI_SPEECH_API_KEY，无可用 ASR 后端",
+        category="environment",
+    )
+
+
+def _select_ocr(cfg, speech_key: str) -> tuple[str, object]:
+    """选择 OCR 后端。返回 (backend_name, fn(frame_paths, w, h) -> regions)。
+
+    语义同 _select_asr：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto。
+    """
+    chosen = (cfg.ocr_backend or "auto").lower()
+
+    def _local(frames: list[str], w: int | None, h: int | None) -> list[dict]:
+        return _local_ocr.locate_subtitle_region(frames, frame_width=w, frame_height=h)
+
+    def _cloud(frames: list[str], w: int | None, h: int | None) -> list[dict]:
+        return _cloud_ocr.locate_subtitle_region(
+            frames, api_key=speech_key, frame_width=w, frame_height=h)
+
+    if chosen == "local":
+        return "local", _local
+    if chosen == "cloud":
+        return "cloud", _cloud
+    if _local_ocr.available():
+        return "local", _local
+    if speech_key:
+        return "cloud", _cloud
+    raise _cloud_ocr.OCRError(
+        "ocr_backend=auto：RapidOCR 不可用且未设置 AI_SPEECH_API_KEY，无可用 OCR 后端",
+        category="environment",
+    )
+
+
 def _locate_region(src: str, duration_s: float, workdir: Path,
-                   key: str, cfg, *, width: int | None = None,
+                   ocr_fn, cfg, *, width: int | None = None,
                    height: int | None = None) -> list[dict]:
-    """离线抽样 N 帧（均匀铺开，非逐帧实时）→ 云 OCR → 聚合字幕擦除区列表。
+    """离线抽样 N 帧（均匀铺开，非逐帧实时）→ OCR → 聚合字幕擦除区列表。
 
     可能返回多个独立区域（顶部标题 + 底部歌词）；帧数走 cfg.ocr_frame_count。
     """
@@ -245,9 +316,7 @@ def _locate_region(src: str, duration_s: float, workdir: Path,
             continue
     if not frames:
         return []
-    return _cloud_ocr.locate_subtitle_region(frames, api_key=key,
-                                             frame_width=width,
-                                             frame_height=height)
+    return ocr_fn(frames, width, height)
 
 
 def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict]:

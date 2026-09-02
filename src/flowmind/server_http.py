@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 
-from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 
 from flowmind.a2a.server import FlowMindA2AServer
@@ -70,21 +69,25 @@ def _add_cors_middleware() -> None:
     mcp.streamable_http_app = streamable_http_app_with_cors  # type: ignore[method-assign]
 
 
-def build_app() -> Starlette:
-    """构建组合 app（MCP + A2A），返回 Starlette 应用。"""
-    # FastMCP v1.28 以 streamable_http_app() 暴露底层 Starlette app
-    mcp_app = mcp.streamable_http_app()
+def _mount_a2a_routes() -> None:
+    """把 A2A 路由（Agent Card + /a2a）挂进 FastMCP 的 Starlette 应用。
 
-    # 挂载 A2A 路由
-    a2a_server = FlowMindA2AServer()
-    a2a_app = a2a_server.get_app()
+    mcp.run() 每次都会重新调用 streamable_http_app() 创建新 Starlette 实例，
+    直接在实例上 append 路由会被重建覆盖。这里沿用 CORS 的实例级 patch 模式：
+    在每次 app 创建后追加 A2A 路由（按 path 去重，重复调用安全）。
+    """
+    a2a_app = FlowMindA2AServer().get_app()
+    original = mcp.streamable_http_app
 
-    # 将 A2A 路由合并到 MCP app
-    for route in a2a_app.routes:
-        if hasattr(route, "path"):
-            mcp_app.routes.append(route)
+    def streamable_http_app_with_a2a():
+        app = original()
+        existing = {getattr(r, "path", None) for r in app.routes}
+        for route in a2a_app.routes:
+            if getattr(route, "path", None) not in existing:
+                app.routes.append(route)
+        return app
 
-    return mcp_app
+    mcp.streamable_http_app = streamable_http_app_with_a2a  # type: ignore[method-assign]
 
 
 def main() -> None:
@@ -96,6 +99,8 @@ def main() -> None:
     register_rest_routes(mcp)
     # 在 run 之前挂载 CORS 中间件（让前端跨域 fetch 发现端点）
     _add_cors_middleware()
+    # 在 run 之前挂载 A2A 路由（Agent Card + tasks/send）
+    _mount_a2a_routes()
     mcp.run(transport="streamable-http")
 
 

@@ -11,7 +11,7 @@ summarizer_results），保持模块级名字便于测试 mock。
 from __future__ import annotations
 
 import operator
-from typing import Any, Annotated
+from typing import Annotated, Any
 
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict

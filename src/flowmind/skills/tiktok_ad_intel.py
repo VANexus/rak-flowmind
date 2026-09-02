@@ -19,7 +19,11 @@ from flowmind.skill import skill
 from flowmind.skills._content_common import build_chain
 from flowmind.skills._intel_common import fail_fields, intel_client
 from flowmind.skills._tikhub_intel_parse import (
-    parse_ad_filters, parse_ad_materials, parse_ad_pagination, parse_hashtag_detail, parse_locations,
+    parse_ad_filters,
+    parse_ad_materials,
+    parse_ad_pagination,
+    parse_hashtag_detail,
+    parse_locations,
 )
 
 _VERSION = "0.1.0"
