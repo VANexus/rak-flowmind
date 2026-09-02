@@ -67,7 +67,7 @@ def test_trends_empty_real_but_ok(monkeypatch):
 # =====================================================================
 
 def test_trends_degraded_environment_returns_empty_keywords(monkeypatch):
-    exc = TrendError("未配置 TIKHUB_API_KEY", category="environment", retriable=False)
+    exc = TrendError("未配置 AI_TRENDS_API_KEY", category="environment", retriable=False)
     monkeypatch.setattr(mod, "resolve_adapter", lambda p, cfg, **kwargs: _FakeAdapter(exc=exc))
     r = invoke("b2b_keyword_trends", {"platform": "tiktok"})
     assert r.ok is True
@@ -77,17 +77,17 @@ def test_trends_degraded_environment_returns_empty_keywords(monkeypatch):
     assert r.data.retriable is False
     assert r.data.keywords == []  # 云优先：空数组，绝不 fallback seed
     # TikTok 主路径走 TikHub：引导修复配置/网络，而非渠道登录
-    assert r.data.warning and "TIKHUB_API_KEY" in r.data.warning
+    assert r.data.warning and "AI_TRENDS_API_KEY" in r.data.warning
     assert "设置 → B 端运营" not in r.data.warning
 
 
 def test_trends_degraded_instagram_guides_config_not_channel_login(monkeypatch):
     """IG 主路径走 TikHub：失败时引导修复配置，而非渠道登录。"""
-    exc = TrendError("未配置 TIKHUB_API_KEY", category="environment", retriable=False)
+    exc = TrendError("未配置 AI_TRENDS_API_KEY", category="environment", retriable=False)
     monkeypatch.setattr(mod, "resolve_adapter", lambda p, cfg, **kwargs: _FakeAdapter(exc=exc))
     r = invoke("b2b_keyword_trends", {"platform": "instagram", "keyword": "x"})
     assert r.data.degraded is True
-    assert r.data.warning and "TIKHUB_API_KEY" in r.data.warning
+    assert r.data.warning and "AI_TRENDS_API_KEY" in r.data.warning
     assert "渠道授权" not in r.data.warning
 
 
@@ -103,13 +103,13 @@ def test_trends_degraded_transient_retriable(monkeypatch):
 
 
 def test_trends_instagram_without_key_degrades(monkeypatch):
-    """走真实 resolve_adapter：instagram 未配 TIKHUB_API_KEY → degraded=[]（无种子，无网络）。"""
+    """走真实 resolve_adapter：instagram 未配 AI_TRENDS_API_KEY → degraded=[]（无种子，无网络）。"""
     monkeypatch.setattr("flowmind.skills._secrets.get_api_key", lambda env: "")
     r = invoke("b2b_keyword_trends", {"platform": "instagram", "keyword": "skincare"})
     assert r.ok is True
     assert r.data.degraded is True
     assert r.data.failure_category == "environment"
-    assert "TIKHUB_API_KEY" in r.data.warning
+    assert "AI_TRENDS_API_KEY" in r.data.warning
     assert r.data.keywords == []
 
 

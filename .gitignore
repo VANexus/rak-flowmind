@@ -38,3 +38,6 @@ cc_debug.png
 
 # 旧 CDP 抓取方案的浏览器配置目录（方案已删除，本地残留不入库）
 .browser-profile/
+
+# TikHub response disk cache (runtime artifact, not committed)
+.cache/

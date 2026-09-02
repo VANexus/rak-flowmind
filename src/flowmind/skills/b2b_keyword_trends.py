@@ -54,6 +54,8 @@ class KeywordTrendPlan(BaseModel):
     failure_category: str | None = None
     retriable: bool = False
     warning: str | None = None
+    # TikHub 响应缓存元信息（_tikhub_cache）：{mode: local|local_fallback|speculative|live, hit, age_s}
+    cache: dict | None = None
 
 
 @skill(id="b2b_keyword_trends", name="行业关键词趋势榜单", version=_VERSION)
@@ -63,7 +65,7 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
     数据流：平台 → adapter 路由 → 真实抓取（TikHub/IG 会话回退/TOP）→ 解析 →
     KeywordTrendPlan + 推理链；失败（不支持平台 / fetch 抛错 / 缺凭证）→
     degraded=True + keywords=[] + 结构化 failure_category/retriable/warning，
-    具体修复动作（配 TIKHUB_API_KEY / 渠道授权登录回退）由 adapter 错误消息给出。
+    具体修复动作（配 AI_TRENDS_API_KEY / 渠道授权登录回退）由 adapter 错误消息给出。
     """
     cfg = load_config().keyword_trend
     limit = inp.limit or 20
@@ -114,6 +116,11 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
         if str(it.get("word") or "").strip()
     ]
 
+    # TikHub 缓存元信息（仅 tikhub 主路径有值；alibaba/self_host 为 None）
+    from flowmind.skills._tikhub_client import get_last_cache_meta
+
+    cache_meta = get_last_cache_meta()
+
     chain = build_chain(
         conclusion=(
             f"{inp.platform} 关键词趋势抓取{'降级' if degraded else '成功'}："
@@ -126,6 +133,7 @@ def b2b_keyword_trends(inp: KeywordTrendInput) -> SkillOutput[KeywordTrendPlan]:
         data=KeywordTrendPlan(
             platform=inp.platform, source=source_label, degraded=degraded,
             keywords=keywords, failure_category=failure_category, retriable=retriable, warning=warning,
+            cache=cache_meta,
         ),
         reasoning=[chain],
         confidence=0.0 if degraded else 0.9,
