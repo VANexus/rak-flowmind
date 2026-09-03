@@ -1,6 +1,8 @@
-"""LongCat 翻译客户端：Anthropic 兼容 /v1/messages 协议（httpx 直调）。
+"""LLM 翻译客户端：Anthropic / OpenAI 兼容双协议（httpx 直调）。
 
 云优先原则：翻译必须走云端 LLM；无 key 显式报错，不静默降级。
+协议经 protocol 参数选择（anthropic → /v1/messages；openai → /chat/completions），
+默认 anthropic（LongCat）。base/model/api_key 由调用方传入。
 输入是 ASR 句段（index/begin/end/text），输出同结构译文——时间轴字段原样保留，
 供后续字幕对齐与 TTS 逐句合成使用。
 key 由调用方从环境变量读出后传入，本模块不直接读 env、不进 config 文件。
@@ -8,12 +10,15 @@ key 由调用方从环境变量读出后传入，本模块不直接读 env、不
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截
 
 DEFAULT_BASE = "https://api.longcat.chat/anthropic"
 DEFAULT_MODEL = "LongCat-2.0"
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 _SYSTEM_PROMPT = (
     "你是专业视频字幕本地化译者。把用户给出的字幕句段从源语言翻译成目标语言。"
@@ -41,6 +46,7 @@ def translate_segments(
     api_key: str,
     api_base: str = DEFAULT_BASE,
     model: str = DEFAULT_MODEL,
+    protocol: str = "anthropic",
     batch_size: int = 3,
     timeout_s: float = 180.0,
     client: httpx.Client | None = None,
@@ -57,15 +63,15 @@ def translate_segments(
         out.extend(_translate_batch(
             batch, target_lang=target_lang, source_lang=source_lang,
             api_key=api_key, api_base=api_base, model=model,
-            timeout_s=timeout_s, client=client,
+            protocol=protocol, timeout_s=timeout_s, client=client,
         ))
     return out
 
 
 def _translate_batch(
     batch: list[dict], *, target_lang: str, source_lang: str,
-    api_key: str, api_base: str, model: str, timeout_s: float,
-    client: httpx.Client | None,
+    api_key: str, api_base: str, model: str, protocol: str,
+    timeout_s: float, client: httpx.Client,
 ) -> list[dict]:
     # LLM 只见批内局部序号（0-based），返回后映射回全局 index
     local = [{"index": i, "text": s["text"]} for i, s in enumerate(batch)]
@@ -74,16 +80,34 @@ def _translate_batch(
         "target_lang": target_lang,
         "segments": local,
     }
-    body = {
-        "model": model,
-        "max_tokens": 8192,
-        "system": _SYSTEM_PROMPT,
-        "messages": [
-            {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-        ],
-    }
-    url = f"{api_base.rstrip('/')}/v1/messages"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    user_content = json.dumps(user_payload, ensure_ascii=False)
+
+    if protocol == "openai":
+        url = f"{api_base.rstrip('/')}/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}",
+                   "Content-Type": "application/json"}
+        body = {
+            "model": model,
+            "max_tokens": 8192,
+            # 关闭推理模式的思考（Qwen3 系等混合推理模型默认开启，
+            # 思考会耗尽 max_tokens 导致 content 为空）；不认该参数的
+            # 供应商返回 400 时在下方自动去参重发
+            "enable_thinking": False,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+        }
+    else:  # anthropic（默认）
+        url = f"{api_base.rstrip('/')}/v1/messages"
+        headers = {"Authorization": f"Bearer {api_key}",
+                   "Content-Type": "application/json"}
+        body = {
+            "model": model,
+            "max_tokens": 8192,
+            "system": _SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": user_content}],
+        }
 
     try:
         if client is not None:
@@ -91,6 +115,14 @@ def _translate_batch(
         else:
             with httpx.Client(timeout=timeout_s) as c:
                 resp = c.post(url, headers=headers, json=body)
+        if resp.status_code == 400 and "enable_thinking" in body:
+            # 供应商不认 enable_thinking：去掉该参数重发一次
+            body = {k: v for k, v in body.items() if k != "enable_thinking"}
+            if client is not None:
+                resp = client.post(url, headers=headers, json=body)
+            else:
+                with httpx.Client(timeout=timeout_s) as c:
+                    resp = c.post(url, headers=headers, json=body)
     except requests.exceptions.Timeout as exc:
         raise LLMTtranslateError("LLM 超时", category="environment", retriable=False) from exc
     except httpx.HTTPStatusError as exc:
@@ -106,13 +138,17 @@ def _translate_batch(
         raise LLMTtranslateError(f"LLM HTTP {resp.status_code}", category="video")
 
     data = resp.json()
-    # Anthropic 兼容协议：content 是块数组；推理模型的 thinking 块在前，
-    # 取第一个 type=text 的块（无则结构异常）
-    text = next(
-        (blk.get("text") for blk in data.get("content", [])
-         if isinstance(blk, dict) and blk.get("type") == "text"),
-        None,
-    )
+    if protocol == "openai":
+        # OpenAI 兼容协议：choices[0].message.content
+        text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+    else:
+        # Anthropic 兼容协议：content 是块数组；推理模型的 thinking 块在前，
+        # 取第一个 type=text 的块（无则结构异常）
+        text = next(
+            (blk.get("text") for blk in data.get("content", [])
+             if isinstance(blk, dict) and blk.get("type") == "text"),
+            None,
+        )
     if not text:
         raise LLMTtranslateError("LLM 返回结构异常")
 
@@ -121,7 +157,9 @@ def _translate_batch(
 
 def _parse_reply(content: str, batch: list[dict]) -> list[dict]:
     """解析 LLM 的 JSON 数组回复（批内局部 index），映射回原句段结构。"""
-    text = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+    # 推理模型可能把思考过程以 <think> 块混进正文，先剥掉
+    text = _THINK_RE.sub("", content).strip()
+    text = text.removeprefix("```json").removeprefix("```").removesuffix("```")
     try:
         items = json.loads(text)
     except json.JSONDecodeError as exc:

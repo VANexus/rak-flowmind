@@ -133,10 +133,11 @@ class LocalizerConfig(BaseModel):
 
     # ── 全云流水线（localize_video / voice_clone_enroll） ──
     asr_sample_rate: int = 16000        # 提取音轨采样率（qwen-audio-3.0-asr-flash-streaming 支持 16k）
-    ocr_frame_count: int = 5            # 字幕定位离线抽帧数（均匀取样，非逐帧）
+    ocr_frame_count: int = 8            # 字幕定位离线抽帧数（均匀取样，非逐帧）
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
     localize_tts_model: str = "qwen-audio-3.0-tts-flash"  # 配音 TTS 模型
-    localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
+    localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设或复刻音色 ID；空=不配音）
+    voice_clone_prefix: str = "flwm"    # 复刻音色名前缀（仅字母数字，≤10 字符）
 
     # ── 本地/云后端开关（GPU 化升级：本地优先，云为回落）──
     # auto = 本地库可导入即用本地，否则回落云；两端都不可用显式报错（不静默降级）
@@ -145,6 +146,9 @@ class LocalizerConfig(BaseModel):
     local_asr_model: str = "small"      # faster-whisper 模型名（small/medium；8GB 显存够 medium）
     local_asr_device: str = "cuda"      # cuda / cpu
     ocr_backend: str = "auto"           # OCR：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto
+    erase_backend: str = "auto"         # 擦除：auto(LaMa 可用则用否则 delogo) / local(强制 LaMa) / delogo
+    tts_backend: str = "auto"           # 配音：auto(本地栈可用则克隆原片人声否则云) / local(强制本地克隆) / cloud(强制云)
+    bgm_vocal_sep: bool = True          # 背景音人声分离（demucs htdemucs）：True=纯伴奏做 BGM；False=整条原声
 
 
 class ContentConfig(BaseModel):

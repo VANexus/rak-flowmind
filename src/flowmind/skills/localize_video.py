@@ -3,7 +3,8 @@
 流水线：ffmpeg 提音轨 → ASR 句级时间戳（本地 faster-whisper GPU 优先，
 auto 回落百炼 Paraformer）→ OCR 定位原字幕区（本地 RapidOCR 优先，
 auto 回落 qwen3.5-ocr）→ LongCat 翻译 → ffmpeg 擦除原字幕区
-→ CosyVoice 克隆音色逐句配音 → 混音 + ASS 字幕烧录。
+→ 克隆/预设音色逐句配音（克隆音色经 voice_clone_enroll 复刻，
+配音时长自动 atempo 对齐原句）→ 混音（可选保留 -12dB 背景音）+ ASS 字幕烧录。
 
 后端由 config 后端开关控制（local/cloud/auto）；auto 两端都不可用时
 显式 degraded，绝不静默降级。
@@ -25,10 +26,13 @@ from flowmind.skills import (
     _cloud_asr,
     _cloud_ocr,
     _cloud_tts,
+    _inpaint,
     _llm_translate,
     _local_asr,
     _local_ocr,
+    _local_tts,
     _media,
+    _music_sep,
 )
 from flowmind.skills._secrets import get_api_key
 
@@ -46,13 +50,34 @@ class LocalizeVideoInput(BaseModel):
     source_lang: str | None = Field(default=None, description="源语言；None=zh")
     voice_id: str | None = Field(
         default=None,
-        description="配音音色（预设音色名，如 longanhuan_v3.6）；"
+        description="配音音色（预设音色名如 longanhuan_v3.6，"
+                    "或 voice_clone_enroll 返回的复刻音色 ID）；"
                     "None=读 config.localize_voice，配置为空则不配音",
     )
     output_path: str | None = Field(
         default=None, description="输出 mp4 路径；None=输入同目录 <stem>_localized.mp4"
     )
-    keep_background_audio: bool = Field(default=False, description="原声 -12dB 保留为背景")
+    keep_background_audio: bool = Field(default=True, description="原声 -12dB 保留为背景（BGM/环境音不丢）；显式传 False 可输出纯配音")
+    tts_backend: str | None = Field(
+        default=None,
+        description="配音后端：auto（本地栈可用则克隆原片人声，否则云 TTS）/ "
+                    "local（强制本地 Qwen3-TTS 克隆）/ cloud（强制云端，voice_id 生效）；"
+                    "None=读 config.tts_backend",
+    )
+    voice_ref_audio: str | None = Field(
+        default=None,
+        description="本地克隆参考音频路径/URL（缺省自动用原片人声）",
+    )
+    voice_ref_text: str | None = Field(
+        default=None,
+        description="参考音频转写（缺省用本次 ASR 原文/本地 ASR 补转写）",
+    )
+    erase_backend: str | None = Field(
+        default=None,
+        description="字幕擦除后端：auto（LaMa 可用则用，否则 delogo）/ "
+                    "local（强制 LaMa，缺失显式报错）/ delogo（旧硬横带）；"
+                    "None=读 config.erase_backend",
+    )
 
     @field_validator("video_path")
     @classmethod
@@ -96,8 +121,15 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         ext = Path(src).suffix.lower()
         if ext not in {e.lower() for e in cfg.allowed_extensions}:
             return _fail(inp, f"扩展名 {ext} 不在允许列表 {cfg.allowed_extensions}", "video")
-    if not speech_key:
-        return _fail(inp, f"未设置环境变量 {KEY_SPEECH}（ASR/TTS/OCR 需要）", "environment")
+    # 云 key 按需强制：仅当配音确定走云端时才强制 speech_key
+    # （全本地方案 ASR/OCR/TTS 都不需要任何云 key）
+    eff_tts_backend = (inp.tts_backend or getattr(cfg, "tts_backend", "auto")).lower()
+    tts_wants_cloud = eff_tts_backend == "cloud" or (
+        eff_tts_backend == "auto"
+        and (bool(inp.voice_id) or not _local_tts.available())
+    )
+    if tts_wants_cloud and not speech_key:
+        return _fail(inp, f"未设置环境变量 {KEY_SPEECH}（云端配音需要）", "environment")
     if not llm_key:
         return _fail(inp, f"未设置环境变量 {KEY_LLM}（翻译需要）", "environment")
 
@@ -135,43 +167,117 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         display_segments = _split_long_segments(segments)
         print(f"[LV] display_segments={len(display_segments)}")
 
-        # ── 4) LongCat 翻译（用拆分后的短句，翻译更稳定）──
-        try:
-            translated = _llm_translate.translate_segments(
-                display_segments,
-                target_lang=inp.target_lang or cfg.target_lang_default,
-                source_lang=inp.source_lang or cfg.source_lang_default,
-                api_key=llm_key,
-            )
-        except Exception as e:
-            print(f"[LV] TRANSLATE ERROR: {type(e).__name__}: {e}")
-            raise
+        # ── 4) LLM 翻译（用拆分后的短句，翻译更稳定）──
+        # 协议/base/model 从 .env 读（AI_LLM_*），未设置回落 LongCat Anthropic 默认
+        translated = _llm_translate.translate_segments(
+            display_segments,
+            target_lang=inp.target_lang or cfg.target_lang_default,
+            source_lang=inp.source_lang or cfg.source_lang_default,
+            api_key=llm_key,
+            api_base=os.environ.get("AI_LLM_BASE_URL") or _llm_translate.DEFAULT_BASE,
+            model=os.environ.get("AI_LLM_MODEL") or cfg.localize_llm_model,
+            protocol=(os.environ.get("AI_LLM_PROTOCOL") or "anthropic").lower(),
+        )
         print(f"[LV] translated={len(translated)}")
 
         # ── 5) 擦除原字幕区 + 烧译文字幕 ──
-        ass_path = _write_ass(translated, workdir, cfg)
+        regions = region or []
+        # 字号/位置匹配原字幕：把 OCR 原始行框传给 _write_ass
+        ass_path = _write_ass(translated, workdir, cfg,
+                              regions=regions, width=width, height=height)
         out_path = inp.output_path or str(
             Path(src).with_stem(Path(src).stem + "_localized").with_suffix(".mp4"))
-        regions = region or []
-        # 横条擦除：把多个竖检测区合并为一个底部横带，避免竖条马赛克
-        erase_regs = _to_horizontal_bar(regions, width, height)
+        # 精准擦除：OCR 文本行框逐框外扩（不再合成大横带误伤前景主体）
+        erase_regs = _prep_erase_regions(regions, width, height)
         print(f"[LV] erase_regs={erase_regs}")
-        try:
+        src_local = _ensure_local(src, workdir)
+
+        # 擦除后端：auto=LaMa 可用则用（复杂背景无拉丝）否则 delogo；
+        # local=强制 LaMa（缺失/失败显式报错，不静默回落）；delogo=旧硬横带
+        erase_used = "delogo"
+        eff_erase = (inp.erase_backend or getattr(cfg, "erase_backend", "auto")).lower()
+        if erase_regs and eff_erase in ("auto", "local", "lama"):
+            if _inpaint.available():
+                _inpaint.erase_regions(
+                    src_local, erase_regs,
+                    str(workdir / "inpainted.mp4"), str(workdir))
+                erased_video = _media.burn_subtitles(
+                    str(workdir / "inpainted.mp4"),
+                    str(workdir / "subbed.mp4"), ass_path)
+                erase_used = "lama"
+            elif eff_erase in ("local", "lama"):
+                raise _inpaint.InpaintError(
+                    "erase_backend=local：simple-lama-inpainting 不可用"
+                    "（conda env update -f environment.yml）",
+                    category="environment",
+                )
+            # auto 且 LaMa 缺失：打印提示后回落 delogo（auto 语义允许）
+        if erase_used == "delogo":
             erased_video = _media.burn_subtitles(
-                src if not is_url else _ensure_local(src, workdir),
-                str(workdir / "subbed.mp4"), ass_path,
+                src_local, str(workdir / "subbed.mp4"), ass_path,
                 erase_regions=erase_regs or None,
             )
-        except Exception as e:
-            print(f"[LV] BURN ERROR: {type(e).__name__}: {e}")
-            raise
-        print(f"[LV] erased_video={erased_video}")
+        print(f"[LV] erase_used={erase_used} erased_video={erased_video}")
 
         # ── 6) TTS 逐句配音 ─ 移除原声，避免音画不同步 ──
         voice_used = None
         eff_voice = inp.voice_id or cfg.localize_voice or ""
-        print(f"[LV] eff_voice={eff_voice!r}")
-        if eff_voice:
+        eff_tts = (inp.tts_backend or getattr(cfg, "tts_backend", "auto")).lower()
+        print(f"[LV] eff_voice={eff_voice!r} tts_backend={eff_tts}")
+
+        # 后端选择：local=强制本地；cloud=强制云；
+        # auto=未显式指定云端克隆音色且本地栈可用时优先本地（本地优先原则）
+        use_local_tts = eff_tts == "local" or (
+            eff_tts == "auto" and not inp.voice_id and _local_tts.available()
+        )
+        if use_local_tts and not _local_tts.available():
+            raise _local_tts.LocalTTSError(
+                "tts_backend=local：qwen-tts 不可用（conda env update -f environment.yml）",
+                category="environment",
+            )
+
+        # 背景音源：默认原声（人声+BGM）；开启人声分离时净化为纯伴奏
+        bg_source = str(workdir / "audio.wav")
+        if inp.keep_background_audio and getattr(cfg, "bgm_vocal_sep", True) \
+                and _music_sep.available():
+            print("[LV] 人声分离（htdemucs）...")
+            bg_source = _music_sep.separate_vocals(bg_source, str(workdir))
+            print(f"[LV] bg_source={bg_source}")
+
+        if use_local_tts:
+            # 本地 Qwen3-TTS 零样本克隆：优先显式样本；缺省克隆原片人声
+            # （参考音频=已抽出的原声 wav，参考转写=本次 ASR 原文拼接）
+            if inp.voice_ref_audio:
+                ref_audio = _ensure_local(inp.voice_ref_audio, workdir)
+                ref_text = inp.voice_ref_text or _ref_transcript(ref_audio)
+                voice_used = f"clone:{Path(ref_audio).stem}"
+            else:
+                ref_audio = str(workdir / "audio.wav")
+                ref_text = "".join(str(s.get("text", "")) for s in segments)
+                voice_used = "clone:source_speaker"
+            print(f"[LV] local TTS ref={ref_audio} voice_used={voice_used}")
+            tts_segs = [
+                {**s, "index": i} for i, s in enumerate(translated)
+                if len(str(s.get("text", "")).strip()) > 1
+            ]
+            print(f"[LV] tts_segs={len(tts_segs)} (filtered from {len(translated)})")
+            if not tts_segs:
+                tts_segs = [{**s, "index": i} for i, s in enumerate(translated)]
+            dubs = _local_tts.synthesize_segments(
+                tts_segs, out_dir=str(workdir / "dubs"),
+                ref_audio=ref_audio, ref_text=ref_text,
+                target_lang=inp.target_lang or cfg.target_lang_default,
+            )
+            print(f"[LV] dubs={len(dubs)}")
+            dub_track = _build_timed_audio(translated, dubs, duration_s,
+                                           str(workdir / "dub.wav"))
+            if inp.keep_background_audio:
+                # 背景音取流水线开头抽出的原始音轨（擦除后的视频是无声的）
+                _media.mix_audio(erased_video, dub_track, out_path,
+                                 keep_background=True, bg_path=bg_source)
+            else:
+                _replace_audio(erased_video, dub_track, out_path)
+        elif eff_voice:
             # TTS 需要 index 字段；过滤过短句（≤1字，避免 TTS API 报错）
             tts_segs = [
                 {**s, "index": i} for i, s in enumerate(translated)
@@ -194,7 +300,12 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             # 按原始时间戳合成配音（带静音间隔，保证音画同步）
             dub_track = _build_timed_audio(translated, dubs, duration_s,
                                            str(workdir / "dub.wav"))
-            _replace_audio(erased_video, dub_track, out_path)
+            if inp.keep_background_audio:
+                # 原声降 -12dB 为背景，与配音混音（保留 BGM/环境音）
+                _media.mix_audio(erased_video, dub_track, out_path,
+                                 keep_background=True, bg_path=bg_source)
+            else:
+                _replace_audio(erased_video, dub_track, out_path)
             voice_used = eff_voice
         else:
             # 不配音：移除原声，仅保留擦除+字幕
@@ -204,13 +315,14 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         chain = ReasoningChain(
             conclusion=(
                 f"本地化完成：{len(display_segments)} 句（ASR {len(segments)} 句拆分）、"
-                f"{'已擦除' if regions else '未检出'}原字幕区、"
+                f"{'已擦除[' + erase_used + ']' if regions else '未检出'}原字幕区、"
                 f"{'克隆配音 ' + voice_used if voice_used else '未配音'}"
             ),
             triggered_rules=[], evidence=[],
             causal_analysis=(
                 f"ASR[{asr_backend}] {len(segments)} 句 → 拆分为 {len(display_segments)} 句 → "
-                f"LongCat 翻译 → OCR[{ocr_backend}] 定位 → qwen-audio TTS → ffmpeg 合成"
+                f"LLM 翻译 → OCR[{ocr_backend}] 定位 → 擦除[{erase_used}] → "
+                f"qwen-audio TTS → ffmpeg 合成"
             ),
             risk_note="译文为 LLM 生成，正式投放前建议人工抽查。",
         )
@@ -223,6 +335,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
                 voice_used=voice_used,
                 asr_backend=asr_backend,
                 ocr_backend=ocr_backend,
+                erase_backend=erase_used,
             ),
             reasoning=[chain], confidence=0.9, sample_size=len(segments),
         )
@@ -232,6 +345,11 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
     except _cloud_ocr.OCRError as exc:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
+    except _inpaint.InpaintError as exc:
+        return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
+    except _music_sep.MusicSepError as exc:
+        return _fail(inp, f"{exc}（可设 bgm_vocal_sep=false 跳过人声分离）",
+                     exc.category, retriable=exc.retriable)
     except _llm_translate.LLMTtranslateError as exc:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
     except _media.MediaError as exc:
@@ -353,18 +471,121 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
     return result
 
 
-def _write_ass(segments: list[dict], workdir: Path, cfg) -> str:
-    """把译文句段写成 ASS 字幕（底部居中，带半透明底条）。"""
-    font_size = getattr(cfg, "subtitle_font_size", 22)
+def _est_text_width(text: str, font_size: int) -> float:
+    """估算 ASS 渲染宽度（PlayRes 单位）：CJK≈1.0×字号，拉丁/半角≈0.55×。"""
+    return sum(
+        font_size * (1.0 if ord(ch) > 0x2E7F else 0.55) for ch in text
+    )
+
+
+def _fit_subtitle(text: str, base_fs: int, play_res_w: int = 1280,
+                  margin_lr: int = 120, min_fs: int = 14) -> tuple[int, str]:
+    """按文字长度动态匹配字号，返回 (font_size, 可能折行的 text)。
+
+    策略：先整句逐步缩号（下限 min_fs）；仍放不下则在句中找断点
+    （优先标点/空格，其次几何中点）折两行，再缩号到放下。
+    """
+    safe_w = play_res_w - margin_lr * 2
+    if _est_text_width(text, base_fs) <= safe_w:
+        return base_fs, text
+    # 单行缩号
+    fs = base_fs
+    while fs > min_fs and _est_text_width(text, fs) > safe_w:
+        fs -= 1
+    if _est_text_width(text, fs) <= safe_w:
+        return fs, text
+    # 两行折行：从几何中点向外找最近的断点字符
+    mid = len(text) // 2
+    split = None
+    for radius in range(len(text)):
+        for idx in (mid + radius, mid - radius):
+            if 0 < idx < len(text) and text[idx] in " ,.!?:;、，。！？：；-/）)":
+                split = idx + 1
+                break
+        if split is not None:
+            break
+    split = split or mid
+    l1, l2 = text[:split].strip(), text[split:].strip()
+    fs = base_fs
+    while fs > min_fs and max(_est_text_width(l1, fs),
+                              _est_text_width(l2, fs)) > safe_w:
+        fs -= 1
+    return fs, f"{l1}\\N{l2}"
+
+
+_FONT_CANDIDATES = ("Noto Sans CJK SC", "Noto Serif CJK SC",
+                    "WenQuanYi Zen Hei", "WenQuanYi Micro Hei", "DejaVu Sans")
+
+
+def _pick_font() -> str:
+    """探测系统可用字体：优先 CJK（中英混排不豆腐），兜底 DejaVu（纯拉丁）。
+
+    fonts-noto-cjk 未装的机器上 libass 会用无 CJK 字形的兜底字体渲染出
+    方框乱码——所以宁可显式探测，也不假设某个字体一定存在。
+    """
+    import shutil
+    import subprocess
+    if not shutil.which("fc-match"):
+        return "DejaVu Sans"
+    for name in _FONT_CANDIDATES:
+        try:
+            out = subprocess.run(
+                ["fc-match", "-f", "%{family}", name],
+                capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+            # fc-match 永远返回"最接近的"，要确认真的命中请求字体
+            if name.split()[0].lower() in out.lower():
+                return name
+        except Exception:
+            continue
+    return "DejaVu Sans"
+
+
+def _match_original_style(regions: list[dict], width: int | None,
+                          height: int | None) -> tuple[int, int]:
+    """从 OCR 原字幕行框推导新字幕的字号与下边距（ASS PlayRes 1280×720 空间）。
+
+    - 字号：行高中位数 × 分辨率比 × 0.95（CJK 字形约占 em 高 0.9-1.0），
+      钳制 [14, 48]——新字幕视觉上"接管"原字幕，而不是固定 22 号
+    - 下边距：最低行的行底换算到 720 空间，新字幕贴原字幕位置
+    - regions 空 / 尺寸缺失 → 回退默认 (22, 40)
+    """
+    if not regions or not width or not height:
+        return 22, 40
+    scale = 720.0 / float(height)
+    heights = sorted(float(r["h"]) for r in regions if r.get("h"))
+    if not heights:
+        return 22, 40
+    mid = heights[len(heights) // 2] if len(heights) % 2 else (
+        (heights[len(heights) // 2 - 1] + heights[len(heights) // 2]) / 2
+    )
+    base_fs = max(14, min(48, int(mid * scale * 0.95)))
+    bottom = max(float(r["y"]) + float(r["h"]) for r in regions)
+    margin_v = max(8, min(120, int(720 - bottom * scale)))
+    return base_fs, margin_v
+
+
+def _write_ass(segments: list[dict], workdir: Path, cfg,
+               regions: list[dict] | None = None,
+               width: int | None = None, height: int | None = None) -> str:
+    """把译文句段写成 ASS 字幕（底部居中，带半透明底条）。
+
+    字号/下边距动态匹配原字幕（regions=OCR 原始行框时按行高与行底推导）；
+    长句仍经 _fit_subtitle 缩号/折行防溢出（匹配字号为上限）。
+    regions 缺省回退 cfg.subtitle_font_size / 固定 MarginV=40。
+    """
+    base_fs, margin_v = _match_original_style(regions or [], width, height)
+    font_size = base_fs if regions else getattr(cfg, "subtitle_font_size", 22)
+    font_name = _pick_font()
     lines = [
         "[Script Info]", "PlayResX: 1280", "PlayResY: 720",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, "
         "BorderStyle, Outline, Shadow, Alignment, MarginV, MarginL, MarginR",
-        # Alignment=2: 底部居中；MarginV=40 留边距防贴底
-        # 用 Noto Serif CJK SC（系统已装），不用 Sans（未装会导致不渲染）
-        f"Style: Sub,Noto Serif CJK SC,{font_size},&H00FFFFFF,&H00000000,"
-        "1,1,0,2,40,120,120",
+        # Alignment=2: 底部居中；MarginV 由原字幕行底位置推导
+        # 字体由 _pick_font 运行时探测（CJK 缺失时显式回落，避免豆腐乱码）
+        f"Style: Sub,{font_name},{font_size},&H00FFFFFF,&H00000000,"
+        f"1,1,0,2,{margin_v},120,120",
         "[Events]",
         "Format: Layer, Start, End, Style, Text",
     ]
@@ -375,8 +596,9 @@ def _write_ass(segments: list[dict], workdir: Path, cfg) -> str:
         return f"{int(h):01d}:{int(m):02d}:{s:05.2f}"
 
     for seg in segments:
-        text = str(seg["text"]).replace("\n", "\\N")
-        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{text}")
+        fs, text = _fit_subtitle(str(seg["text"]).replace("\n", " "), font_size)
+        styled = text if fs == font_size else f"{{\\fs{fs}}}{text}"
+        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{styled}")
     path = workdir / "subs.ass"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
@@ -395,19 +617,41 @@ def _ensure_local(src: str, workdir: Path) -> str:
     return str(local)
 
 
-def _to_horizontal_bar(regions: list[dict], width: int, height: int) -> list[dict]:
-    """把多个竖检测区合并为底部一条横带（避免竖条马赛克）。
+def _ref_transcript(ref_audio: str) -> str:
+    """克隆参考样本缺转写时，本地 ASR 补转写（CUDA 预加载由 _local_asr 负责）。"""
+    try:
+        segs = _local_asr.transcribe_local(ref_audio)
+        return "".join(str(s.get("text", "")) for s in segs).strip()
+    except Exception as exc:
+        raise _local_tts.LocalTTSError(
+            f"参考音频转写失败（可改传 voice_ref_text）: {type(exc).__name__}: {exc}",
+            category="video",
+        ) from exc
 
-    只覆盖画面底部约 25%（典型字幕区），不触及顶部标题/主体。
+
+def _prep_erase_regions(regions: list[dict], width: int | None,
+                        height: int | None) -> list[dict]:
+    """把 OCR 文本行框整理成擦除区：逐框适度外扩 + 裁边，保持紧贴文字。
+
+    不再合成大横带——LaMa/delogo 只处理真实文字覆盖范围，避免
+    "超级大横带"误伤前景主体。外扩量覆盖字形边缘/描边/阴影。
     """
     if not regions:
         return []
-    min_x = max(0, min(r["x"] for r in regions) - 30)
-    max_x = min(width, max(r["x"] + r["w"] for r in regions) + 30)
-    # 横带固定在底部 25%：起点=75%高度，终点=98%高度
-    min_y = int(height * 0.70)
-    max_y = int(height * 0.98)
-    return [{"x": min_x, "y": min_y, "w": max_x - min_x, "h": max_y - min_y}]
+    out: list[dict] = []
+    for r in regions:
+        x0 = int(r["x"]) - 14
+        y0 = int(r["y"]) - 8
+        x1 = int(r["x"] + r["w"]) + 14
+        y1 = int(r["y"] + r["h"]) + 8
+        if width:
+            x0, x1 = max(0, x0), min(int(width), x1)
+        if height:
+            y0, y1 = max(0, y0), min(int(height), y1)
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            continue  # 退化框（噪声）跳过
+        out.append({"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0})
+    return out
 
 
 def _replace_audio(video_path: str, audio_wav: str, out_path: str) -> str:
@@ -439,9 +683,16 @@ def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
     tmp_dir = Path(out_path).parent
     wavs: list[tuple[float, str]] = []  # (delay_ms, wav_path)
     for seg, dub in zip(segments, dubs):
-        # mp3 → wav
+        # mp3 → wav；配音比原句长时用 atempo 加速压到句时长内（上限 2 倍速，
+        # 再长接受轻微溢出，避免过度压缩变调）
         wav_p = str(tmp_dir / f"dub_{seg.get('index', 0):04d}.wav")
-        cmd = ["ffmpeg", "-y", "-i", dub, "-ac", "1", "-ar", "16000", wav_p]
+        cmd = ["ffmpeg", "-y", "-i", dub]
+        seg_dur = seg["end"] - seg["begin"]
+        if seg_dur > 0.3:
+            tempo = _media.probe_media(dub)[0] / seg_dur
+            if tempo > 1.02:  # 2% 以内不压，避免徒增变速伪影
+                cmd += ["-filter:a", f"atempo={min(tempo, 2.0):.4f}"]
+        cmd += ["-ac", "1", "-ar", "16000", wav_p]
         rc, _, err = _media.run_ffmpeg(cmd)
         if rc != 0:
             raise _media.MediaError(f"dub 转 wav 失败: {err[-100:]}")
@@ -456,7 +707,7 @@ def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
     )
     mix_inputs = "".join(f"[d{i}]" for i in range(len(wavs)))
     n = len(wavs)
-    af = f"{delays};{mix_inputs}amix=inputs={n}:duration=longest:dropout_transition=0[aout]"
+    af = f"{delays};{mix_inputs}amix=inputs={n}:duration=longest:dropout_transition=0:normalize=0[aout]"
     cmd = [
         "ffmpeg", "-y",
     ]

@@ -14,7 +14,7 @@ lazy import：rapidocr_onnxruntime 未安装 → OCRError(category="environment"
 """
 from __future__ import annotations
 
-from flowmind.skills._cloud_ocr import OCRError, _aggregate_regions
+from flowmind.skills._cloud_ocr import OCRError, _aggregate_regions, _is_white_subtitle
 
 
 def available() -> bool:
@@ -86,18 +86,22 @@ def locate_subtitle_region(
     与 _cloud_ocr.locate_subtitle_region 输出契约一致（免 api_key）。
     先验过滤与多帧聚合逻辑完全复用云路径实现。
     """
-    boxes: list[tuple[int, int, int, int]] = []
+    candidates: list[tuple[str, tuple[int, int, int, int]]] = []
     for path in frame_paths:
         for x1, y1, x2, y2 in _detect_frame(path):
             if frame_width is None or frame_height is None:
                 continue
             bw, bh = x2 - x1, y2 - y1
             # 尺寸先验：取长边（兼容竖排字幕），与云路径一致。
-            if max(bw, bh) < frame_width * 0.1:
+            # 0.04：容忍句尾短碎片（原 0.1 会漏掉边缘残字，擦除后留鬼影）
+            if max(bw, bh) < frame_width * 0.04:
                 continue
             # 底部区域先验：bbox 底边应进入画面下部 40%，与云路径一致。
             if y2 < frame_height * 0.6:
                 continue
-            boxes.append((x1, y1, x2, y2))
+            candidates.append((path, (x1, y1, x2, y2)))
 
+    passed = [box for path, box in candidates if _is_white_subtitle(path, box)]
+    # 全部候选被外观先验拒绝 → 回落不过滤（彩色字/特殊样式不被误杀）
+    boxes = passed or [box for _, box in candidates]
     return _aggregate_regions(boxes, frame_width, frame_height)

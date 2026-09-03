@@ -27,6 +27,19 @@ dependencies:
       - faster-whisper>=1.0        # 本地 ASR（CTranslate2，支持 CC≥6.0）
       - rapidocr-onnxruntime>=1.3  # 本地 OCR（CPU，字幕条定位）
       - sentence-transformers>=3   # 本地向量嵌入（bge-small-zh）
+      - simple-lama-inpainting>=0.1.2  # 本地字幕擦除（big-lama，首次用时代理下载模型）
+      - qwen-tts>=0.1.1            # 本地声音克隆（Qwen3-TTS 0.6B Base，零样本；
+                                   #   首次用时代理下载模型到 HF 缓存）
+      # ⚠️ qwen-tts 会把 torchaudio 升到不匹配 torch 2.5.1 的版本
+      #    （libcudart.so.13 加载失败），必须在其后重新钉回 cu121 配套版
+      - torchaudio==2.5.1+cu121
+      - demucs>=4.0                # 本地人声分离（htdemucs，MIT）；BGM 净化用
+                                   #   ⚠️ 模型 ~160MB 首次经代理下载到 TORCH_HOME
+                                   #   （/srv/data/models/torch，见 CLAUDE.md 缓存约定）
+      # 系统级依赖（不在 conda/pip 管辖）：sudo apt install sox
+      #   （qwen-tts 依赖的 python-sox 包装需要 sox 二进制）
+      # 系统级依赖：sudo apt install fonts-noto-cjk ffmpeg
+      #   （中文字幕渲染 + 擦除/混音全流程）
       # ── 项目原依赖（同步自 pyproject.toml）──
       - mcp>=1.27,<2
       - pydantic>=2

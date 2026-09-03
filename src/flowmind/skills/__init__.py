@@ -41,4 +41,5 @@ from flowmind.skills import (
     tiktok_ad_intel,  # noqa: F401
     tiktok_content_intel,  # noqa: F401
     tiktok_shop_intel,  # noqa: F401
+    voice_clone_enroll,  # noqa: F401
 )
