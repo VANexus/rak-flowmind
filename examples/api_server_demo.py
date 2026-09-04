@@ -9,8 +9,8 @@
 3. 异步 job —— 提交/轮询/终态/列表 + 未知技能 404 + invalid_request
    + 「job succeeded 但 result.ok=False」语义
 
-演示技能用 localize_status（裁剪后仓库唯一的轻技能），并对模块级 requests 打桩
-（同 localize_status_demo 模式），不依赖外部 video-localizer 服务与任何 API key。
+演示技能用 localize_status（轻量只读），模块级 get_task_manager 符号 patch 为
+内存 fake manager（预填 succeeded 任务 demo-task-1），不依赖 PG / MQTT 集群。
 
 并发契约（与 server_api docstring 一致）：
   sync /invoke 不进 job lane —— 长 GPU 技能（localize_video 等）一律走 /jobs。
@@ -33,31 +33,44 @@ from flowmind.server_api import create_app
 _INVOKE_ARGS = {"task_ids": ["demo-task-1"]}
 
 
-def _install_fake_vl() -> None:
-    """对 localize_status 模块级 requests 打桩：所有 task 返回 completed。
+class _FakeStore:
+    """内存任务行（字段结构与 TaskStore._row_to_dict 对齐）。"""
 
-    uvicorn 与 job runner 与本脚本同进程，模块级打桩对 sync /invoke 与
-    /jobs 两条链路同时生效——demo 不依赖外部 video-localizer 服务。
+    def __init__(self) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        self.tasks = {
+            "demo-task-1": {
+                "task_id": "demo-task-1", "skill_id": "localize_video",
+                "args": {"video_path": "/data/demo.mp4", "target_lang": "en"},
+                "status": "succeeded", "stage": None, "progress": 100.0,
+                "error": None, "created_at": now, "started_at": now,
+                "finished_at": now, "tenant_id": None, "output_paths": [],
+            },
+        }
+
+    def get_task(self, task_id: str) -> dict | None:
+        return self.tasks.get(task_id)
+
+
+class _FakeManager:
+    """localize_status 只读 get_task——最小语义替身。"""
+
+    def __init__(self) -> None:
+        self.store = _FakeStore()
+
+    def get_task(self, task_id: str) -> dict | None:
+        return self.store.get_task(task_id)
+
+
+def _install_fake_task_manager() -> None:
+    """patch localize_status 模块级 get_task_manager 为内存 fake。
+
+    uvicorn 与 job runner 与本脚本同进程，模块级 patch 对 sync /invoke 与
+    /jobs 两条链路同时生效——demo 不依赖 PG / MQTT 集群（demo 层面用内存
+    fake store 替代真实 TaskStore，避免强绑外部基础设施）。
     """
-    now = datetime.now(timezone.utc)
-
-    def fake_get(url, timeout=None, **_kw):
-        tid = url.rsplit("/", 1)[-1]
-        class _R:
-            status_code = 200
-            _json = {
-                "task_id": tid,
-                "status": "completed",
-                "started_at": now.isoformat(),
-                "finished_at": now.isoformat(),
-            }
-            def raise_for_status(self):
-                pass
-            def json(self):
-                return self._json
-        return _R()
-
-    _ls.requests.get = fake_get
+    manager = _FakeManager()
+    _ls.get_task_manager = lambda: manager
 
 
 def section(title: str) -> None:
@@ -89,7 +102,7 @@ def _poll(url: str, timeout_s: float = 30.0) -> dict:
 
 
 def main() -> None:
-    _install_fake_vl()
+    _install_fake_task_manager()
     port = _free_port()
     base = f"http://127.0.0.1:{port}/api/v1"
     server = uvicorn.Server(

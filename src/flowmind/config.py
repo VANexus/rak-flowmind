@@ -17,15 +17,9 @@ DEFAULT_CONFIG_PATH = Path("flowmind.config.toml")  # 相对于当前工作目�
 class LocalizerConfig(BaseModel):
     """视频本地化（localize_* 技能）的可配置参数（附通用默认值）。
 
-    阈值类（HTTP 超时 / 批量上限 / 成本分界 / TTS 默认 / 字幕策略 / 允许扩展名 / 服务地址）
+    阈值类（批量上限 / 成本分界 / TTS 默认 / 字幕策略 / 允许扩展名）
     全走 config——不带默认值硬编码进函数体。
     """
-
-    # ── 服务地址 / 网络 ──
-    api_base: str = "http://localhost:8000"
-    api_prefix: str = "/api/v1"
-    http_timeout: float = 30.0          # 业务 HTTP 调用超时（秒）
-    health_timeout: float = 2.0         # /health 探活超时（≤3s，fast-fail）
 
     # ── 任务治理（SaaS 化：工作目录基准 + 并发上限 + 生命周期） ──
     data_dir: str = Field(
