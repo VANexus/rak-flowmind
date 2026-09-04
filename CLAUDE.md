@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `mcp-base-gpu` 是**视频本地化 MCP over HTTP SaaS 服务端**：把「中文视频 → 多语言
 配音/字幕版本」的 GPU 流水线（ASR → OCR → 翻译 → 字幕擦除 → TTS 配音 → 混音）
-包装成 **7 个 `localize_*` MCP 工具 + 一条异步任务 REST 通道**，单端口 8001 对外。
+包装成 **7 个 `localize_*` MCP 工具 + 一条异步任务 REST 通道**，单端口 8002 对外（默认端口，前置 Go 网关占 8080）。
 
 **核心不变量**：**新增一个技能 = 写一个 `@skill` 函数**。注册 / JSON schema /
 MCP tool / manifest / discover() 全自动暴露。加技能**不改动** `server.py` /
@@ -20,7 +20,7 @@ conda run -n flowmind pip install --no-deps "simple-lama-inpainting>=0.1.2"  # s
 conda run -n flowmind pip install -e . --no-deps          # 包本体 + entry points
 conda run -n flowmind ruff check src                      # lint（必须通过，唯一质量门）
 for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python "$f"; done  # demo 冒烟（本仓库无单测）
-conda run -n flowmind mcp-base-gpu                        # 单端口入口（MCP + 任务 REST，默认 8001）
+conda run -n flowmind mcp-base-gpu                        # 单端口入口（MCP + 任务 REST，默认 8002）
 conda run -n flowmind flowmind-mcp                        # stdio 调试入口
 ```
 
@@ -86,7 +86,7 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
   （12-factor：容器部署 env 注入即可覆盖）。
 - **`server.py`** —— FastMCP（**v1**，`mcp>=1.27,<2`）遍历注册表动态登记 MCP tool。
   `_make_tool` 靠设置 `__annotations__` 驱动 schema 推断 —— v1 特定技巧，勿升 v2。
-- **`server_http.py`** —— **单端口唯一入口**（8001）：组合 MCP（`/mcp`）+ REST 路由 +
+- **`server_http.py`** —— **单端口唯一入口**（8002，作为 Go 网关静态后端）：组合 MCP（`/mcp`）+ REST 路由 +
   中间件（CORS + `AuthPlaceholderMiddleware` 鉴权占位）。`.env` 加载在此发生。
 - **`server_rest.py`** —— 发现 API：`GET /api/v1/manifest[/id]`（custom_route 模式）。
 - **`server_tasks.py`** —— 任务 REST：`POST /api/v1/tasks`（202/429 背压）/
@@ -181,5 +181,5 @@ api_server`。前 7 个用 mock 流水线/内存 fake manager（不依赖 GPU / 
 ```bash
 conda run -n flowmind mcp-base-gpu          # 前台起单端口服务
 # MCP 探针（python + mcp 库，streamablehttp_client → list_tools 应恰好 7 个 localize_*）
-# REST 探活：curl http://127.0.0.1:8001/api/v1/health
+# REST 探活：curl http://127.0.0.1:8002/api/v1/health
 ```

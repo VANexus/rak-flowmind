@@ -28,11 +28,11 @@
 2. **起服务 + 探活**：
 
    ```bash
-   conda run -n flowmind mcp-base-gpu            # 单端口 8001（后台加 nohup）
-   curl http://127.0.0.1:8001/api/v1/health      # {"status":"ok",...}
+   conda run -n flowmind mcp-base-gpu            # 单端口 8002（后台加 nohup）
+   curl http://127.0.0.1:8002/api/v1/health      # {"status":"ok",...}
    ```
 
-3. **接入 MCP**（Streamable HTTP，端点 `http://127.0.0.1:8001/mcp`）：
+3. **接入 MCP**（Streamable HTTP，端点 `http://127.0.0.1:8002/mcp`）：
    工具清单以 `tools/list` 为准（7 个 `localize_*`），字段 schema 用
    `GET /api/v1/manifest/<skill_id>` 查询——**不要猜字段、不要读源码**。
 
@@ -62,14 +62,14 @@
 
 ```bash
 # 提交（body 与 localize_submit 同形状；本地路径必须位于 data_dir/uploads/ 内）
-curl -X POST http://127.0.0.1:8001/api/v1/tasks \
+curl -X POST http://127.0.0.1:8002/api/v1/tasks \
   -H "Content-Type: application/json" \
   -d '{"videos": ["https://cdn.example.com/demo.mp4"], "target_lang": "en"}'
 # → 202 {"task_ids": ["..."], "accepted": 1, ...}
 
 # 轮询 / 下载
-curl http://127.0.0.1:8001/api/v1/tasks/<task_id>
-curl -o out.mp4 "http://127.0.0.1:8001/api/v1/tasks/<task_id>/download?file=demo_sub.mp4"
+curl http://127.0.0.1:8002/api/v1/tasks/<task_id>
+curl -o out.mp4 "http://127.0.0.1:8002/api/v1/tasks/<task_id>/download?file=demo_sub.mp4"
 ```
 
 状态码：`202` 受理（队列中途满 → 202 + warning 部分受理）；`429` 队列满背压；

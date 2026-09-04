@@ -68,7 +68,7 @@ done
 ## MCP 客户端接入
 
 不想用 demo 脚本？直接接 MCP 客户端（Streamable HTTP，端点
-`http://127.0.0.1:8001/mcp`）或 REST 任务通道，见仓库根 `README.md`。
+`http://127.0.0.1:8002/mcp`）或 REST 任务通道，见仓库根 `README.md`。
 
 ## 加新 demo 的规范
 

@@ -19,7 +19,7 @@ done                                              # 跑 8 个 demo 冒烟
 如果遇到任何概念不清楚，先看本文件对应章节，再问。
 
 > **定位**（2026-09 收敛后）：`mcp-base-gpu` = 视频本地化 MCP over HTTP SaaS 服务端，
-> 单端口 8001 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。
+> 单端口 8002 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。
 > **无单测 / 无 Makefile / 无 pytest**——验证靠 `examples/*_demo.py` 冒烟 + 真实调用。
 > GPU（P104-100，Pascal 6.1）与基础设施约定见 `CLAUDE.md`「本地模型」「架构」段。
 > worktree 中验证一律 `PYTHONPATH=<worktree>/src conda run -n flowmind ...`。
@@ -34,7 +34,7 @@ src/flowmind/
 ├── skill.py           # @skill 装饰器 + invoke() 入口 ── 融合点
 ├── manifest.py        # build_manifest() ── Agent 视角的能力清单
 ├── server.py          # FastMCP v1 薄壳 ── 把 _REGISTRY 暴露成 MCP tool
-├── server_http.py     # 单端口唯一入口（8001）：MCP + REST 路由 + CORS/鉴权占位中间件
+├── server_http.py     # 单端口唯一入口（8002）：MCP + REST 路由 + CORS/鉴权占位中间件
 ├── server_rest.py     # 发现 API：GET /api/v1/manifest[/id]
 ├── server_tasks.py    # 任务 REST：POST/GET /api/v1/tasks、download、health
 ├── tasks/
@@ -144,9 +144,9 @@ print(r.ok, r.metrics.degraded, r.data.failure_category)
 ### 端到端调试（单端口服务）
 
 ```bash
-conda run -n flowmind mcp-base-gpu                 # 前台起（MCP + REST 同端口 8001）
-curl http://127.0.0.1:8001/api/v1/health           # 组件状态
-curl http://127.0.0.1:8001/api/v1/manifest          # 7 技能清单
+conda run -n flowmind mcp-base-gpu                 # 前台起（MCP + REST 同端口 8002）
+curl http://127.0.0.1:8002/api/v1/health           # 组件状态
+curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
 # MCP 探针：python + mcp 库 streamablehttp_client → list_tools 应恰好 7 个 localize_*
 ```
 

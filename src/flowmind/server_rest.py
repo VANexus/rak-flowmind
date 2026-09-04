@@ -2,7 +2,7 @@
 
 Agent / 前端借此在运行时发现技能（不再硬编码）。复用 server.py 的
 FastMCP 实例，通过 v1 的 ``custom_route`` 装饰器把路由挂到同一个 Starlette 应用
-（与 /mcp 同端口 8001），无需新依赖、无需新进程。
+（与 /mcp 同端口 8002），无需新依赖、无需新进程。
 
 端点：
   GET /api/v1/manifest        → 完整技能清单（含 schema）

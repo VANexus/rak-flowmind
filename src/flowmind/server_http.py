@@ -18,7 +18,7 @@
 启动：conda run -n flowmind mcp-base-gpu
 配置（环境变量）：
   FLOWMIND_MCP_HOST    默认 127.0.0.1（集群部署 0.0.0.0）
-  FLOWMIND_MCP_PORT    默认 8001
+  FLOWMIND_MCP_PORT    默认 8002（前置 Go 网关占 8080，本服务作为其后端）
   FLOWMIND_CORS_ORIGINS  逗号分隔的允许来源
 基础设施（PG / MQTT / Milvus / 嵌入服务）env 优先、config.toml 兜底，
 见 flowmind.config.InfraConfig 与 .env.example。
@@ -119,10 +119,15 @@ def _load_dotenv() -> None:
 
 
 def main() -> None:
-    """mcp-base-gpu 入口：单端口 8001（MCP + 任务 REST 双通道）。"""
+    """mcp-base-gpu 入口：单端口 8002（MCP + 任务 REST 双通道）。
+
+    端口 8002 适配网关架构：Go MCP 网关（go-kernel，:8080）对外承接
+    /mcp 与 /api/v1/tasks，本服务作为其静态后端（backend url 指向 :8002）。
+    FLOWMIND_MCP_PORT 仍可覆盖（单独直连部署时自定义端口）。
+    """
     _load_dotenv()
     host = os.environ.get("FLOWMIND_MCP_HOST", "127.0.0.1")
-    port = int(os.environ.get("FLOWMIND_MCP_PORT", "8001"))
+    port = int(os.environ.get("FLOWMIND_MCP_PORT", "8002"))
     mcp.settings.host = host
     mcp.settings.port = port
     # 在 run 之前注册路由（与 /mcp 同 Starlette 应用同端口）
