@@ -25,8 +25,10 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -40,6 +42,12 @@ from flowmind.server_rest import register_rest_routes
 from flowmind.server_tasks import register_task_routes
 
 logger = logging.getLogger(__name__)
+
+# 联邦优雅注销回调（_start_federation 装配）。由 lifespan shutdown 调用：
+# uvicorn 优雅停机完成后会恢复默认 handler 并 re-raise SIGTERM——进程被
+# 信号直接终止、解释器关闭流程（atexit）不执行，lifespan shutdown 是
+# SIGTERM 路径下唯一可靠的注销窗口。
+_federation_stop: Callable[[], None] | None = None
 
 
 class AuthPlaceholderMiddleware(BaseHTTPMiddleware):
@@ -118,11 +126,66 @@ def _load_dotenv() -> None:
     load_dotenv(project_root.parent / ".env")  # 父目录兑底（不覆盖已加载）
 
 
+def _start_federation(port: int) -> None:
+    """联邦自注册装配（FLOWMIND_FEDERATION_REGISTER=1 开启，默认关闭）。
+
+    开启后进程向 MCP 网关联邦注册表声明自身（PG + MQTT 双通道）并维持
+    心跳；未开启或任何失败均静默跳过——联邦是增值能力，绝不阻塞服务
+    启动。详见 flowmind.federation 包 docstring。
+    """
+    global _federation_stop
+    try:
+        from flowmind.federation import start_federation
+
+        registrar = start_federation(port=port)
+        if registrar is not None:
+            _federation_stop = registrar.stop
+    except Exception as exc:  # noqa: BLE001  联邦能力绝不阻塞服务启动
+        logger.warning("联邦自注册启动失败（服务继续独立运行）: %s", exc)
+
+
+def _wrap_streamable_lifespan() -> None:
+    """把联邦优雅注销挂进 FastMCP 的 Starlette lifespan 关闭链。
+
+    根因（端到端验证发现）：uvicorn 收到 SIGTERM 完成优雅停机后，会在
+    capture_signals 中恢复默认信号 handler 并 re-raise 信号——进程被信
+    号直接终止，解释器关闭流程（含 atexit）不执行，atexit 注册的联邦
+    注销永远不触发（SIGINT/CTRL+C 走 KeyboardInterrupt 异常路径不受
+    影响）。lifespan shutdown 在 re-raise 之前执行，是 SIGTERM 路径下
+    唯一可靠的注销窗口；注销置于 session manager 关闭之前——网关先摘
+    除工具再停服务，无能力真空期。atexit 兜底保留（非 uvicorn 宿主或
+    程序内退出仍走解释器关闭），HeartbeatWorker.stop 幂等，双触发无害。
+    """
+    original = mcp.streamable_http_app
+
+    def streamable_http_app_with_lifecycle():
+        app = original()
+        orig_lifespan = app.router.lifespan_context
+
+        @contextlib.asynccontextmanager
+        async def lifespan(app):
+            async with orig_lifespan(app):
+                yield
+                if _federation_stop is not None:
+                    try:
+                        # 同步阻塞数秒（MQTT QoS1 确认 + PG offline），
+                        # 仅发生在关闭路径，不影响运行期
+                        _federation_stop()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("联邦注销异常（忽略，进程继续退出）: %s", exc)
+
+        app.router.lifespan_context = lifespan
+        return app
+
+    mcp.streamable_http_app = streamable_http_app_with_lifecycle  # type: ignore[method-assign]
+
+
 def main() -> None:
     """mcp-base-gpu 入口：单端口 8002（MCP + 任务 REST 双通道）。
 
     端口 8002 适配网关架构：Go MCP 网关（go-kernel，:8080）对外承接
-    /mcp 与 /api/v1/tasks，本服务作为其静态后端（backend url 指向 :8002）。
+    /mcp 与 /api/v1/tasks，本服务作为其后端（静态配置或联邦动态注册，
+    后者由 FLOWMIND_FEDERATION_REGISTER 开启）。
     FLOWMIND_MCP_PORT 仍可覆盖（单独直连部署时自定义端口）。
     """
     _load_dotenv()
@@ -134,6 +197,8 @@ def main() -> None:
     register_rest_routes(mcp)   # /api/v1/manifest 技能发现
     register_task_routes(mcp)   # /api/v1/tasks 任务通道 + /api/v1/health
     _add_middlewares()          # CORS + 鉴权占位
+    _wrap_streamable_lifespan()  # 联邦优雅注销挂进 lifespan（SIGTERM 路径）
+    _start_federation(port)     # 联邦自注册（默认关；失败静默）
     mcp.run(transport="streamable-http")
 
 

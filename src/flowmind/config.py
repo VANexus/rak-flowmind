@@ -151,10 +151,68 @@ class InfraConfig(BaseModel):
     vectorize: bool = True               # env FLOWMIND_VECTORIZE（"0"/"false" 关）
 
 
+class FederationBackendConfig(BaseModel):
+    """联邦自注册配置（federation 包：功能包加入 MCP 网关联邦）。"""
+
+    # ── 开关（默认关：不影响现有 demo 与独立部署） ──
+    # validate_default=True 必须显式声明：pydantic v2 默认不验证默认值，
+    # 不加的话下方 env 覆盖 validator 在用户未传值时永不触发
+    #（与 LocalizerConfig.data_dir 同模式）
+    enabled: bool = Field(default=False, validate_default=True)  # env FLOWMIND_FEDERATION_REGISTER（"1"/"true"）
+
+    # ── 注册元数据 ──
+    backend_id: str = Field(default="video_localizer", validate_default=True)  # env FLOWMIND_FEDERATION_BACKEND_ID
+    prefix: str = Field(default="video_localizer", validate_default=True)      # env FLOWMIND_FEDERATION_PREFIX
+    # 本机可达地址；空 = http://127.0.0.1:{port}/mcp 兜底
+    # （集群部署注入外部可达地址，如 http://<pod-ip>:8002/mcp）
+    url: str = Field(default="", validate_default=True)  # env FLOWMIND_FEDERATION_URL
+    heartbeat_interval: float = Field(default=30.0, validate_default=True)  # env FLOWMIND_FEDERATION_HEARTBEAT_INTERVAL
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _env_enabled(cls, v: bool) -> bool:
+        """env FLOWMIND_FEDERATION_REGISTER 覆盖（1/true 开，0/false 关）。"""
+        raw = os.environ.get("FLOWMIND_FEDERATION_REGISTER", "").strip().lower()
+        if raw in ("1", "true", "yes"):
+            return True
+        if raw in ("0", "false", "no"):
+            return False
+        return v
+
+    @field_validator("backend_id", "prefix", "url", mode="before")
+    @classmethod
+    def _env_strings(cls, v: str, info: ValidationInfo) -> str:
+        """env 覆盖三个注册元数据字段（空值不生效，回落 config/默认）。"""
+        env_names = {
+            "backend_id": "FLOWMIND_FEDERATION_BACKEND_ID",
+            "prefix": "FLOWMIND_FEDERATION_PREFIX",
+            "url": "FLOWMIND_FEDERATION_URL",
+        }
+        env = os.environ.get(env_names[info.field_name], "").strip()
+        return env or v
+
+    @field_validator("heartbeat_interval", mode="before")
+    @classmethod
+    def _env_heartbeat_interval(cls, v: float) -> float:
+        """env FLOWMIND_FEDERATION_HEARTBEAT_INTERVAL 覆盖（秒，>0）。"""
+        raw = os.environ.get("FLOWMIND_FEDERATION_HEARTBEAT_INTERVAL", "").strip()
+        if not raw:
+            return v
+        try:
+            val = float(raw)
+        except ValueError as exc:
+            raise ValueError(
+                "FLOWMIND_FEDERATION_HEARTBEAT_INTERVAL 必须是数字: "
+                f"{raw!r}") from exc
+        return val if val > 0 else v
+
+
 class FlowmindConfig(BaseModel):
-    """FlowMind 总配置：localizer（本地化链路）+ infra（基础设施）两段。"""
+    """FlowMind 总配置：localizer + infra + federation 三段。"""
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
     infra: InfraConfig = Field(default_factory=InfraConfig)
+    federation: FederationBackendConfig = Field(
+        default_factory=FederationBackendConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:
