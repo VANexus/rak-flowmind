@@ -163,6 +163,8 @@ class TaskStore:
                     (task_id, skill_id, json.dumps(args, ensure_ascii=False), tenant_id),
                 )
             conn.commit()
+        except Exception as exc:  # noqa: BLE001  统一包装（错误永不裸抛）
+            raise TaskStoreError(f"create_task 失败 task={task_id}: {exc}") from exc
         finally:
             conn.close()
 
@@ -178,21 +180,31 @@ class TaskStore:
                     (stage, float(progress), task_id),
                 )
             conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"update_progress 失败 task={task_id}: {exc}") from exc
         finally:
             conn.close()
 
     def set_status(self, task_id: str, status: str, *,
                    error: str | None = None,
-                   output_paths: list[str] | None = None) -> None:
-        """状态迁移：running 记 started_at；终态记 finished_at。
+                   output_paths: list[str] | None = None,
+                   from_statuses: tuple[str, ...] | None = None) -> bool:
+        """状态迁移（CAS 守卫）：running 记 started_at；终态记 finished_at。
 
         error/output_paths 传 None 时保留原值（COALESCE），终态可携带。
+
+        from_statuses 非空时作为原子守卫（``AND status = ANY(%s)``）：
+        仅当当前状态命中才迁移——终态 first-writer-wins，cancel 与 worker
+        完成互相覆盖终态的竞态由单条 UPDATE 原子性消除。
+        返回 True=本次迁移生效（rowcount==1）；False=状态不匹配（已被人
+        先写，幂等不报错）；执行期错误仍抛 TaskStoreError（与 CAS False
+        语义严格区分）。
         """
         self._ensure_ready()
         conn = self._connect()
         try:
             with conn.cursor() as cur:
-                cur.execute(
+                sql = (
                     f"UPDATE {_TABLE_NAME} SET status = %s, "
                     "started_at = CASE WHEN %s = 'running' THEN now() ELSE started_at END, "
                     "finished_at = CASE WHEN %s IN "
@@ -200,15 +212,23 @@ class TaskStore:
                     "THEN now() ELSE finished_at END, "
                     "error = COALESCE(%s, error), "
                     "output_paths = COALESCE(%s, output_paths) "
-                    "WHERE task_id = %s",
-                    (
-                        status, status, status,
-                        error,
-                        json.dumps(output_paths, ensure_ascii=False) if output_paths is not None else None,
-                        task_id,
-                    ),
+                    "WHERE task_id = %s"
                 )
+                params: list = [
+                    status, status, status,
+                    error,
+                    json.dumps(output_paths, ensure_ascii=False) if output_paths is not None else None,
+                    task_id,
+                ]
+                if from_statuses:
+                    sql += " AND status = ANY(%s)"
+                    params.append(list(from_statuses))
+                cur.execute(sql, params)
+                migrated = cur.rowcount == 1
             conn.commit()
+            return migrated
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"set_status 失败 task={task_id} -> {status}: {exc}") from exc
         finally:
             conn.close()
 
@@ -230,6 +250,8 @@ class TaskStore:
                 )
                 recovered = cur.rowcount
             conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"recover_running 失败: {exc}") from exc
         finally:
             conn.close()
         if recovered:
@@ -246,6 +268,8 @@ class TaskStore:
                 deleted = cur.rowcount > 0
             conn.commit()
             return deleted
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"delete_task 失败 task={task_id}: {exc}") from exc
         finally:
             conn.close()
 
@@ -262,6 +286,8 @@ class TaskStore:
                     (task_id,),
                 )
                 row = cur.fetchone()
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"get_task 失败 task={task_id}: {exc}") from exc
         finally:
             conn.close()
         return _row_to_dict(row) if row else None
@@ -285,6 +311,8 @@ class TaskStore:
                         (max(1, int(limit)),),
                     )
                 rows = cur.fetchall()
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"list_tasks 失败 status={status}: {exc}") from exc
         finally:
             conn.close()
         return [_row_to_dict(r) for r in rows]
@@ -299,6 +327,8 @@ class TaskStore:
                     f"SELECT count(*) FROM {_TABLE_NAME} "
                     "WHERE status IN ('queued','running')")
                 return int(cur.fetchone()[0])
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"count_pending 失败: {exc}") from exc
         finally:
             conn.close()
 

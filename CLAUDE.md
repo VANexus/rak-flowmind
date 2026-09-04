@@ -97,8 +97,10 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
     autocommit 单语句、不用 advisory lock / 服务端 prepared statement）；幂等建表；
     启动恢复 `recover_running()`。
   - `manager.py` —— TaskManager：单 GPU worker 线程池 + 协作式取消（阶段边界
-    CancelledError）+ 终态分类（succeeded/failed/cancelled）+ TTL GC（删 workdir 不删行）
-    + 孤儿目录清扫。惰性单例 `get_task_manager()`。
+    CancelledError；cancel 同时 CAS 落终态）+ 终态分类（终态写入带
+    queued/running CAS 守卫，first-writer-wins 不互相覆盖）+ worker 最外层
+    异常兜底 + TTL GC（删 workdir 与 outputs/ 不删行）+ 孤儿目录清扫。
+    惰性单例 `get_task_manager()`。
   - `events.py` —— TaskEventPublisher：MQTT `mcp-base-gpu/tasks/{id}/events`，
     QoS=1，终态 retain；未配置/失败一律静默降级纯落库（通知通道绝不阻断任务）。
   - `vectors.py` —— Milvus `localize_segments`（768 维 HNSW/COSINE，按 task_id 幂等
@@ -108,12 +110,17 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
   + 12 个 helper（`_cloud_asr` / `_local_asr` / `_bge_embed` / `_media` / `_inpaint` 等）。
   **耦合注意**：`_local_asr` 用 `_cloud_asr` 的 `ASRError`；`_local_cr` 用 `_cloud_ocr`
   私有函数；`_inpaint` import `_media` —— 这几对必须同进退。
+  **输入沙箱**：提交通道的本地路径必须位于 `data_dir/uploads/` 内（URL 不受限），
+  收口在 `localize_submit._split_paths`（MCP 与 REST 两通道共用）；
+  `FLOWMIND_ALLOW_ANY_PATH=1` 仅限本地测试放行（生产禁设）。鉴权实装前的
+  隔离层：防任意路径探测、产物外带、覆盖写源目录。
 
 ### 任务 REST 状态码约定
 
 `202` 受理（`task_ids` 列表；队列中途满 → 202 + warning 部分受理，transient 可重提）；
 `429` 队列满（TaskQueueFull，一个都没受理；errors.py 无独立错误码，HTTP 层按异常类型
-映射）；`400` 非 JSON；`422` 入参校验；`404` 任务/产物不存在。健康探针恒 200。
+映射）；`400` 非 JSON；`422` 入参校验（含本地路径沙箱越界 / uploads 未就绪 / 全部
+扩展名被拒）；`404` 任务/产物不存在。健康探针恒 200。
 
 ## 关键约定
 

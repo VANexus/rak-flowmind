@@ -175,6 +175,10 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
         return _fail(inp, "任务已取消（阶段边界停止）", "cancelled")
     except _cloud_asr.ASRError as exc:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
+    except _local_tts.LocalTTSError as exc:
+        # 本地 TTS 异常与云 TTS 同构（category/retriable 语义一致），
+        # 缺此分支会让 LocalTTSError 穿透到 invoke 兜底丢 category
+        return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
     except _cloud_tts.TTSError as exc:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
     except _cloud_ocr.OCRError as exc:
@@ -381,8 +385,7 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
     # 字号/位置匹配原字幕：把 OCR 原始行框传给 _write_ass
     ass_path = _write_ass(translated, workdir, cfg,
                           regions=regions, width=width, height=height)
-    out_path = args.output_path or str(
-        Path(src).with_stem(Path(src).stem + "_localized").with_suffix(".mp4"))
+    out_path = _resolve_out_path(args, src, workdir)
     # 精准擦除：OCR 文本行框逐框外扩（不再合成大横带误伤前景主体）
     erase_regs = _prep_erase_regions(regions, width, height)
     src_local = _ensure_local(src, workdir)
@@ -456,8 +459,10 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
                 ref_audio=ref_audio, ref_text=ref_text,
                 target_lang=args.target_lang or cfg.target_lang_default,
             )
-        # 按原始时间戳合成配音（带静音间隔，保证音画同步）
-        dub_track = _build_timed_audio(translated, dubs, duration_s,
+        # 按原始时间戳合成配音（带静音间隔，保证音画同步）。
+        # 消费 tts_segs（过滤+拆分后的同一份分段）：translated 与 dubs
+        # 长度不等（≤1 字句被滤），zip(translated) 会错位前移+丢尾句
+        dub_track = _build_timed_audio(tts_segs, dubs, duration_s,
                                        str(workdir / "dub.wav"))
         progress_cb("tts", 90.0, f"配音完成（{voice_used}，{len(dubs)} 段）")
     elif eff_voice:
@@ -471,7 +476,8 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         except Exception as exc:
             logger.error("云 TTS 失败: %s: %s", type(exc).__name__, exc)
             raise
-        dub_track = _build_timed_audio(translated, dubs, duration_s,
+        # 同上：消费 tts_segs（与 synthesize_segments 同一份分段）防错位
+        dub_track = _build_timed_audio(tts_segs, dubs, duration_s,
                                        str(workdir / "dub.wav"))
         voice_used = eff_voice
         progress_cb("tts", 90.0, f"配音完成（{voice_used}，{len(dubs)} 段）")
@@ -517,6 +523,29 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         "erase_backend": erase_used,
         "vectorized": vectorized,
     }
+
+
+def _resolve_out_path(args: LocalizeVideoInput, src: str, workdir: Path) -> str:
+    """产物路径推导：显式 output_path > 本地路径旁推 > URL 落任务产物区。
+
+    - 显式 output_path：原样使用（demo/调试直连场景，行为不变）
+    - 本地路径输入：源文件旁 <stem>_localized.mp4（行为不变，demo 兼容）
+    - URL 输入：源路径是伪相对路径（Path("https://host/a.mp4")），
+      旁推会让 ffmpeg mix 必败（SaaS 主路径：URL 总是 accepted 且
+      不开放 output_path）——产物落 data_dir/outputs/<task_id>/output.mp4
+      （TaskManager 注入 data_dir；下载通道经 output_paths 白名单寻址；
+      TTL GC 同策略清扫；直连 invoke 无任务时用随机 id 等价落位）
+    """
+    if args.output_path:
+        return args.output_path
+    if src.startswith(("http://", "https://")):
+        ctx = current_task_context()
+        base = Path(ctx.data_dir) if ctx is not None and ctx.data_dir \
+            else Path(load_config().localizer.data_dir)
+        out_dir = base / "outputs" / _pipeline_task_id()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return str(out_dir / "output.mp4")
+    return str(Path(src).with_stem(Path(src).stem + "_localized").with_suffix(".mp4"))
 
 
 def _select_asr(cfg, speech_key: str) -> tuple[str, object]:
@@ -604,7 +633,8 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
     """把过长的句段按自然断句拆成多行，避免"一坨字幕"覆盖全视频。
 
     拆分策略：在标点（。，！？；,.!?;）处切分，每段不超过 max_chars 字；
-    时间按字数比例分配。
+    时间按字数比例分配。输出条目统一携带 index（display 顺序），
+    下游 translate（index 原样透传）与 TTS 段命名（seg_XXXX）依赖它。
     """
     import re
     result: list[dict] = []
@@ -631,7 +661,7 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
                 "text": p,
             })
             t += seg_duration
-    return result
+    return [{**s, "index": i} for i, s in enumerate(result)]
 
 
 def _est_text_width(text: str, font_size: int) -> float:
@@ -841,16 +871,18 @@ def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
                        out_path: str) -> str:
     """把逐句 TTS 按原始时间戳拼回完整音轨（带静音间隔，保证音画同步）。
 
-    segments: [{"begin": float, "end": float, "text": str}, ...]
-    dubs: 对应的 TTS mp3 路径列表
+    segments: [{"begin": float, "end": float, "text": str, "index": int}, ...]
+    dubs: 对应的 TTS mp3 路径列表（与 segments 等长同序）
     """
     # 统一转为 wav + 静音间隔，再用 amix 合成
     tmp_dir = Path(out_path).parent
     wavs: list[tuple[float, str]] = []  # (delay_ms, wav_path)
-    for seg, dub in zip(segments, dubs):
+    # wav 命名按 zip 位置（而非 seg['index']）：调用方传入的 segments
+    # 已是过滤后的 tts_segs（index 可能非连续/缺失），位置必唯一防覆盖
+    for pos, (seg, dub) in enumerate(zip(segments, dubs)):
         # mp3 → wav；配音比原句长时用 atempo 加速压到句时长内（上限 2 倍速，
         # 再长接受轻微溢出，避免过度压缩变调）
-        wav_p = str(tmp_dir / f"dub_{seg.get('index', 0):04d}.wav")
+        wav_p = str(tmp_dir / f"dub_{pos:04d}.wav")
         cmd = ["ffmpeg", "-y", "-i", dub]
         seg_dur = seg["end"] - seg["begin"]
         if seg_dur > 0.3:

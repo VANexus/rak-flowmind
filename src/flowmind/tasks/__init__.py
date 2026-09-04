@@ -81,6 +81,10 @@ class TaskContext:
 
     task_id: str
     workdir: Path | None = None
+    # 产物落位基准（data_dir）：URL 输入无源目录可旁推时，产物落
+    # data_dir/outputs/<task_id>/output.mp4（SaaS 下载通道可寻址）。
+    # TaskManager 注入；直连 invoke 时为 None（技能回落 config.data_dir）。
+    data_dir: Path | str | None = None
     progress_cb: Callable[[str, float, str], None] = field(
         default=lambda stage, pct, message: None)  # noqa: E501 (stage, pct, message)
     cancel_check: Callable[[], bool] = field(default=lambda: False)

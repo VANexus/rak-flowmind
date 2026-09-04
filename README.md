@@ -61,10 +61,10 @@
   流式取产物（basename 白名单校验，防路径穿越）。
 
 ```bash
-# 提交（body 与 localize_submit 同形状）
+# 提交（body 与 localize_submit 同形状；本地路径必须位于 data_dir/uploads/ 内）
 curl -X POST http://127.0.0.1:8001/api/v1/tasks \
   -H "Content-Type: application/json" \
-  -d '{"videos": ["/data/demo.mp4"], "target_lang": "en"}'
+  -d '{"videos": ["https://cdn.example.com/demo.mp4"], "target_lang": "en"}'
 # → 202 {"task_ids": ["..."], "accepted": 1, ...}
 
 # 轮询 / 下载
@@ -79,11 +79,24 @@ curl -o out.mp4 "http://127.0.0.1:8001/api/v1/tasks/<task_id>/download?file=demo
 
 - **状态机**：`queued → running → succeeded | failed | cancelled`；
   服务重启时遗留 `queued/running` 标为 `interrupted`（启动恢复）。
+  终态写入带 CAS 状态守卫（仅 queued/running 可写）：cancel 与任务完成
+  并发时 first-writer-wins，终态绝不互相覆盖（cancelled 也不会被 retry
+  重复执行）。
 - **终态分类**：`succeeded` = 产物就绪（degraded 的空结果任务也算成功）；
   `failed` = 入参/内部/技能级失败（`error` 列有原因）。
+- **产物路径语义**：本地路径输入 → 产物落源文件旁 `<stem>_localized.mp4`；
+  URL 输入（SaaS 主路径）→ 产物落 `data_dir/outputs/<task_id>/output.mp4`，
+  经 `output_paths` 白名单由 download 端点寻址，与工作目录同 TTL 清理。
+- **输入沙箱**：提交通道（MCP `localize_submit` 与 REST `POST /api/v1/tasks`）
+  的本地路径必须位于 `data_dir/uploads/` 内（URL 不受限）；`uploads` 不存在
+  或路径越界 → `422`/VALIDATION。这是鉴权实装前的隔离层：防任意服务器
+  路径探测、产物外带与 `ffmpeg -y` 覆盖写源目录。`FLOWMIND_ALLOW_ANY_PATH=1`
+  仅限本地测试放行。
 - **进度推送**：MQTT 主题 `mcp-base-gpu/tasks/{task_id}/events`，QoS=1，
-  终态消息 retain（新订阅者连接即见最终状态）；MQTT 未配置时自动降级纯 PG 落库。
-- **TTL 清理**：终态任务工作目录超 `task_ttl_seconds` 回收（DB 行保留供审计）。
+  终态消息 retain（新订阅者连接即见最终状态；终态落库后残余进度自动停发，
+  不污染 retain）；MQTT 未配置时自动降级纯 PG 落库。
+- **TTL 清理**：终态任务工作目录与 `data_dir/outputs/<task_id>/` 超
+  `task_ttl_seconds` 回收（DB 行保留供审计）。
 
 ## 字幕语义检索（Milvus）
 

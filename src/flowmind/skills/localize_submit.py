@@ -15,9 +15,20 @@ output_path 不开放（每个任务的产物路径由流水线按输入推导�
   message 是最小错误映射；HTTP 层（阶段 4）可按异常类型补映射 429。
 - 中途满（已受理 k>0 后满）→ degraded=True 的 partial success：已受理
   task_ids 保留在 report 里，failure_category=transient（可稍后重提剩余）。
+
+本地路径沙箱（SaaS 语义，鉴权实装前的唯一隔离层）：
+- 提交通道的本地路径输入必须位于 data_dir/uploads/ 内（resolve 后前缀
+  校验），URL 不受限——防任意服务器本地路径的存在性探测 oracle、
+  任意 .mp4 被处理后经 download 外带、ffmpeg -y 覆盖写源目录。
+- 收口点：_split_paths（MCP 直连 invoke('localize_submit') 与 REST
+  POST /api/v1/tasks 两条路径的唯一公共分桶函数）；沙箱拒绝计入
+  rejected，全部被拒时 _ext_preflight 在模型校验层抛 ValueError →
+  MCP 得 VALIDATION / REST 得 422（语义一致）。
+- FLOWMIND_ALLOW_ANY_PATH=1 仅限本地测试/demo 放行（生产禁止设置）。
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -80,7 +91,7 @@ class SubmitInput(BaseModel):
 
     @model_validator(mode="after")
     def _ext_preflight(self) -> "SubmitInput":
-        """扩展名预检：全部本地路径被拒时提前报 VALIDATION（不占用队列槽位）。
+        """扩展名 + 沙箱预检：全部视频被拒时提前报 VALIDATION（不占队列槽位）。
 
         只要存在任何合法路径即放行；「部分被拒」的分桶在技能体内做，
         被拒路径进 report 供 Agent 感知。
@@ -89,8 +100,10 @@ class SubmitInput(BaseModel):
         accepted, _ = _split_paths(self.videos, cfg.allowed_extensions)
         if not accepted:
             raise ValueError(
-                f"全部视频因扩展名被拒（允许：{cfg.allowed_extensions}）；"
-                f"被拒：{self.videos}"
+                f"全部视频被拒（允许扩展名：{cfg.allowed_extensions}；本地路径"
+                f"必须位于 {Path(load_config().localizer.data_dir) / 'uploads'}"
+                f"（服务器上传目录）内，URL 不受限；"
+                f"FLOWMIND_ALLOW_ANY_PATH=1 仅限本地测试放行）；被拒：{self.videos}"
             )
         return self
 
@@ -110,16 +123,49 @@ class SubmitReport(BaseModel):
     warning: str | None = None
 
 
-# ── 预检：扩展名分桶 ──
+# ── 预检：沙箱 + 扩展名分桶 ──
+
+def _uploads_root() -> Path:
+    """本地路径沙箱根：data_dir/uploads（服务器上传目录，部署方约定）。"""
+    return (Path(load_config().localizer.data_dir) / "uploads").resolve()
+
+
+def _sandbox_reject(p: str) -> bool:
+    """本地路径沙箱判定：True=拒绝受理。
+
+    规则：URL 不受限；本地路径 resolve 后必须落在 data_dir/uploads/ 内
+    （含 uploads 目录不存在的情形——上传通道未就绪，明确拒绝而非让
+    worker 报文件不存在）；FLOWMIND_ALLOW_ANY_PATH=1 放行（仅本地
+    测试/demo 用，生产禁止设置）。resolve() 抑制 ../ 穿越、符号链接
+    与相对路径变形；拒绝时不得回显探测结果（无存在性 oracle 泄露）。
+    """
+    if p.startswith(("http://", "https://")):
+        return False
+    if os.environ.get("FLOWMIND_ALLOW_ANY_PATH", "").strip() == "1":
+        return False
+    try:
+        Path(p).resolve().relative_to(_uploads_root())
+    except ValueError:
+        return True
+    return not _uploads_root().is_dir()
+
 
 def _split_paths(
     videos: list[str], allowed_exts: list[str]
 ) -> tuple[list[str], list[str]]:
-    """返回 (accepted, rejected)。URL 总是 accepted；本地路径按扩展名筛。"""
+    """返回 (accepted, rejected)。URL 总是 accepted；本地路径先过沙箱
+    （必须位于 data_dir/uploads/ 内）再按扩展名筛。
+
+    MCP 直连 invoke('localize_submit') 与 REST POST /api/v1/tasks 两条
+    提交通道共用本函数——沙箱在此一处收口。
+    """
     allowed = {e.lower() for e in allowed_exts}
     accepted: list[str] = []
     rejected: list[str] = []
     for p in videos:
+        if _sandbox_reject(p):
+            rejected.append(p)
+            continue
         if p.startswith(("http://", "https://")):
             accepted.append(p)
             continue

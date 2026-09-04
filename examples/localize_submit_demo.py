@@ -14,6 +14,7 @@ mock 方式：patch 技能模块级 get_task_manager 符号为内存 fake
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 
 import flowmind.skills  # noqa: F401  触发 @skill 注册
@@ -21,6 +22,11 @@ import flowmind.skills.localize_submit as lsub
 from flowmind.discover import field_names
 from flowmind.skill import invoke
 from flowmind.tasks import TERMINAL_STATUSES, TaskQueueFull
+
+# demo 用假路径（/data/*.mp4，不落在 data_dir/uploads 沙箱内）：仅本
+# demo 进程放行本地路径沙箱（生产禁设，见 localize_submit 模块 docstring）
+# 沙箱在提交通道运行时读 env，import 后设置即可生效
+os.environ.setdefault("FLOWMIND_ALLOW_ANY_PATH", "1")
 
 
 def section(title: str) -> None:

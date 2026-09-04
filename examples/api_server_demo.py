@@ -19,6 +19,7 @@ flowmind.server_tasks.get_task_manager（REST 端点的唯一取用入口）。
 """
 from __future__ import annotations
 
+import os
 import socket
 import tempfile
 import threading
@@ -32,6 +33,11 @@ from flowmind.server import mcp
 from flowmind.server_rest import register_rest_routes
 from flowmind.server_tasks import register_task_routes
 from flowmind.tasks import TaskQueueFull
+
+# demo 用 /tmp 假路径（不落在 data_dir/uploads 沙箱内）：仅本 demo 进程
+# 放行本地路径沙箱（生产禁设，见 localize_submit 模块 docstring）
+# 沙箱在提交通道运行时读 env，import 后设置即可生效
+os.environ.setdefault("FLOWMIND_ALLOW_ANY_PATH", "1")
 
 
 class _FakeComponents:
