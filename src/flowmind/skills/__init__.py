@@ -1,45 +1,12 @@
-"""技能包：导入各技能以触发 @skill 注册。"""
+"""技能包：导入各技能以触发 @skill 注册。
+
+mcp-base-gpu 裁剪后仅保留视频本地化 6 技能（localize_*）。
+"""
 from flowmind.skills import (
-    alibaba_listing_generate,  # noqa: F401
-    alibaba_product_list,  # noqa: F401
-    alibaba_product_post,  # noqa: F401
-    alibaba_product_recommend,  # noqa: F401
-    b2b_channel_verify,  # noqa: F401
-    b2b_daily_digest,  # noqa: F401
-    b2b_keyword_trends,  # noqa: F401
-    b2b_longtail_keywords,  # noqa: F401
-    b2b_push_feishu,  # noqa: F401
-    b2b_push_wecom,  # noqa: F401
-    content_audit,  # noqa: F401
-    content_copywrite,  # noqa: F401
-    content_crawler_suite,  # noqa: F401
-    content_hot_topics,  # noqa: F401
-    content_idea_design,  # noqa: F401
-    content_image_gen,  # noqa: F401
-    content_publish_check,  # noqa: F401
-    content_typeset,  # noqa: F401
-    content_web_fetch,  # noqa: F401
-    content_wechat_account_test,  # noqa: F401
-    content_wechat_e2e,  # noqa: F401
-    content_wechat_publish,  # noqa: F401
-    content_wechat_publish_status,  # noqa: F401
-    content_xhs_draft,  # noqa: F401
-    content_xhs_e2e,  # noqa: F401
-    crawler_deadlink,  # noqa: F401
-    crawler_sentiment,  # noqa: F401
-    crawler_viral,  # noqa: F401
-    feishu_kb,  # noqa: F401
-    image_prompt_reverse,  # noqa: F401
-    inventory_risk,  # noqa: F401
     localize_batch,  # noqa: F401
     localize_cancel,  # noqa: F401
     localize_download,  # noqa: F401
     localize_retry,  # noqa: F401
     localize_status,  # noqa: F401
     localize_video,  # noqa: F401
-    marketing_image_gen,  # noqa: F401
-    tiktok_ad_intel,  # noqa: F401
-    tiktok_content_intel,  # noqa: F401
-    tiktok_shop_intel,  # noqa: F401
-    voice_clone_enroll,  # noqa: F401
 )

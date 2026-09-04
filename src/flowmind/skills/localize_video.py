@@ -3,7 +3,7 @@
 流水线：ffmpeg 提音轨 → ASR 句级时间戳（本地 faster-whisper GPU 优先，
 auto 回落百炼 Paraformer）→ OCR 定位原字幕区（本地 RapidOCR 优先，
 auto 回落 qwen3.5-ocr）→ LongCat 翻译 → ffmpeg 擦除原字幕区
-→ 克隆/预设音色逐句配音（克隆音色经 voice_clone_enroll 复刻，
+→ 克隆/预设音色逐句配音（音色 ID 由百炼声音复刻提前生成，
 配音时长自动 atempo 对齐原句）→ 混音（可选保留 -12dB 背景音）+ ASS 字幕烧录。
 
 后端由 config 后端开关控制（local/cloud/auto）；auto 两端都不可用时
@@ -51,7 +51,7 @@ class LocalizeVideoInput(BaseModel):
     voice_id: str | None = Field(
         default=None,
         description="配音音色（预设音色名如 longanhuan_v3.6，"
-                    "或 voice_clone_enroll 返回的复刻音色 ID）；"
+                    "或百炼声音复刻生成的音色 ID）；"
                     "None=读 config.localize_voice，配置为空则不配音",
     )
     output_path: str | None = Field(

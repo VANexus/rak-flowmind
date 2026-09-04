@@ -27,7 +27,7 @@ def synthesize_text(
     target_model: str = TARGET_MODEL,
 ) -> str:
     """单句合成 mp3/wav。voice_id 即预设音色名（如 longanhuan_v3.6）
-    或声音复刻（voice_clone_enroll）返回的音色 ID。"""
+    或百炼声音复刻提前生成的音色 ID。"""
     if not voice_id:
         raise ValueError(
             "收到空音色。请传预设音色名（如 longanhuan_v3.6），"
