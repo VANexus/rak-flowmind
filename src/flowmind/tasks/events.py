@@ -14,7 +14,9 @@
 - 惰性初始化：首次 publish 才建客户端；connect_async + loop_start，
   首次最多等 2s 确认连接，超时视为暂不可达——后台线程继续自动重连，
   后续 publish 的 QoS=1 消息由 paho 排队补发。
-- 未配置（FLOWMIND_MQTT_HOST 与 RAK_MQTT_HOST 均缺）→ 永久禁用，零开销。
+- 未配置（FLOWMIND_MQTT_HOST / config ``infra.mqtt_host`` 均空）→ 永久禁用，零开销。
+- TLS：FLOWMIND_MQTT_USE_TLS / config ``infra.mqtt_use_tls`` 开启时
+  ``tls_set()``（默认系统 CA；EMQX 明文 1883 部署保持 False）。
 - 首次失败记 warning，之后降为 debug（成功后复位），不刷屏。
 """
 from __future__ import annotations
@@ -32,26 +34,41 @@ logger = logging.getLogger(__name__)
 _TOPIC_PREFIX = "mcp-base-gpu/tasks"
 
 
-def _resolve_broker() -> tuple[str, int] | None:
-    """broker 地址解析：FLOWMIND_MQTT_HOST(_PORT) → RAK_MQTT_HOST(_PORT) → None。"""
+def _resolve_broker() -> tuple[str, int, bool] | None:
+    """broker 解析（配置源顺序：env → config.toml → None）。
+
+    返回 (host, port, use_tls)；均未配置返回 None（发布器永久禁用）。
+    """
+    from flowmind.config import get_config
+
     host = (os.environ.get("FLOWMIND_MQTT_HOST")
-            or os.environ.get("RAK_MQTT_HOST") or "").strip()
+            or os.environ.get("RAK_MQTT_HOST")
+            or get_config().infra.mqtt_host or "").strip()
     if not host:
         return None
+    raw_port = (os.environ.get("FLOWMIND_MQTT_PORT")
+                or os.environ.get("RAK_MQTT_PORT") or "")
     try:
-        port = int(os.environ.get("FLOWMIND_MQTT_PORT")
-                   or os.environ.get("RAK_MQTT_PORT") or "1883")
+        port = int(raw_port) if raw_port.strip() else get_config().infra.mqtt_port
     except ValueError:
         port = 1883
-    return host, port
+    raw_tls = os.environ.get("FLOWMIND_MQTT_USE_TLS", "").strip().lower()
+    if raw_tls in ("1", "true", "yes"):
+        use_tls = True
+    elif raw_tls in ("0", "false", "no"):
+        use_tls = False
+    else:
+        use_tls = get_config().infra.mqtt_use_tls
+    return host, port, use_tls
 
 
 class TaskEventPublisher:
     """任务事件 MQTT 发布器（线程安全；失败静默降级为纯落库）。"""
 
-    def __init__(self, host: str | None = None, port: int | None = None):
+    def __init__(self, host: str | None = None, port: int | None = None,
+                 use_tls: bool = False):
         if host is not None:
-            self._broker = (host, port or 1883) if host else None
+            self._broker = ((host, port or 1883, use_tls) if host else None)
         else:
             self._broker = _resolve_broker()
         self._client = None
@@ -60,12 +77,18 @@ class TaskEventPublisher:
         self._warned = False  # 首次失败 warning，之后 debug；成功后复位
         self._enabled = self._broker is not None
         if not self._enabled:
-            logger.info("MQTT 未配置（FLOWMIND_MQTT_HOST/RAK_MQTT_HOST 均缺）"
+            logger.info("MQTT 未配置（FLOWMIND_MQTT_HOST / config infra.mqtt_host 均空）"
                         "——任务事件降级为纯 PG 落库")
 
     @property
     def enabled(self) -> bool:
         return self._enabled
+
+    def status(self) -> str:
+        """健康探针用：disabled（未配置）/ connected / connecting。"""
+        if not self._enabled:
+            return "disabled"
+        return "connected" if self._connected.is_set() else "connecting"
 
     def _get_client(self):
         """惰性建连（双检锁）。connect_async 非阻塞，loop_start 后自动重连。"""
@@ -76,12 +99,14 @@ class TaskEventPublisher:
                 return self._client
             import paho.mqtt.client as mqtt
 
-            host, port = self._broker  # type: ignore[misc]
+            host, port, use_tls = self._broker  # type: ignore[misc]
             client = mqtt.Client(
                 mqtt.CallbackAPIVersion.VERSION2,
                 client_id=f"flowmind-tasks-{os.getpid()}",
                 protocol=mqtt.MQTTv311,
             )
+            if use_tls:
+                client.tls_set()  # 默认系统 CA（ssl.default_ca_certs）
             client.reconnect_delay_set(min_delay=1, max_delay=30)
             client.on_connect = self._on_connect
             client.on_disconnect = self._on_disconnect
@@ -94,7 +119,7 @@ class TaskEventPublisher:
 
     def _on_connect(self, client, *_args, **_kw) -> None:
         self._connected.set()
-        logger.info("MQTT 已连接 %s:%s", *self._broker)  # type: ignore[misc]
+        logger.info("MQTT 已连接 %s:%s", self._broker[0], self._broker[1])
 
     def _on_disconnect(self, client, *_args, **_kw) -> None:
         self._connected.clear()

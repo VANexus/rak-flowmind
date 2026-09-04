@@ -1,6 +1,6 @@
-"""TaskManager：PG 持久化异步任务执行器（server_api.JobManager 的 SaaS 升级版）。
+"""TaskManager：PG 持久化异步任务执行器（早期内存态 JobManager 的 SaaS 升级版）。
 
-与 JobManager（内存态）的差异：
+与内存态方案（已随独立 REST 后端移除）的差异：
 - 存储落 PostgreSQL（服务重启不丢任务历史；启动时 recover_running()
   把遗留 queued/running 标为 interrupted，pending 水位不再虚增）。
 - 进度可观测：技能经 TaskContext.progress_cb 上报 → PG 落库 +
@@ -10,7 +10,7 @@
   ffmpeg/demucs 子进程不强行 kill（各自有 timeout；阶段边界为主，
   不做过度工程）。
 
-终态语义（JobManager "failed 仅 runner 崩溃"语义在此收紧为业务语义）：
+终态语义（早期 "failed 仅 runner 崩溃"语义在此收紧为业务语义）：
 - succeeded：ok=True 且非技能级失败（degraded 但无 failure_category，
   如无人声空结果，也算 succeeded）。
 - failed：ok=False（VALIDATION/INTERNAL/NOT_FOUND），或 ok=True 但

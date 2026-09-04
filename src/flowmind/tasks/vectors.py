@@ -14,8 +14,9 @@ schema（768 维对齐 bge-base-zh-v1.5）：
     vector      FLOAT_VECTOR dim=768
 索引：HNSW + COSINE（余弦相似；bge 归一化向量下等价内积）。
 
-URI：env ``FLOWMIND_MILVUS_URI``（默认开发机 mesh NodePort
-http://100.121.213.4:31953；集群内部注入 http://milvus.agentic.svc:19530）。
+URI：env ``FLOWMIND_MILVUS_URI`` → config ``infra.milvus_uri`` → 内置默认
+（开发机 mesh NodePort http://100.121.213.4:31953；集群内部注入
+http://milvus.agentic.svc:19530）。
 
 失败语义：连接/写入/检索失败抛 VectorStoreError（重试 2 次），
 绝不吞——调用方（流水线尾部向量化）自行决定降级。
@@ -45,7 +46,12 @@ class VectorStoreError(Exception):
 
 
 def _uri() -> str:
-    return os.environ.get("FLOWMIND_MILVUS_URI", "http://100.121.213.4:31953").strip()
+    """连接地址解析（配置源顺序：env → config.toml → 内置默认）。"""
+    from flowmind.config import get_config
+
+    return (os.environ.get("FLOWMIND_MILVUS_URI", "").strip()
+            or get_config().infra.milvus_uri.strip()
+            or "http://100.121.213.4:31953")
 
 
 def _get_client():
@@ -181,3 +187,18 @@ def reset_cache_for_tests() -> None:
     with _lock:
         _client = None
         _ensured = False
+
+
+def health_status() -> str:
+    """健康探针用：连接状态尽力检查（绝不抛、绝不建新连接）。
+
+    unverified = 尚未使用过（惰性连接未触发）；ok / error = 已有连接
+    的实际可用性。连接建立本身可能阻塞，健康检查不代建。
+    """
+    if _client is None:
+        return "unverified"
+    try:
+        _client.list_collections()
+        return "ok"
+    except Exception:  # noqa: BLE001  尽力检查，绝不抛
+        return "error"

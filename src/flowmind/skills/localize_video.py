@@ -20,7 +20,7 @@ from pathlib import Path
 import requests
 from pydantic import BaseModel, Field, field_validator
 
-from flowmind.config import load_config
+from flowmind.config import get_config, load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
 from flowmind.errors import is_retriable
 from flowmind.skill import skill
@@ -265,11 +265,14 @@ def _filter_tts_segments(translated: list[dict]) -> list[dict]:
 def _vectorize_segments(task_id: str, segments: list[dict], src: str) -> bool | None:
     """成功路径尾部：ASR 分段 → BGE 嵌入 → Milvus upsert（FLOWMIND_VECTORIZE 开关）。
 
+    开关配置源顺序：env → config.toml（infra.vectorize）→ 默认开。
     返回 True=已写入 / False=失败降级 / None=功能关闭。
     向量化是增值步骤：失败仅 warning，绝不影响本地化主产出（ok=True 不变）。
     """
-    flag = os.environ.get("FLOWMIND_VECTORIZE", "1").strip().lower()
-    if flag in ("0", "false", "no", "off"):
+    raw = os.environ.get("FLOWMIND_VECTORIZE", "").strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return None
+    if not raw and not get_config().infra.vectorize:
         return None
     pairs = [(i, str(s.get("text", "")).strip()) for i, s in enumerate(segments)]
     pairs = [(i, t) for i, t in pairs if t]

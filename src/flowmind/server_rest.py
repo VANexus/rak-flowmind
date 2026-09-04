@@ -1,13 +1,14 @@
 """REST 发现 API：把 discover / build_manifest 暴露为 HTTP 端点。
 
-cross-dashboard 前端借此在运行时发现技能（不再硬编码）。复用 server.py 的
+Agent / 前端借此在运行时发现技能（不再硬编码）。复用 server.py 的
 FastMCP 实例，通过 v1 的 ``custom_route`` 装饰器把路由挂到同一个 Starlette 应用
 （与 /mcp 同端口 8001），无需新依赖、无需新进程。
 
 端点：
   GET /api/v1/manifest        → 完整技能清单（含 schema）
   GET /api/v1/manifest/{id}   → 单个技能；未知 id 返回 404
-  GET /api/v1/health          → 健康探针
+
+（健康探针 /api/v1/health 在 server_tasks.py，与任务通道同模块。）
 """
 from __future__ import annotations
 
@@ -42,14 +43,3 @@ def register_rest_routes(mcp) -> None:
                 status_code=404,
             )
         return JSONResponse(entry)
-
-    @mcp.custom_route("/api/v1/health", methods=["GET"])
-    async def health(request: Request) -> JSONResponse:  # noqa: ARG001
-        """健康探针：返回状态与技能数量。"""
-        return JSONResponse(
-            {
-                "status": "ok",
-                "skill_count": len(registry()),
-                "version": "0.1.0",
-            }
-        )

@@ -14,9 +14,10 @@ API 形状探测记录（2026-09-04，curl 实测）：
 - 客户端先按 TEI 形状请求；非 200 或形状不符时回退 OpenAI 形状，
   哪个先成功即锁定（进程内记忆，避免每次双重请求）。
 
-配置：
-- ``FLOWMIND_EMBEDDING_BASE_URL``：服务基址。默认 ``http://127.0.0.1:31997``
-  （开发机联调）；集群部署时注入集群内服务地址。
+配置（配置源顺序：env → config.toml → 内置默认）：
+- ``FLOWMIND_EMBEDDING_BASE_URL`` / config ``infra.embedding_base_url``：
+  服务基址。内置默认 ``http://127.0.0.1:31997``（开发机联调）；集群部署
+  时注入集群内服务地址。
 - 超时 30s（批量文本嵌入是秒级操作）。
 
 失败语义：抛 EmbedError（category 字段与 errors.py 语义对齐），绝不吞、
@@ -49,7 +50,12 @@ _api_shape: str | None = None
 
 
 def _base_url() -> str:
-    return os.environ.get("FLOWMIND_EMBEDDING_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
+    """服务基址解析（配置源顺序：env → config.toml → 内置默认）。"""
+    from flowmind.config import get_config
+
+    return (os.environ.get("FLOWMIND_EMBEDDING_BASE_URL", "").strip()
+            or get_config().infra.embedding_base_url.strip()
+            or DEFAULT_BASE_URL).rstrip("/")
 
 
 def _post_embeddings(texts: list[str], shape: str) -> list[list[float]]:

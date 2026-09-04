@@ -60,13 +60,19 @@ _SELECT_COLS = (
 
 
 def _resolve_conn_spec() -> tuple[str | None, dict[str, Any]]:
-    """连接规格解析：FLOWMIND_PG_DSN 优先，否则 RAK_PG_* mesh 兜底。
+    """连接规格解析（配置源顺序：env → config.toml → RAK_PG_* mesh 兜底）。
 
-    返回 (dsn, kwargs)：dsn 非空则 psycopg2.connect(dsn)；
-    否则 psycopg2.connect(**kwargs)（密码等特殊字符安全，不走 DSN 转义）。
-    均未配置 → TaskStoreError（配置缺失属部署错误，显式失败）。
+    FLOWMIND_PG_DSN 优先，其次 config ``infra.pg_dsn``；均未配置则回落
+    RAK_PG_HOST/RAK_PG_APP_USER/RAK_PG_APP_PASS（库名：FLOWMIND_PG_DB 或
+    config ``infra.pg_db``）。返回 (dsn, kwargs)：dsn 非空则
+    psycopg2.connect(dsn)；否则 psycopg2.connect(**kwargs)（密码等特殊
+    字符安全，不走 DSN 转义）。均未配置 → TaskStoreError（配置缺失属
+    部署错误，显式失败）。
     """
-    dsn = os.environ.get("FLOWMIND_PG_DSN", "").strip()
+    from flowmind.config import get_config
+
+    dsn = (os.environ.get("FLOWMIND_PG_DSN", "").strip()
+           or get_config().infra.pg_dsn.strip())
     if dsn:
         return dsn, {}
     host = os.environ.get("RAK_PG_HOST", "").strip()
@@ -74,19 +80,21 @@ def _resolve_conn_spec() -> tuple[str | None, dict[str, Any]]:
     password = os.environ.get("RAK_PG_APP_PASS", "")
     if not (host and user):
         raise TaskStoreError(
-            "PostgreSQL 未配置：设置 FLOWMIND_PG_DSN，或提供 "
+            "PostgreSQL 未配置：设置 FLOWMIND_PG_DSN（或 config infra.pg_dsn），或提供 "
             "RAK_PG_HOST / RAK_PG_PORT / RAK_PG_APP_USER / RAK_PG_APP_PASS "
             "（source ~/.agents/skills/rak/.env）")
     try:
         port = int(os.environ.get("RAK_PG_PORT", "5432"))
     except ValueError as exc:
         raise TaskStoreError(f"RAK_PG_PORT 非法: {os.environ.get('RAK_PG_PORT')!r}") from exc
+    dbname = (os.environ.get("FLOWMIND_PG_DB", "").strip()
+              or get_config().infra.pg_db)
     return None, {
         "host": host,
         "port": port,
         "user": user,
         "password": password,
-        "dbname": os.environ.get("FLOWMIND_PG_DB", "mcp_base_gpu"),
+        "dbname": dbname,
         "connect_timeout": 5,
     }
 
@@ -293,6 +301,14 @@ class TaskStore:
                 return int(cur.fetchone()[0])
         finally:
             conn.close()
+
+    def health_status(self) -> str:
+        """健康探针用：短连接探活（连接/建表失败 → error，绝不抛）。"""
+        try:
+            self.count_pending()
+            return "ok"
+        except Exception:  # noqa: BLE001  尽力检查，绝不抛
+            return "error"
 
 
 def _row_to_dict(row: tuple) -> dict:

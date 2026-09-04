@@ -1,6 +1,7 @@
 """配置层：技能内置通用默认，用户配置文件可覆盖。
 
-mcp-base-gpu 裁剪后仅保留视频本地化链路配置（LocalizerConfig）；
+mcp-base-gpu 裁剪后保留两段：LocalizerConfig（本地化链路参数）与
+InfraConfig（任务引擎基础设施：PG / MQTT / Milvus / 嵌入服务）。
 旧 toml 中的无关段落（如 [content]）由 Pydantic v2 默认 extra='ignore' 静默忽略，
 无需手工迁移。
 """
@@ -87,9 +88,40 @@ class LocalizerConfig(BaseModel):
         return str(p)
 
 
+class InfraConfig(BaseModel):
+    """任务引擎基础设施配置（tasks 包：PG 存储 / MQTT 事件 / Milvus / BGE 嵌入）。
+
+    配置源决策（2026-09-04，全仓库统一）：**env 优先，config 兜底**——
+    解析顺序恒为 ``环境变量 → 本字段 → 模块内置默认``。
+    理由：12-factor 风格，容器部署经 env 注入集群 svc 地址即可覆盖（
+    集群内注入 http://milvus.agentic.svc:19530 之类），无需改文件；
+    flowmind.config.toml 提供开发机/部署默认值。字段留空 = 未配置，
+    由各模块回落 env / 内置默认，缺失即显式报错（不静默降级）。
+    """
+
+    # ── PostgreSQL（TaskStore；经 PgBouncer 事务模式）──
+    pg_dsn: str = ""                     # 完整连接串；env FLOWMIND_PG_DSN 优先
+    pg_db: str = "mcp_base_gpu"          # RAK_PG_* 兜底路径使用的库名
+
+    # ── MQTT（EMQX，任务事件推送 mcp-base-gpu/tasks/{id}/events）──
+    mqtt_host: str = ""                  # 空 = 发布器禁用（纯 PG 落库降级）
+    mqtt_port: int = 1883                # EMQX 明文端口
+    mqtt_use_tls: bool = False           # True 时走 TLS（默认系统 CA）
+
+    # ── Milvus（字幕分段向量库 localize_segments）──
+    milvus_uri: str = ""                 # env FLOWMIND_MILVUS_URI 优先
+
+    # ── BGE 嵌入服务（bge-base-zh-v1.5，768 维；TEI/OpenAI 双形状自适应）──
+    embedding_base_url: str = ""         # env FLOWMIND_EMBEDDING_BASE_URL 优先
+
+    # ── 字幕向量化开关（localize_video 流水线尾部增值步骤）──
+    vectorize: bool = True               # env FLOWMIND_VECTORIZE（"0"/"false" 关）
+
+
 class FlowmindConfig(BaseModel):
-    """FlowMind 总配置：目前仅 localizer 一段。"""
+    """FlowMind 总配置：localizer（本地化链路）+ infra（基础设施）两段。"""
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
+    infra: InfraConfig = Field(default_factory=InfraConfig)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> FlowmindConfig:
