@@ -54,7 +54,11 @@ def separate_vocals(src_wav: str, workdir: str) -> str:
     ]
     try:
         rc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=1800, env=env,
+            cmd, capture_output=True, text=True,
+            # 显式 UTF-8 解码：父进程 locale 被原生依赖翻成 C 时，demucs/tqdm
+            # 输出含非 ASCII 进度字符（'█'），跟随 locale 解码会 UnicodeDecodeError
+            encoding="utf-8", errors="replace",
+            timeout=1800, env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise MusicSepError(

@@ -16,7 +16,11 @@ class MediaError(Exception):
 
 
 def _run(cmd: list[str], timeout: float = 300.0) -> tuple[int, str, str]:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    # 显式 UTF-8 解码：父进程 locale 被翻成 C 时，跟随 locale 解码非 ASCII 输出会崩溃
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=timeout,
+    )
     return proc.returncode, proc.stdout, proc.stderr
 
 

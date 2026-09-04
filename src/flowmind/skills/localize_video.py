@@ -694,7 +694,9 @@ def _pick_font() -> str:
         try:
             out = subprocess.run(
                 ["fc-match", "-f", "%{family}", name],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True,
+                # 显式 UTF-8：防父进程 locale 被翻成 C 时解码崩溃（同 _music_sep）
+                encoding="utf-8", errors="replace", timeout=10,
             ).stdout.strip()
             # fc-match 永远返回"最接近的"，要确认真的命中请求字体
             if name.split()[0].lower() in out.lower():
