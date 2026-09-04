@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from flowmind.skills._cloud_asr import ASRError  # 复用同一异常类型，流水线统一捕获
+from flowmind.tasks.gpu import model_cache_guard
 
 DEFAULT_MODEL = "small"       # 8GB Pascal：small int8 <1.5GB 显存；可调 medium
 DEFAULT_DEVICE = "cuda"
@@ -76,22 +77,27 @@ def _ensure_cuda_runtime() -> None:
 
 
 def _get_model(model: str, device: str, compute_type: str):
+    """进程内缓存 + 双检锁懒加载（并发首调不重复加载，懒加载语义不变）。"""
     key = (model, device, compute_type)
-    if key not in _models:
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError as exc:
-            raise ASRError(
-                "未安装 faster-whisper（environment.yml 已含，conda env update 后可用）",
-                category="environment",
-            ) from exc
-        try:
-            _models[key] = WhisperModel(model, device=device, compute_type=compute_type)
-        except Exception as exc:
-            raise ASRError(
-                f"本地 ASR 模型加载失败（{model}@{device}）: {type(exc).__name__}",
-                category="environment",
-            ) from exc
+    cached = _models.get(key)
+    if cached is not None:
+        return cached
+    with model_cache_guard():
+        if key not in _models:
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError as exc:
+                raise ASRError(
+                    "未安装 faster-whisper（environment.yml 已含，conda env update 后可用）",
+                    category="environment",
+                ) from exc
+            try:
+                _models[key] = WhisperModel(model, device=device, compute_type=compute_type)
+            except Exception as exc:
+                raise ASRError(
+                    f"本地 ASR 模型加载失败（{model}@{device}）: {type(exc).__name__}",
+                    category="environment",
+                ) from exc
     return _models[key]
 
 

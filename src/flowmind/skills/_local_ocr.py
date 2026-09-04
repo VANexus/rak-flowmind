@@ -15,6 +15,7 @@ lazy import：rapidocr_onnxruntime 未安装 → OCRError(category="environment"
 from __future__ import annotations
 
 from flowmind.skills._cloud_ocr import OCRError, _aggregate_regions, _is_white_subtitle
+from flowmind.tasks.gpu import model_cache_guard
 
 
 def available() -> bool:
@@ -31,21 +32,25 @@ _ocr_engine: object | None = None
 
 
 def _get_engine():
+    """进程内单例 + 双检锁懒加载（并发首调不重复初始化，懒加载语义不变）。"""
     global _ocr_engine
-    if _ocr_engine is None:
-        try:
-            from rapidocr_onnxruntime import RapidOCR
-        except ImportError as exc:
-            raise OCRError(
-                "未安装 rapidocr-onnxruntime（environment.yml 已含，conda env update 后可用）",
-                category="environment",
-            ) from exc
-        try:
-            _ocr_engine = RapidOCR()
-        except Exception as exc:
-            raise OCRError(
-                f"本地 OCR 引擎初始化失败: {type(exc).__name__}", category="environment",
-            ) from exc
+    if _ocr_engine is not None:
+        return _ocr_engine
+    with model_cache_guard():
+        if _ocr_engine is None:
+            try:
+                from rapidocr_onnxruntime import RapidOCR
+            except ImportError as exc:
+                raise OCRError(
+                    "未安装 rapidocr-onnxruntime（environment.yml 已含，conda env update 后可用）",
+                    category="environment",
+                ) from exc
+            try:
+                _ocr_engine = RapidOCR()
+            except Exception as exc:
+                raise OCRError(
+                    f"本地 OCR 引擎初始化失败: {type(exc).__name__}", category="environment",
+                ) from exc
     return _ocr_engine
 
 

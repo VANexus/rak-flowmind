@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from flowmind.skills import _media
+from flowmind.tasks.gpu import model_cache_guard
 
 
 class InpaintError(Exception):
@@ -37,6 +38,29 @@ def available() -> bool:
         return False
 
 
+# SimpleLama 进程内单例（双检锁懒加载）。
+# 修复历史缺陷：原先逐帧修复循环外每次调用 SimpleLama()，都会把 big-lama
+# （~200MB）重新拉进显存——既慢又放大显存峰值；单例化后全进程共享一次加载。
+_lama_singleton: object | None = None
+
+
+def _get_lama():
+    global _lama_singleton
+    if _lama_singleton is not None:
+        return _lama_singleton
+    with model_cache_guard():
+        if _lama_singleton is None:
+            try:
+                from simple_lama_inpainting import SimpleLama
+            except ImportError as exc:
+                raise InpaintError(
+                    "未安装 simple-lama-inpainting（conda env update -f environment.yml）",
+                    category="environment",
+                ) from exc
+            _lama_singleton = SimpleLama()
+    return _lama_singleton
+
+
 def erase_regions(src: str, regions: list[dict], out_path: str, workdir: str) -> str:
     """对视频矩形区域逐帧 LaMa 修复，输出无声视频。
 
@@ -53,7 +77,6 @@ def _inpaint_frames_adapter(
     """逐帧修复主体：抽帧 → 掩码 → LaMa → 重编码。"""
     try:
         from PIL import Image
-        from simple_lama_inpainting import SimpleLama
     except ImportError as exc:
         raise InpaintError(
             "未安装 simple-lama-inpainting（conda env update -f environment.yml）",
@@ -131,7 +154,7 @@ def _inpaint_frames_adapter(
 
     # 3) LaMa 逐帧修复（模型首个帧时懒下载；修复结果存 jpg 省盘）
     try:
-        lama = SimpleLama()
+        lama = _get_lama()
         frame_paths = sorted(frames_dir.glob("f_*.png"))
         for fp in frame_paths:
             img = Image.open(fp).convert("RGB")

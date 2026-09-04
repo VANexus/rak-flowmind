@@ -12,7 +12,11 @@
 """
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
 from pathlib import Path
+
+from flowmind.tasks.gpu import model_cache_guard
 
 _LANG_MAP = {
     "zh": "Chinese", "en": "English", "de": "German", "it": "Italian",
@@ -21,7 +25,11 @@ _LANG_MAP = {
 }
 
 _SHARED: dict = {"model": None}
-_PROMPT_CACHE: dict = {}
+# 音色提示 LRU 缓存：多租户/多任务下参考音频无上限增长会泄漏内存
+# （Risk 8）；OrderedDict LRU 上限 32（单任务 1 个参考音色，32 足够复用）
+_PROMPT_CACHE: OrderedDict = OrderedDict()
+_PROMPT_CACHE_MAX = 32
+_prompt_cache_lock = threading.Lock()
 
 
 class LocalTTSError(Exception):
@@ -49,50 +57,62 @@ def available() -> bool:
 
 
 def _get_model():
-    """进程内单例。加载失败显式报错（环境问题），绝不静默。"""
-    if _SHARED["model"] is None:
-        try:
-            import torch
-            from qwen_tts import Qwen3TTSModel
-        except ImportError as exc:
-            raise LocalTTSError(
-                "未安装 qwen-tts（conda env update -f environment.yml）",
-                category="environment",
-            ) from exc
-        try:
-            device = "cuda:0" if torch.cuda.is_available() else "cpu"
-            _SHARED["model"] = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-                device_map=device,
-                dtype=torch.float32,            # Pascal 6.1 不支持 bf16
-                attn_implementation="sdpa",     # flash-attn 仅 fp16/bf16，不可用
-            )
-        except Exception as exc:
-            raise LocalTTSError(
-                f"Qwen3-TTS 模型加载失败: {type(exc).__name__}: {exc}",
-                category="environment",
-            ) from exc
+    """进程内单例 + 双检锁懒加载。加载失败显式报错（环境问题），绝不静默。"""
+    if _SHARED["model"] is not None:
+        return _SHARED["model"]
+    with model_cache_guard():
+        if _SHARED["model"] is None:
+            try:
+                import torch
+                from qwen_tts import Qwen3TTSModel
+            except ImportError as exc:
+                raise LocalTTSError(
+                    "未安装 qwen-tts（conda env update -f environment.yml）",
+                    category="environment",
+                ) from exc
+            try:
+                device = "cuda:0" if torch.cuda.is_available() else "cpu"
+                _SHARED["model"] = Qwen3TTSModel.from_pretrained(
+                    "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+                    device_map=device,
+                    dtype=torch.float32,            # Pascal 6.1 不支持 bf16
+                    attn_implementation="sdpa",     # flash-attn 仅 fp16/bf16，不可用
+                )
+            except Exception as exc:
+                raise LocalTTSError(
+                    f"Qwen3-TTS 模型加载失败: {type(exc).__name__}: {exc}",
+                    category="environment",
+                ) from exc
     return _SHARED["model"]
 
 
 def _get_prompt(ref_audio: str, ref_text: str | None):
-    """音色提示缓存：同一参考音频只提取一次 VoiceClonePromptItem，全程复用。
+    """音色提示 LRU 缓存：同一参考音频只提取一次 VoiceClonePromptItem，全程复用。
 
     逐句重复 create_voice_clone_prompt 会让每句独立抽取声纹，采样波动下
     三句话可能出现两种音色；复用同一 prompt 保证整段视频音色一致（且省时）。
+    缓存带锁 + LRU 上限（多任务下不无限增长）。
     """
     key = (str(Path(ref_audio).resolve()), ref_text or "")
-    if key not in _PROMPT_CACHE:
-        model = _get_model()
-        try:
-            _PROMPT_CACHE[key] = model.create_voice_clone_prompt(
-                ref_audio=ref_audio, ref_text=ref_text or None,
-            )[0]
-        except Exception as exc:
-            raise LocalTTSError(
-                f"音色提取失败: {type(exc).__name__}: {exc}", category="video",
-            ) from exc
-    return _PROMPT_CACHE[key]
+    with _prompt_cache_lock:
+        if key in _PROMPT_CACHE:
+            _PROMPT_CACHE.move_to_end(key)
+            return _PROMPT_CACHE[key]
+    model = _get_model()
+    try:
+        prompt = model.create_voice_clone_prompt(
+            ref_audio=ref_audio, ref_text=ref_text or None,
+        )[0]
+    except Exception as exc:
+        raise LocalTTSError(
+            f"音色提取失败: {type(exc).__name__}: {exc}", category="video",
+        ) from exc
+    with _prompt_cache_lock:
+        _PROMPT_CACHE[key] = prompt
+        _PROMPT_CACHE.move_to_end(key)
+        while len(_PROMPT_CACHE) > _PROMPT_CACHE_MAX:
+            _PROMPT_CACHE.popitem(last=False)
+    return prompt
 
 
 def _generate(text: str, *, language: str,
