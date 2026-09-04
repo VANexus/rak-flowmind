@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -37,6 +38,8 @@ from starlette.responses import Response
 from flowmind.server import mcp
 from flowmind.server_rest import register_rest_routes
 from flowmind.server_tasks import register_task_routes
+
+logger = logging.getLogger(__name__)
 
 
 class AuthPlaceholderMiddleware(BaseHTTPMiddleware):
@@ -95,13 +98,29 @@ def _add_middlewares() -> None:
     mcp.streamable_http_app = streamable_http_app_with_middleware  # type: ignore[method-assign]
 
 
+def _load_dotenv() -> None:
+    """服务进程启动即加载 .env（API key 与基础设施地址只落 gitignored 的 .env）。
+
+    加载顺序（load_dotenv 不覆盖已加载变量——真实环境变量仍优先，
+    先加载者胜出）：仓库根 .env 先载（repo 内开发/部署的主配置），
+    再补父目录 .env（worktree 场景外层共享配置兑底）。
+
+    非 editable 布局（包被安装进 site-packages，parents[2] 下无
+    pyproject.toml）时仓库根定位失效，.env 自动加载不可用——记
+    warning 提示改用真实环境变量注入配置。
+    """
+    project_root = Path(__file__).resolve().parents[2]  # src/flowmind/ 上溯两级
+    if not (project_root / "pyproject.toml").is_file():
+        logger.warning(
+            "非 editable 布局（%s 下无 pyproject.toml）：仓库根/父目录 .env "
+            "不会自动加载，请改用真实环境变量注入配置", project_root)
+    load_dotenv(project_root / ".env")      # 仓库根优先
+    load_dotenv(project_root.parent / ".env")  # 父目录兑底（不覆盖已加载）
+
+
 def main() -> None:
     """mcp-base-gpu 入口：单端口 8001（MCP + 任务 REST 双通道）。"""
-    # 服务进程启动即加载 .env（API key 与基础设施地址只落 gitignored 的
-    # .env；load_dotenv 不覆盖已加载变量——真实环境变量仍优先）。
-    project_root = Path(__file__).resolve().parents[2]  # src/flowmind/ 上溯两级
-    load_dotenv(project_root.parent / ".env")
-    load_dotenv(project_root / ".env")
+    _load_dotenv()
     host = os.environ.get("FLOWMIND_MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("FLOWMIND_MCP_PORT", "8001"))
     mcp.settings.host = host

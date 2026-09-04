@@ -102,26 +102,39 @@ curl -o out.mp4 "http://127.0.0.1:8001/api/v1/tasks/<task_id>/download?file=demo
 
 任务成功后，ASR 分段经 BGE（`BAAI/bge-base-zh-v1.5`，768 维）嵌入写入
 Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
-把自然语言 query 嵌入后检索，支持按 task_id 限定范围；向量化是增值步骤，
-失败仅降级 warning，不影响本地化主产出。开关：`FLOWMIND_VECTORIZE=0` 关闭。
+把自然语言 query 嵌入后检索，支持按 task_id 限定范围。向量化是增值步骤：
+- **未配置**（`FLOWMIND_MILVUS_URI` 与 `FLOWMIND_EMBEDDING_BASE_URL` 均空，
+  内置默认即未配置）：流水线尾部静默跳过（记 info，`data.vectorized=false`），
+  `localize_search` 返回结构化错误——不刷 warning；
+- **调用失败**（已配置但服务不可达/出错）：降级 warning，不影响本地化主产出。
+- 开关：`FLOWMIND_VECTORIZE=0` 显式关闭（`data.vectorized=null`）。
 
 ## 配置
 
 配置源优先级（全仓库统一）：**环境变量 → `flowmind.config.toml` → 内置默认**。
-模板见 `.env.example`（云 key + 基础设施地址）；可调参数见 `config.py`
-（`LocalizerConfig` 业务参数 / `InfraConfig` 基础设施）。密钥绝不进 toml / commit。
+模板见 `.env.example`（云 key + 基础设施地址 + 任务治理参数）；可调参数见
+`config.py`（`LocalizerConfig` 业务参数 / `InfraConfig` 基础设施）。密钥绝不进 toml / commit。
+
+部署时需关注的治理参数（env 覆盖，详见 `.env.example`）：
+
+| 环境变量 | 默认 | 语义 |
+|---|---|---|
+| `FLOWMIND_DATA_DIR` | `~/flowmind-data` | 任务工作目录基准（`uploads/` `tasks/` `outputs/` 根；部署必配绝对路径） |
+| `FLOWMIND_MAX_PENDING_TASKS` | `100` | 待处理上限（queued+running，超出 429 背压） |
+| `FLOWMIND_TASK_TTL_SECONDS` | `3600` | 终态任务 workdir/outputs 的 GC 保留周期（DB 行保留供审计） |
 
 ## 基础设施依赖
 
 | 组件 | 用途 | 开发机 | 集群内部（svc 短名示例） |
 |---|---|---|---|
 | PostgreSQL + PgBouncer | 任务存储（事务模式，短连接快进快出） | mesh `RAK_PG_*` | `pgbouncer.agentic.svc:6432/mcp_base_gpu` |
-| EMQX (MQTT) | 任务进度事件（明文 1883 / TLS 可选） | mesh `RAK_MQTT_HOST` | `emqx.agentic.svc:1883` |
-| Milvus | 字幕分段向量库 | mesh NodePort | `http://milvus.agentic.svc:19530` |
-| BGE 嵌入服务 | 字幕向量化（TEI / OpenAI 双形状自适应） | 本机 `127.0.0.1:31997` | 集群内注入服务地址 |
+| EMQX (MQTT) | 任务进度事件（明文 1883 / TLS 可选 / 认证可选） | mesh `RAK_MQTT_HOST` | `emqx.agentic.svc:1883` |
+| Milvus | 字幕分段向量库 | 自建（如 mesh NodePort） | `http://milvus.agentic.svc:19530` |
+| BGE 嵌入服务 | 字幕向量化（TEI / OpenAI 双形状自适应） | 自建（如本机 127.0.0.1:31997） | 集群内注入服务地址 |
 
-未配置的基础设施按语义降级（MQTT → 纯落库；Milvus/嵌入 → 跳过向量化）；
-PG 是任务引擎硬依赖，缺失显式报错。
+未配置的基础设施按语义降级（MQTT → 纯落库；Milvus/嵌入 → 向量化显式禁用，
+流水线尾部静默跳过、`localize_search` 显式报错）；PG 是任务引擎硬依赖，
+缺失显式报错。MQTT 认证：`FLOWMIND_MQTT_USERNAME/PASSWORD`（空 = 匿名）。
 
 ## GPU 部署约定
 

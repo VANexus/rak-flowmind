@@ -1,21 +1,29 @@
-# examples —— 不需要 MCP 客户端也能体验 SDK
+# examples —— 不需要 MCP 客户端也能体验技能
 
-每个脚本都是一个**自包含**的最小可运行示例：`uv run python examples/<name>.py` 即可看到技能完整输出。
+每个脚本都是**自包含**的最小可运行示例（mock 全部外部依赖，无需
+GPU / PG / MQTT / Milvus / API key）：
 
-| 脚本 | 演示技能 | 你将看到 |
+```bash
+PYTHONPATH=$PWD/src conda run -n flowmind python examples/<name>_demo.py
+```
+
+## 8 个 demo 一览
+
+| 脚本 | 演示能力 | 你将看到 |
 |---|---|---|
-| [`inventory_risk_demo.py`](./inventory_risk_demo.py) | 库销比/库存风险分级 | DSI 阈值命中、四段式推理链、错误兜底（NOT_FOUND） |
-| [`marketing_image_demo.py`](./marketing_image_demo.py) | 营销生图（确定性 mock 后端） | 平台/风格推断、多版本测款、URL 复现性、错误兜底（VALIDATION） |
-| [`feishu_kb_demo.py`](./feishu_kb_demo.py) | 飞书 FAQ 检索（BM25+TF-IDF） | 意图分类、Top-K 命中、agent 提示模板 |
-| [`localize_batch_demo.py`](./localize_batch_demo.py) | 批量视频本地化编排 | mock VL 后端、错误分类（transient/video/environment） |
-| [`localize_status_demo.py`](./localize_status_demo.py) | 批量状态查询 | 并发轮询、卡住判定、per-task 404 → not_found |
-| [`localize_download_demo.py`](./localize_download_demo.py) | 产物清单 + 下载 URL | happy path、VL 假完成 → degraded、404 错误分类 |
-| [`localize_retry_demo.py`](./localize_retry_demo.py) | 失败任务重提 | 沿用原参数、404 → video、缺 source_video 兜底 |
-| [`localize_cancel_demo.py`](./localize_cancel_demo.py) | 取消运行中任务 | happy path、400 → video 错误分类 |
+| [`localize_submit_demo.py`](./localize_submit_demo.py) | 批量提交本地化任务 | 3 视频受理、扩展名预检分桶、队列中途满 partial、全满 429 背压 |
+| [`localize_status_demo.py`](./localize_status_demo.py) | 批量状态查询 | 并发轮询、stalled 卡住判定、per-task 404 → not_found、store 读失败 → INTERNAL |
+| [`localize_download_demo.py`](./localize_download_demo.py) | 产物清单 + 下载 URL | happy path 产物寻址、空结果/未完成/不存在 → degraded、404 分类 |
+| [`localize_retry_demo.py`](./localize_retry_demo.py) | 失败任务重提 | 复制原 args 重提、running/succeeded 拒绝重提、队列满 → ok=False |
+| [`localize_cancel_demo.py`](./localize_cancel_demo.py) | 协作式取消 | queued 直落终态、running 阶段边界生效、终态幂等、不存在 → video |
+| [`localize_search_demo.py`](./localize_search_demo.py) | 字幕语义检索（BGE + Milvus） | 向量命中、task_id 过滤、空库空态、服务不可用 → ok=False |
+| [`localize_video_demo.py`](./localize_video_demo.py) | 本地化流水线本体 | mock 全链路（ASR→翻译→擦除→克隆 TTS→合成）、无 key 显式 degraded、文件不存在 |
+| [`api_server_demo.py`](./api_server_demo.py) | 单端口 REST 任务通道冒烟 | health/manifest 发现、POST 202 → 轮询 → 流式下载、422/429 错误语义 |
 
 ## 🚀 Agent 开箱即用：`discover()`
 
-每个 demo 第一步都跑 `discover()`，让 Agent 自动发现技能的所有字段 —— 不再靠「猜 schema」。
+每个 demo 第一步都跑 `discover()` / `field_names()`，让 Agent 自动发现技能
+的字段 —— 不再靠「猜 schema」。
 
 ```python
 from flowmind import discover, field_names
@@ -25,46 +33,45 @@ for skill in discover():
     print(f"{skill['id']}: {skill['description']}")
 
 # 看某个技能的 input + output 完整 schema
-info = discover("inventory_risk")
+info = discover("localize_status")
 print(info["input_schema"])   # JSON Schema
 print(info["output_schema"])  # JSON Schema
 
-# 拿到 data 字段名（含嵌套），避免 r.data.band vs r.data.summary.level_counts 猜错
-for path, names in field_names("inventory_risk").items():
+# 拿到 data 字段名（含嵌套），避免 r.data.foo vs r.data.report.foo 猜错
+for path, names in field_names("localize_status").items():
     print(f"{path}: {names}")
 ```
 
-`discover()` 把 input_schema、output_schema、description 全部暴露给 Agent —— 这是「开箱即用」的核心契约。
+`discover()` 把 input_schema、output_schema、description 全部暴露给 Agent ——
+这是「开箱即用」的核心契约。
 
-## 一键全跑
+## 一键全跑（回归底线）
 
 ```bash
 for f in examples/*_demo.py; do
   echo "════ $f ════"
-  uv run python "$f"
-  echo
+  PYTHONPATH=$PWD/src conda run -n flowmind python "$f"
 done
 ```
 
-或者用 `Makefile`：
-
-```bash
-make demo           # 跑全部 demo
-make demo-inventory # 单跑一个
-```
+8 个 demo 全 PASS 是改动合并前的回归底线（本仓库无单测，demo 即冒烟测试）。
 
 ## demo 都做了什么
 
-每个 demo 都覆盖 3 个用例：
+每个 demo 都覆盖 3 类用例：
 
-1. **discover() 输出字段名** —— 让 Agent / 人类立即看到 `data.foo` 应该是什么
-2. **Happy path** —— 正常输入 + 完整输出（数据载荷 + 推理链）
-3. **错误路径** —— 故意触发环境错 / 视频错 / 服务端临时错，看 `failure_category` 分类 + Agent 下一步动作
+1. **discover() 字段发现** —— 让 Agent / 人类立即看到 `data.foo` 应该是什么
+2. **Happy path** —— 正常输入 + 完整输出（业务载荷 + 四段式推理链）
+3. **错误路径** —— 故意触发入参错 / 环境错 / 服务端临时错，看 `failure_category`
+   分类 + Agent 下一步动作建议
 
-## MCP 客户端配置模板
+## MCP 客户端接入
 
-不想用 demo 脚本？直接接 MCP 客户端：见 [`mcp_configs/`](./mcp_configs/)（Claude Desktop / Cline / Cursor 各一份）。
+不想用 demo 脚本？直接接 MCP 客户端（Streamable HTTP，端点
+`http://127.0.0.1:8001/mcp`）或 REST 任务通道，见仓库根 `README.md`。
 
 ## 加新 demo 的规范
 
-新增技能时，建议同时在这个目录加一个 `<skill>_demo.py`，沿用三段式结构（discover + happy + 错误），让评审 / 用户 30 秒看懂这个技能能干嘛。
+新增能力时，建议同时在本目录加一个 `<name>_demo.py`，沿用三段式结构
+（discover + happy + 错误），mock 外部依赖、自包含可跑，让评审 / 用户
+30 秒看懂这个能力能干嘛。

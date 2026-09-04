@@ -15,6 +15,8 @@
   首次最多等 2s 确认连接，超时视为暂不可达——后台线程继续自动重连，
   后续 publish 的 QoS=1 消息由 paho 排队补发。
 - 未配置（FLOWMIND_MQTT_HOST / config ``infra.mqtt_host`` 均空）→ 永久禁用，零开销。
+- 认证（可选）：FLOWMIND_MQTT_USERNAME / FLOWMIND_MQTT_PASSWORD
+  （或 config ``infra.mqtt_username/mqtt_password``）；username 空 = 匿名连接。
 - TLS：FLOWMIND_MQTT_USE_TLS / config ``infra.mqtt_use_tls`` 开启时
   ``tls_set()``（默认系统 CA；EMQX 明文 1883 部署保持 False）。
 - 首次失败记 warning，之后降为 debug（成功后复位），不刷屏。
@@ -34,10 +36,12 @@ logger = logging.getLogger(__name__)
 _TOPIC_PREFIX = "mcp-base-gpu/tasks"
 
 
-def _resolve_broker() -> tuple[str, int, bool] | None:
+def _resolve_broker() -> tuple[str, int, bool, str, str] | None:
     """broker 解析（配置源顺序：env → config.toml → None）。
 
-    返回 (host, port, use_tls)；均未配置返回 None（发布器永久禁用）。
+    返回 (host, port, use_tls, username, password)；host 未配置返回 None
+    （发布器永久禁用）。username/password 为空 = 匿名连接（EMQX 未开
+    认证时的默认形态）。
     """
     from flowmind.config import get_config
 
@@ -59,18 +63,27 @@ def _resolve_broker() -> tuple[str, int, bool] | None:
         use_tls = False
     else:
         use_tls = get_config().infra.mqtt_use_tls
-    return host, port, use_tls
+    username = (os.environ.get("FLOWMIND_MQTT_USERNAME", "").strip()
+                or get_config().infra.mqtt_username.strip())
+    # 密码不 strip（口令含首尾空格属合法值，与 store.py RAK_PG_APP_PASS 同口径）
+    password = (os.environ.get("FLOWMIND_MQTT_PASSWORD", "")
+                or get_config().infra.mqtt_password)
+    return host, port, use_tls, username, password
 
 
 class TaskEventPublisher:
     """任务事件 MQTT 发布器（线程安全；失败静默降级为纯落库）。"""
 
     def __init__(self, host: str | None = None, port: int | None = None,
-                 use_tls: bool = False):
+                 use_tls: bool = False, username: str = "", password: str = ""):
         if host is not None:
             self._broker = ((host, port or 1883, use_tls) if host else None)
+            self._auth = (username, password) if username else None
         else:
-            self._broker = _resolve_broker()
+            resolved = _resolve_broker()
+            self._broker = None if resolved is None else resolved[:3]
+            self._auth = None if resolved is None or not resolved[3] else (
+                resolved[3], resolved[4])
         self._client = None
         self._lock = threading.Lock()
         self._connected = threading.Event()
@@ -105,6 +118,8 @@ class TaskEventPublisher:
                 client_id=f"flowmind-tasks-{os.getpid()}",
                 protocol=mqtt.MQTTv311,
             )
+            if self._auth:
+                client.username_pw_set(self._auth[0], self._auth[1])
             if use_tls:
                 client.tls_set()  # 默认系统 CA（ssl.default_ca_certs）
             client.reconnect_delay_set(min_delay=1, max_delay=30)
@@ -156,8 +171,14 @@ class TaskEventPublisher:
             return False
 
     def close(self) -> None:
-        """停 loop、断连接（进程退出时调用；失败静默）。"""
-        if self._client is not None:
+        """停 loop、断连接（进程退出时调用；失败静默）。
+
+        与 _get_client 的写路径共用 _lock：读-停-置空原子化，防 close 与
+        惰性建连并发时把刚建的 client 置空、或 stop 了他人正在用的 loop。
+        """
+        with self._lock:
+            if self._client is None:
+                return
             try:
                 self._client.loop_stop()
                 self._client.disconnect()

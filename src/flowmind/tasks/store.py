@@ -20,9 +20,10 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from typing import Any
 
-from flowmind.tasks import TaskStoreError
+from flowmind.tasks import TERMINAL_STATUSES, TaskStoreError
 
 logger = logging.getLogger(__name__)
 
@@ -110,13 +111,13 @@ class TaskStore:
     # ── 连接与建表 ──
 
     def _connect(self):
-        """短借连接（重试 1 次）。psycopg2 懒 import（阶段 5 进 environment.yml）。"""
+        """短借连接（重试 1 次）。psycopg2 懒 import（environment.yml 已含）。"""
         try:
             import psycopg2
         except ImportError as exc:
             raise TaskStoreError(
-                "未安装 psycopg2（本阶段验证临时安装：pip install psycopg2-binary；"
-                "阶段 5 进 environment.yml）") from exc
+                "未安装 psycopg2（environment.yml 已含 psycopg2-binary；"
+                "conda env update -n flowmind -f environment.yml 安装）") from exc
         last: Exception | None = None
         for attempt in (1, 2):
             try:
@@ -329,6 +330,49 @@ class TaskStore:
                 return int(cur.fetchone()[0])
         except Exception as exc:  # noqa: BLE001
             raise TaskStoreError(f"count_pending 失败: {exc}") from exc
+        finally:
+            conn.close()
+
+    def list_expired(self, finished_before: datetime,
+                     limit: int = 500) -> list[str]:
+        """TTL GC 圈定：终态且 finished_at 早于 cutoff 的任务 id。
+
+        单条 SQL 直接圈定（``status = ANY(终态) AND finished_at < cutoff``），
+        替代旧的逐状态 limit=1000 全状态扫描；finished_at 升序返回
+        （最老的先清），limit 防单轮清理过长（未清完的下一轮 GC 再接手）。
+        """
+        self._ensure_ready()
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT task_id FROM {_TABLE_NAME} "
+                    "WHERE status = ANY(%s) AND finished_at IS NOT NULL "
+                    "AND finished_at < %s ORDER BY finished_at LIMIT %s",
+                    (sorted(TERMINAL_STATUSES), finished_before,
+                     max(1, int(limit))),
+                )
+                rows = cur.fetchall()
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(
+                f"list_expired 失败 finished_before={finished_before}: {exc}") from exc
+        finally:
+            conn.close()
+        return [r[0] for r in rows]
+
+    def task_exists(self, task_id: str) -> bool:
+        """task_id 是否存在 DB 行（GC 孤儿目录判定用；存在即不属孤儿）。"""
+        self._ensure_ready()
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT 1 FROM {_TABLE_NAME} WHERE task_id = %s LIMIT 1",
+                    (task_id,),
+                )
+                return cur.fetchone() is not None
+        except Exception as exc:  # noqa: BLE001
+            raise TaskStoreError(f"task_exists 失败 task={task_id}: {exc}") from exc
         finally:
             conn.close()
 

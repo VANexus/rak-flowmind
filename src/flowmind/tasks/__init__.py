@@ -17,15 +17,16 @@ mcp-base-gpu SaaS 化的任务引擎（阶段 2）。模块边界（import 无�
   服务端 prepared statement。
 - MQTT（EMQX）：明文 1883。host 从 ``FLOWMIND_MQTT_HOST`` 读，未设置回落
   ``RAK_MQTT_HOST``；两者都缺 → 发布器静默禁用（纯落库降级）。
-- Milvus 2.6.6：``FLOWMIND_MILVUS_URI``（默认开发机 mesh NodePort，
-  集群内部注入 http://milvus.agentic.svc:19530）。
-- BGE embedding（BAAI/bge-base-zh-v1.5，768 维）：集群预期端点
-  100.121.213.4:31997 当前**连接拒绝**（无该部署），客户端按 TEI 风格
-  /embed 与 OpenAI 兼容 /v1/embeddings 双形状自适应；开发机联调用本机
-  同形状服务（见 skills/_bge_embed.py 模块注释）。
+- Milvus 2.6.6：``FLOWMIND_MILVUS_URI``（或 config ``infra.milvus_uri``）。
+  均空 = **显式禁用**（不连内置默认地址）：upsert/search 抛
+  VectorStoreError；集群内部注入 http://milvus.agentic.svc:19530。
+- BGE embedding（BAAI/bge-base-zh-v1.5，768 维）：``FLOWMIND_EMBEDDING_BASE_URL``
+  （或 config ``infra.embedding_base_url``）；均空 = 显式禁用（embed_texts
+  抛 EmbedError）。客户端按 TEI 风格 /embed 与 OpenAI 兼容 /v1/embeddings
+  双形状自适应（见 skills/_bge_embed.py 模块注释）。
 
-本阶段临时 pip 安装的验证依赖（阶段 5 正式进 environment.yml）：
-psycopg2-binary / paho-mqtt / pymilvus。
+依赖：psycopg2-binary / paho-mqtt / pymilvus 已进 environment.yml
+（conda env update -n flowmind -f environment.yml 安装）。
 """
 from __future__ import annotations
 

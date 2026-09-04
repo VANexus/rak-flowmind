@@ -7,10 +7,11 @@ InfraConfig（任务引擎基础设施：PG / MQTT / Milvus / 嵌入服务）。
 """
 from __future__ import annotations
 
+import os
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 DEFAULT_CONFIG_PATH = Path("flowmind.config.toml")  # 相对于当前工作目录（cwd）
 
@@ -20,6 +21,12 @@ class LocalizerConfig(BaseModel):
 
     阈值类（批量上限 / 成本分界 / TTS 默认 / 字幕策略 / 允许扩展名）
     全走 config——不带默认值硬编码进函数体。
+
+    治理参数（data_dir / max_pending_tasks / task_ttl_seconds）支持
+    env 覆盖（``env → config.toml → 内置默认``，与 InfraConfig 的
+    env 优先链风格一致）：这三个参数是部署拓扑属性（容器经 env 注入，
+    12-factor 风格），在字段 validator 层统一收敛，消费方
+    （manager / 沙箱 / REST 预检）直读配置对象即可，无需各自解析 env。
     """
 
     # ── 任务治理（SaaS 化：工作目录基准 + 并发上限 + 生命周期） ──
@@ -78,6 +85,30 @@ class LocalizerConfig(BaseModel):
     tts_backend: str = "auto"           # 配音：auto(本地栈可用则克隆原片人声否则云) / local(强制本地克隆) / cloud(强制云)
     bgm_vocal_sep: bool = True          # 背景音人声分离（demucs htdemucs）：True=纯伴奏做 BGM；False=整条原声
 
+    @field_validator("data_dir", mode="before")
+    @classmethod
+    def _env_data_dir(cls, v: str) -> str:
+        """env FLOWMIND_DATA_DIR 优先覆盖（空值不生效，回落 config/默认）。"""
+        env = os.environ.get("FLOWMIND_DATA_DIR", "").strip()
+        return env or v
+
+    @field_validator("max_pending_tasks", "task_ttl_seconds", mode="before")
+    @classmethod
+    def _env_governance_ints(cls, v: int, info: ValidationInfo) -> int:
+        """env FLOWMIND_MAX_PENDING_TASKS / FLOWMIND_TASK_TTL_SECONDS 覆盖。"""
+        env_names = {
+            "max_pending_tasks": "FLOWMIND_MAX_PENDING_TASKS",
+            "task_ttl_seconds": "FLOWMIND_TASK_TTL_SECONDS",
+        }
+        raw = os.environ.get(env_names[info.field_name], "").strip()
+        if not raw:
+            return v
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"{env_names[info.field_name]} 必须是整数: {raw!r}") from exc
+
     @field_validator("data_dir")
     @classmethod
     def _expand_data_dir(cls, v: str) -> str:
@@ -107,6 +138,8 @@ class InfraConfig(BaseModel):
     mqtt_host: str = ""                  # 空 = 发布器禁用（纯 PG 落库降级）
     mqtt_port: int = 1883                # EMQX 明文端口
     mqtt_use_tls: bool = False           # True 时走 TLS（默认系统 CA）
+    mqtt_username: str = ""             # env FLOWMIND_MQTT_USERNAME 优先；空 = 匿名
+    mqtt_password: str = ""             # env FLOWMIND_MQTT_PASSWORD 优先；空 = 匿名
 
     # ── Milvus（字幕分段向量库 localize_segments）──
     milvus_uri: str = ""                 # env FLOWMIND_MILVUS_URI 优先

@@ -66,7 +66,8 @@ class _FakeManager:
         self.store = _FakeComponents()
         self.events = _FakeComponents()
 
-    def submit(self, skill_id: str, args: dict) -> str:
+    def submit(self, skill_id: str, args: dict,
+               tenant_id: str | None = None) -> str:
         with self._lock:
             if self.fail_after is not None and self._submitted >= self.fail_after:
                 raise TaskQueueFull(
@@ -82,7 +83,7 @@ class _FakeManager:
             "task_id": task_id, "skill_id": skill_id, "args": args,
             "status": "running", "stage": "asr", "progress": 10.0,
             "error": None, "created_at": now, "started_at": now,
-            "finished_at": None, "tenant_id": None, "output_paths": None,
+            "finished_at": None, "tenant_id": tenant_id, "output_paths": None,
         }
         timer = threading.Timer(
             0.2, self._finish, args=(task_id, out))
@@ -158,7 +159,9 @@ def main() -> None:
     base = f"http://127.0.0.1:{port}/api/v1"
     server, thread = _start_server(port)
 
-    # 段0：就绪等待
+    # 段0：就绪等待（探测 /manifest：只读 registry 无副作用；
+    # 不能用 /health——其会经 get_task_manager 触发真实 manager 构造，
+    # 无 PG 配置时失败结果会被 30s degraded 缓存带到段1 断言）
     section("0. 启动服务（子线程 uvicorn，随机端口）")
     with httpx.Client() as probe:
         deadline = time.time() + 10
@@ -166,7 +169,8 @@ def main() -> None:
         while time.time() < deadline and not ready:
             if server.started:
                 try:
-                    ready = probe.get(f"{base}/health", timeout=2).status_code == 200
+                    ready = probe.get(
+                        f"{base}/manifest", timeout=2).status_code == 200
                 except httpx.HTTPError:
                     pass
             if not ready:

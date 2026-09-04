@@ -21,13 +21,19 @@ GET 流式下载产物；轻技能走 MCP tools/call（localize_status 等只读
 但不经 invoke() 信封——REST 层直接调 manager.submit，TaskQueueFull
 可按异常类型精确映射 429（errors.py 无独立错误码，见 localize_submit
 模块 docstring 的决策记录）。
+
+并发纪律：async 端点内的 store/manager 同步 DB 调用（submit / get /
+health 的 PG 往返）一律包 ``anyio.to_thread.run_sync``（await 形态），
+避免阻塞事件循环拖累同端口的 /mcp Streamable HTTP 通道。
 """
 from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
+import anyio
 from pydantic import ValidationError
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse
@@ -46,6 +52,12 @@ from flowmind.tasks.manager import get_task_manager
 logger = logging.getLogger(__name__)
 
 _VERSION = "0.2.0"
+
+# manager 初始化失败后 degraded 结果的缓存时长（秒）：期内不重试构造，
+# 防探针重试风暴（构造含 PG 连接超时 + recover，失败场景下每次探针
+# 重试都吃完整连接耗时，拖慢事件循环）。
+_HEALTH_DEGRADED_TTL = 30.0
+_health_degraded: tuple[float, dict[str, str]] | None = None
 
 
 def register_task_routes(mcp) -> None:
@@ -75,16 +87,22 @@ def register_task_routes(mcp) -> None:
                 {"error": "validation", "detail": str(exc)}, status_code=422)
         accepted, rejected = _split_paths(
             inp.videos, load_config().localizer.allowed_extensions)
-        manager = get_task_manager()
+        manager = await anyio.to_thread.run_sync(get_task_manager)
+        # 鉴权占位中间件实装后从凭证解析 tenant_id 写入 request.state；
+        # 现为 no-op 不设置 → None（管道已接通，store.tenant_id 列就绪）
+        tenant_id = getattr(request.state, "tenant_id", None)
         task_ids: list[str] = []
         for video in accepted:
             try:
-                task_ids.append(
-                    manager.submit(TASK_SKILL_ID, _task_args(video, inp)))
+                task_ids.append(await anyio.to_thread.run_sync(
+                    manager.submit, TASK_SKILL_ID, _task_args(video, inp),
+                    tenant_id))
             except TaskQueueFull as exc:
                 if not task_ids:
                     return JSONResponse(
-                        {"error": "queue_full", "detail": str(exc)},
+                        {"error": "queue_full", "detail": str(exc),
+                         "rejected_count": len(rejected),
+                         "rejected_paths": rejected},
                         status_code=429)
                 return JSONResponse(
                     {
@@ -113,8 +131,9 @@ def register_task_routes(mcp) -> None:
     @mcp.custom_route("/api/v1/tasks/{task_id}", methods=["GET"])
     async def task_get(request: Request) -> JSONResponse:
         """查询单个任务状态（TaskStore 行的 JSON 视图）。"""
-        manager = get_task_manager()
-        rec = manager.get_task(request.path_params["task_id"])
+        manager = await anyio.to_thread.run_sync(get_task_manager)
+        rec = await anyio.to_thread.run_sync(
+            manager.get_task, request.path_params["task_id"])
         if rec is None:
             return JSONResponse({"error": "unknown_task"}, status_code=404)
         return JSONResponse(rec)
@@ -132,8 +151,8 @@ def register_task_routes(mcp) -> None:
         if not name:
             return JSONResponse(
                 {"error": "missing_file_param"}, status_code=400)
-        manager = get_task_manager()
-        rec = manager.get_task(task_id)
+        manager = await anyio.to_thread.run_sync(get_task_manager)
+        rec = await anyio.to_thread.run_sync(manager.get_task, task_id)
         if rec is None:
             return JSONResponse({"error": "unknown_task"}, status_code=404)
         output_paths = [str(p) for p in (rec.get("output_paths") or []) if p]
@@ -149,17 +168,31 @@ def register_task_routes(mcp) -> None:
 
         pg 是任务引擎硬依赖（error → status=degraded）；mqtt / milvus
         为增值通道（disabled / unverified / connecting 均不算故障）。
+        探针风暴防护：manager 初始化失败的结果缓存
+        ``_HEALTH_DEGRADED_TTL``（30s），期内直接返回缓存的 degraded
+        状态、不重试构造；缓存过期后重试（PG 恢复即自愈，成功即清缓存）。
         """
+        global _health_degraded
         components: dict[str, str] = {}
-        try:
-            manager = get_task_manager()
-            components["pg"] = manager.store.health_status()
-            components["mqtt"] = manager.events.status()
-        except Exception as exc:  # noqa: BLE001  探针绝不 500
-            logger.warning("健康检查：任务引擎初始化失败: %s", exc)
-            components["pg"] = "error"
-            components["mqtt"] = "unknown"
-        components["milvus"] = vectors.health_status()
+        cached = _health_degraded
+        if cached is not None and (
+                time.monotonic() - cached[0] < _HEALTH_DEGRADED_TTL):
+            logger.debug("健康检查：manager 初始化失败缓存命中（30s 内不重试构造）")
+            components.update(cached[1])
+        else:
+            try:
+                manager = await anyio.to_thread.run_sync(get_task_manager)
+                _health_degraded = None  # 构造成功：清缓存
+                components["pg"] = await anyio.to_thread.run_sync(
+                    manager.store.health_status)
+                components["mqtt"] = manager.events.status()
+            except Exception as exc:  # noqa: BLE001  探针绝不 500
+                logger.warning("健康检查：任务引擎初始化失败: %s", exc)
+                components["pg"] = "error"
+                components["mqtt"] = "unknown"
+                _health_degraded = (time.monotonic(), dict(components))
+        components["milvus"] = await anyio.to_thread.run_sync(
+            vectors.health_status)
         return JSONResponse(
             {
                 "status": "ok" if components["pg"] == "ok" else "degraded",

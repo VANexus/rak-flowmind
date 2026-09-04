@@ -114,7 +114,9 @@ class LocalizeVideoReport(BaseModel):
     asr_backend: str = "cloud"            # 实际使用的 ASR 后端（local/cloud）
     ocr_backend: str = "cloud"            # 实际使用的 OCR 后端（local/cloud）
     erase_backend: str | None = None      # 实际使用的擦除后端（lama/delogo；增量字段）
-    vectorized: bool | None = None        # 字幕向量化：True/False/None(关闭)（增量字段）
+    # 字幕向量化（增量字段）：True=已写入 Milvus；False=未写入（未配置或失败，
+    # 由阶段消息与日志区分）；None=开关关闭
+    vectorized: bool | None = None
     failure_category: str | None = None
     retriable: bool = False
     warning: str | None = None
@@ -266,22 +268,35 @@ def _filter_tts_segments(translated: list[dict]) -> list[dict]:
     return tts_segs
 
 
-def _vectorize_segments(task_id: str, segments: list[dict], src: str) -> bool | None:
+def _vectorize_segments(task_id: str, segments: list[dict], src: str) -> tuple[bool | None, str]:
     """成功路径尾部：ASR 分段 → BGE 嵌入 → Milvus upsert（FLOWMIND_VECTORIZE 开关）。
 
     开关配置源顺序：env → config.toml（infra.vectorize）→ 默认开。
-    返回 True=已写入 / False=失败降级 / None=功能关闭。
-    向量化是增值步骤：失败仅 warning，绝不影响本地化主产出（ok=True 不变）。
+    返回 (vectorized, note)，note 供阶段进度消息：
+    - (True, "向量化完成")：已写入 Milvus；
+    - (False, "向量化未配置，已跳过")：Milvus/嵌入服务地址均空（显式禁用
+      默认形态）——info 静默跳过，不打 degraded warning 刷屏；
+    - (False, "向量化失败（已降级）")：服务已配置但调用失败——warning 降级；
+    - (None, "向量化已关闭")：开关显式关闭。
+    向量化是增值步骤：任何未写入结局都不影响本地化主产出（ok=True 不变）。
     """
     raw = os.environ.get("FLOWMIND_VECTORIZE", "").strip().lower()
     if raw in ("0", "false", "no", "off"):
-        return None
+        return None, "向量化已关闭"
     if not raw and not get_config().infra.vectorize:
-        return None
+        return None, "向量化已关闭"
+    if not vectors.is_configured():
+        logger.info("字幕向量化未配置（FLOWMIND_MILVUS_URI / config "
+                    "infra.milvus_uri 均空）——跳过")
+        return False, "向量化未配置，已跳过"
+    if not _bge_embed.is_configured():
+        logger.info("字幕向量化未配置（FLOWMIND_EMBEDDING_BASE_URL / config "
+                    "infra.embedding_base_url 均空）——跳过")
+        return False, "向量化未配置，已跳过"
     pairs = [(i, str(s.get("text", "")).strip()) for i, s in enumerate(segments)]
     pairs = [(i, t) for i, t in pairs if t]
     if not pairs:
-        return False
+        return False, "无有效 ASR 文本，向量化跳过"
     try:
         vecs = _bge_embed.embed_texts([t for _, t in pairs])
         video_name = Path(src).name.split("?")[0] or src
@@ -298,10 +313,10 @@ def _vectorize_segments(task_id: str, segments: list[dict], src: str) -> bool | 
             for (i, t), v in zip(pairs, vecs)
         ]
         vectors.upsert_task_segments(task_id, rows)
-        return True
+        return True, "向量化完成"
     except Exception as exc:  # noqa: BLE001  增值步骤降级
         logger.warning("字幕向量化失败（不影响主产出）: %s", exc)
-        return False
+        return False, "向量化失败（已降级）"
 
 
 def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
@@ -503,13 +518,8 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
     # ── 8) 字幕向量化（vectorize 97→100；增值步骤，失败降级）──
     _cancel_boundary("vectorize", cancel_check)
     progress_cb("vectorize", 98.0, "字幕向量化")
-    vectorized = _vectorize_segments(_pipeline_task_id(), segments, src)
-    if vectorized is True:
-        progress_cb("vectorize", 100.0, "向量化完成")
-    elif vectorized is False:
-        progress_cb("vectorize", 100.0, "向量化失败（已降级）")
-    else:
-        progress_cb("vectorize", 100.0, "向量化已关闭")
+    vectorized, vectorize_note = _vectorize_segments(_pipeline_task_id(), segments, src)
+    progress_cb("vectorize", 100.0, vectorize_note)
 
     return {
         "output_path": out_path,

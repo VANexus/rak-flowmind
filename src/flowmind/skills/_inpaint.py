@@ -54,7 +54,10 @@ def _get_lama():
                 from simple_lama_inpainting import SimpleLama
             except ImportError as exc:
                 raise InpaintError(
-                    "未安装 simple-lama-inpainting（conda env update -f environment.yml）",
+                    "未安装 simple-lama-inpainting（environment.yml 刻意不含——"
+                    "stale metadata 见文件内注释；按 README/CONTRIBUTING 步骤安装："
+                    "conda run -n flowmind pip install --no-deps "
+                    "\"simple-lama-inpainting>=0.1.2\"）",
                     category="environment",
                 ) from exc
             _lama_singleton = SimpleLama()

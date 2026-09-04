@@ -2,8 +2,8 @@
 
 API 形状探测记录（2026-09-04，curl 实测）：
 
-- 集群预期端点 ``http://100.121.213.4:31997``：**连接拒绝**（无该部署；
-  全集群 kubectl 无 embedding/bge 相关 svc/pod，LiteLLM 网关模型列表为空）。
+- 集群当时无 embedding/bge 部署（全集群 kubectl 无相关 svc/pod，
+  LiteLLM 网关模型列表为空）——集群侧部署就绪前，本模块属禁用态。
 - 开发机联调：用本机缓存模型 ``/srv/data/models/bge-base-zh-v1.5`` 起同形状
   服务（127.0.0.1:31997），实现两种业界通用形状：
     1) TEI（text-embeddings-inference）风格：
@@ -14,14 +14,16 @@ API 形状探测记录（2026-09-04，curl 实测）：
 - 客户端先按 TEI 形状请求；非 200 或形状不符时回退 OpenAI 形状，
   哪个先成功即锁定（进程内记忆，避免每次双重请求）。
 
-配置（配置源顺序：env → config.toml → 内置默认）：
+配置（配置源顺序：env → config.toml；均空 = **显式禁用**）：
 - ``FLOWMIND_EMBEDDING_BASE_URL`` / config ``infra.embedding_base_url``：
-  服务基址。内置默认 ``http://127.0.0.1:31997``（开发机联调）；集群部署
-  时注入集群内服务地址。
+  服务基址。两者均空时 ``embed_texts`` 抛 EmbedError（不回内置默认地址）；
+  开发机联调可指向本机同形状服务（如 http://127.0.0.1:31997），集群部署
+  注入集群内服务地址。
 - 超时 30s（批量文本嵌入是秒级操作）。
 
 失败语义：抛 EmbedError（category 字段与 errors.py 语义对齐），绝不吞、
-绝不静默返回空向量——调用方（流水线尾部向量化）自行决定降级。
+绝不静默返回空向量——调用方（流水线尾部向量化）自行决定降级；
+未配置属显式禁用态（category=environment，retriable=False）。
 """
 from __future__ import annotations
 
@@ -40,7 +42,6 @@ class EmbedError(Exception):
         self.retriable = retriable
 
 
-DEFAULT_BASE_URL = "http://127.0.0.1:31997"
 EMBED_DIM = 768
 _TIMEOUT = 30.0
 
@@ -50,12 +51,16 @@ _api_shape: str | None = None
 
 
 def _base_url() -> str:
-    """服务基址解析（配置源顺序：env → config.toml → 内置默认）。"""
+    """服务基址解析（配置源顺序：env → config.toml；均空 = 未配置/禁用）。"""
     from flowmind.config import get_config
 
     return (os.environ.get("FLOWMIND_EMBEDDING_BASE_URL", "").strip()
-            or get_config().infra.embedding_base_url.strip()
-            or DEFAULT_BASE_URL).rstrip("/")
+            or get_config().infra.embedding_base_url.strip()).rstrip("/")
+
+
+def is_configured() -> bool:
+    """嵌入服务是否已配置（env 与 config 均空 = False，显式禁用）。"""
+    return bool(_base_url())
 
 
 def _post_embeddings(texts: list[str], shape: str) -> list[list[float]]:
@@ -96,10 +101,17 @@ def _post_embeddings(texts: list[str], shape: str) -> list[list[float]]:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """批量文本 → 768 维向量列表（顺序与输入一致）。
 
+    未配置（服务基址空）抛 EmbedError（显式禁用，不静默降级）。
     空列表直接返回 []。首次调用自动探测 API 形状并进程内锁定。
     """
     if not texts:
         return []
+    if not is_configured():
+        raise EmbedError(
+            "未配置 FLOWMIND_EMBEDDING_BASE_URL，向量嵌入已禁用"
+            "（设置 FLOWMIND_EMBEDDING_BASE_URL 或 config infra.embedding_base_url"
+            " 后可用）",
+            category="environment")
     global _api_shape
     with _shape_lock:
         shape = _api_shape

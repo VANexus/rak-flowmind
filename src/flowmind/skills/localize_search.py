@@ -8,9 +8,10 @@ FLOWMIND_VECTORIZE 默认开）。本技能把自然语言 query 嵌入为向量
 典型用途：「找讲过 XX 的视频片段」「定位某产品卖点出现在哪个任务第几秒」。
 
 错误语义（决策记录）：
-- embedding / Milvus 服务不可用 → 异常上抛，invoke() 兜底为 ok=False
-  结构化错误，**不打 degraded**——检索是该技能的核心产出，降级返回空
-  结果会误导 Agent 为「无命中」；异常消息脱敏（不泄漏内部 host/URI）。
+- embedding / Milvus 服务不可用或未配置（地址均空 = 显式禁用）→ 异常上抛，
+  invoke() 兑底为 ok=False 结构化错误，**不打 degraded**——检索是该技能
+  的核心产出，降级返回空结果会误导 Agent 为「无命中」；异常消息脱敏
+  （不泄漏内部 host/URI；未配置时消息指明待设置的环境变量）。
 - Milvus 空库 → ok=True + 空 hits（合理空态，与「没有匹配」同语义）。
 """
 from __future__ import annotations
@@ -71,8 +72,9 @@ def localize_search(inp: SearchInput) -> SkillOutput[SearchReport]:
     try:
         query_vecs = _bge_embed.embed_texts([inp.query])
     except Exception as exc:  # noqa: BLE001  统一脱敏上抛（错误永不静默）
+        # 内层消息已脱敏且未配置时含待设置的环境变量名，透传提高可修性
         raise RuntimeError(
-            f"向量嵌入服务不可用（{type(exc).__name__}），检索失败"
+            f"向量嵌入服务不可用（{type(exc).__name__}: {exc}），检索失败"
         ) from exc
 
     try:
@@ -80,7 +82,7 @@ def localize_search(inp: SearchInput) -> SkillOutput[SearchReport]:
             query_vecs[0], top_k=inp.top_k, task_id=inp.task_id)
     except Exception as exc:  # noqa: BLE001  统一脱敏上抛（错误永不静默）
         raise RuntimeError(
-            f"向量检索服务不可用（{type(exc).__name__}），检索失败"
+            f"向量检索服务不可用（{type(exc).__name__}: {exc}），检索失败"
         ) from exc
 
     hits = [

@@ -39,7 +39,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flowmind.config import load_config
@@ -107,15 +107,21 @@ class TaskManager:
 
     # ── 提交 / 取消 ──
 
-    def submit(self, skill_id: str, args: dict) -> str:
-        """提交任务，返回 task_id；pending 超限抛 TaskQueueFull（调用方回 429）。"""
+    def submit(self, skill_id: str, args: dict,
+               tenant_id: str | None = None) -> str:
+        """提交任务，返回 task_id；pending 超限抛 TaskQueueFull（调用方回 429）。
+
+        tenant_id 由调用方透传（REST 端点读 request.state，鉴权占位
+        中间件实装后由其写入；MCP 通道暂无租户上下文传 None），
+        落 store.tenant_id 列——多租户隔离的存储管道已接通。
+        """
         task_id = uuid.uuid4().hex
         with self._submit_lock:
             pending = self.store.count_pending()
             if pending >= self._max_pending:
                 raise TaskQueueFull(
                     f"待处理任务已达上限 {self._max_pending}（当前 {pending}），稍后重试")
-            self.store.create_task(task_id, skill_id, args)
+            self.store.create_task(task_id, skill_id, args, tenant_id=tenant_id)
         with self._lock:
             self._cancel_events[task_id] = threading.Event()
             self._terminal_flags[task_id] = threading.Event()
@@ -325,32 +331,29 @@ class TaskManager:
         """终态任务 workdir/outputs 清理（DB 行保留）+ 孤儿目录清扫。
 
         清扫范围覆盖 data_dir/tasks/<id>/（工作目录）与 data_dir/outputs/<id>/
-        （URL 输入任务的产物目录），同一 TTL 策略；孤儿（无 DB 行且 mtime 超
-        7 天，直连 invoke 产生的随机目录）一并清理。
+        （URL 输入任务的产物目录），同一 TTL 策略。过期任务由
+        store.list_expired 按 SQL（``status IN 终态 AND finished_at < cutoff``）
+        直接圈定，替代逐状态 limit=1000 扫描；孤儿目录（无 DB 行且 mtime
+        超 7 天，直连 invoke 产生的随机目录）逐目录查 DB 存在性后清理
+        （孤儿本就稀少，且 7 天内目录不做 DB 查询）。
         """
-        cutoff = datetime.now(timezone.utc).timestamp() - self._ttl
-        known: set[str] = set()
-        for status in (*NON_TERMINAL_STATUSES, *TERMINAL_STATUSES):
-            for rec in self.store.list_tasks(status=status, limit=1000):
-                task_id = rec["task_id"]
-                known.add(task_id)
-                if status in TERMINAL_STATUSES and rec["finished_at"]:
-                    finished = datetime.fromisoformat(rec["finished_at"]).timestamp()
-                    if finished < cutoff:
-                        shutil.rmtree(
-                            self._data_dir / "tasks" / task_id, ignore_errors=True)
-                        shutil.rmtree(
-                            self._data_dir / "outputs" / task_id, ignore_errors=True)
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._ttl)
+        for task_id in self.store.list_expired(finished_before=cutoff, limit=500):
+            shutil.rmtree(
+                self._data_dir / "tasks" / task_id, ignore_errors=True)
+            shutil.rmtree(
+                self._data_dir / "outputs" / task_id, ignore_errors=True)
         orphan_cutoff = time.time() - _ORPHAN_DIR_TTL_SECONDS
         for root_name in ("tasks", "outputs"):
             root = self._data_dir / root_name
             if not root.is_dir():
                 continue
             for child in root.iterdir():
-                if not child.is_dir() or child.name in known:
+                if not child.is_dir():
                     continue
                 try:
-                    if child.stat().st_mtime < orphan_cutoff:
+                    if (child.stat().st_mtime < orphan_cutoff
+                            and not self.store.task_exists(child.name)):
                         shutil.rmtree(child, ignore_errors=True)
                         logger.info("孤儿目录已清理：%s", child)
                 except OSError as exc:

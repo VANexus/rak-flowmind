@@ -14,9 +14,10 @@ schema（768 维对齐 bge-base-zh-v1.5）：
     vector      FLOAT_VECTOR dim=768
 索引：HNSW + COSINE（余弦相似；bge 归一化向量下等价内积）。
 
-URI：env ``FLOWMIND_MILVUS_URI`` → config ``infra.milvus_uri`` → 内置默认
-（开发机 mesh NodePort http://100.121.213.4:31953；集群内部注入
-http://milvus.agentic.svc:19530）。
+URI：env ``FLOWMIND_MILVUS_URI`` → config ``infra.milvus_uri``；两者均空 =
+**显式禁用**（不连内置默认地址）：upsert/search 抛 VectorStoreError，
+localize_video 流水线尾部对“未配置”与“调用失败”区分降级（前者静默
+跳过，后者 warning），localize_search 返回结构化错误。
 
 失败语义：连接/写入/检索失败抛 VectorStoreError（重试 2 次），
 绝不吞——调用方（流水线尾部向量化）自行决定降级。
@@ -46,33 +47,45 @@ class VectorStoreError(Exception):
 
 
 def _uri() -> str:
-    """连接地址解析（配置源顺序：env → config.toml → 内置默认）。"""
+    """连接地址解析（配置源顺序：env → config.toml；均空 = 未配置/禁用）。"""
     from flowmind.config import get_config
 
     return (os.environ.get("FLOWMIND_MILVUS_URI", "").strip()
-            or get_config().infra.milvus_uri.strip()
-            or "http://100.121.213.4:31953")
+            or get_config().infra.milvus_uri.strip())
+
+
+def is_configured() -> bool:
+    """向量化是否已配置（env 与 config 均无 URI = False，显式禁用）。"""
+    return bool(_uri())
 
 
 def _get_client():
-    """惰性单例客户端（MilvusClient gRPC 连接线程安全复用）。"""
+    """惰性单例客户端（MilvusClient gRPC 连接线程安全复用）。
+
+    未配置（URI 空）→ VectorStoreError（显式禁用，不回内置默认地址）。
+    """
     global _client
     if _client is not None:
         return _client
     with _lock:
         if _client is not None:
             return _client
+        uri = _uri()
+        if not uri:
+            raise VectorStoreError(
+                "未配置 FLOWMIND_MILVUS_URI，向量化已禁用"
+                "（设置 FLOWMIND_MILVUS_URI 或 config infra.milvus_uri 后可用）")
         try:
             from pymilvus import MilvusClient
         except ImportError as exc:
             raise VectorStoreError(
-                "未安装 pymilvus（本阶段验证临时安装：pip install pymilvus；"
-                "阶段 5 进 environment.yml）") from exc
+                "未安装 pymilvus（environment.yml 已含；"
+                "conda env update -n flowmind -f environment.yml 安装）") from exc
         try:
-            _client = MilvusClient(uri=_uri(), timeout=10)
+            _client = MilvusClient(uri=uri, timeout=10)
         except Exception as exc:
             raise VectorStoreError(
-                f"Milvus 连接失败（{_uri()}）: {type(exc).__name__}: {exc}") from exc
+                f"Milvus 连接失败（{uri}）: {type(exc).__name__}: {exc}") from exc
         return _client
 
 
