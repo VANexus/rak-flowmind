@@ -6,6 +6,7 @@
 
 ```bash
 conda env update -n flowmind -f environment.yml   # 安装依赖（依赖真源 = environment.yml）
+conda run -n flowmind pip install --no-deps "simple-lama-inpainting>=0.1.2"  # stale metadata 见 environment.yml 注释
 conda run -n flowmind pip install -e . --no-deps  # 包本体
 conda run -n flowmind ruff check src              # lint
 ```
