@@ -1,7 +1,6 @@
-"""flowmind-mcp-http 入口：以 Streamable HTTP 传输启动 MCP + A2A 服务。
+"""flowmind-mcp-http 入口：以 Streamable HTTP 传输启动 MCP 服务。
 
 供任意 HTTP 客户端消费——技能逻辑与密钥全部留在 flowmind，Web 端零密钥。
-MCP 与 A2A 共享 8001 端口，各占不同路径前缀。
 
 同端口额外暴露 REST 发现 API（/api/v1/manifest、/api/v1/health），供前端运行时
 发现技能，不再硬编码技能清单。
@@ -11,9 +10,6 @@ MCP 与 A2A 共享 8001 端口，各占不同路径前缀。
   FLOWMIND_MCP_HOST    默认 127.0.0.1
   FLOWMIND_MCP_PORT    默认 8001
 端点：
-  MCP: http://<host>:<port>/mcp （Streamable HTTP，JSON-RPC over POST）
-  A2A: http://<host>:<port>/a2a （JSON-RPC over POST）
-  Agent Card: http://<host>:<port>/.well-known/agent.json
   http://<host>:<port>/mcp            （Streamable HTTP，JSON-RPC over POST）
   http://<host>:<port>/api/v1/manifest （技能清单）
   http://<host>:<port>/api/v1/health   （健康探针）"""
@@ -23,7 +19,6 @@ import os
 
 from starlette.middleware.cors import CORSMiddleware
 
-from flowmind.a2a.server import FlowMindA2AServer
 from flowmind.server import mcp
 from flowmind.server_rest import register_rest_routes
 
@@ -69,27 +64,6 @@ def _add_cors_middleware() -> None:
     mcp.streamable_http_app = streamable_http_app_with_cors  # type: ignore[method-assign]
 
 
-def _mount_a2a_routes() -> None:
-    """把 A2A 路由（Agent Card + /a2a）挂进 FastMCP 的 Starlette 应用。
-
-    mcp.run() 每次都会重新调用 streamable_http_app() 创建新 Starlette 实例，
-    直接在实例上 append 路由会被重建覆盖。这里沿用 CORS 的实例级 patch 模式：
-    在每次 app 创建后追加 A2A 路由（按 path 去重，重复调用安全）。
-    """
-    a2a_app = FlowMindA2AServer().get_app()
-    original = mcp.streamable_http_app
-
-    def streamable_http_app_with_a2a():
-        app = original()
-        existing = {getattr(r, "path", None) for r in app.routes}
-        for route in a2a_app.routes:
-            if getattr(route, "path", None) not in existing:
-                app.routes.append(route)
-        return app
-
-    mcp.streamable_http_app = streamable_http_app_with_a2a  # type: ignore[method-assign]
-
-
 def main() -> None:
     host = os.environ.get("FLOWMIND_MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("FLOWMIND_MCP_PORT", "8001"))
@@ -99,8 +73,6 @@ def main() -> None:
     register_rest_routes(mcp)
     # 在 run 之前挂载 CORS 中间件（让前端跨域 fetch 发现端点）
     _add_cors_middleware()
-    # 在 run 之前挂载 A2A 路由（Agent Card + tasks/send）
-    _mount_a2a_routes()
     mcp.run(transport="streamable-http")
 
 

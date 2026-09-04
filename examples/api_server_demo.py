@@ -9,6 +9,9 @@
 3. 异步 job —— 提交/轮询/终态/列表 + 未知技能 404 + invalid_request
    + 「job succeeded 但 result.ok=False」语义
 
+演示技能用 localize_status（裁剪后仓库唯一的轻技能），并对模块级 requests 打桩
+（同 localize_status_demo 模式），不依赖外部 video-localizer 服务与任何 API key。
+
 并发契约（与 server_api docstring 一致）：
   sync /invoke 不进 job lane —— 长 GPU 技能（localize_video 等）一律走 /jobs。
 Job 为内存态，服务重启即丢——轮询方对 unknown_job 与被 TTL 回收做同类处理。
@@ -18,14 +21,43 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from datetime import datetime, timezone
 
 import httpx
 import uvicorn
 
 import flowmind.skills  # noqa: F401  触发 @skill 注册
+import flowmind.skills.localize_status as _ls
 from flowmind.server_api import create_app
 
-_INVOKE_ARGS = {"items": [{"sku": "A", "on_hand": 10, "unit_cost": 1, "sales_30d": 1}]}
+_INVOKE_ARGS = {"task_ids": ["demo-task-1"]}
+
+
+def _install_fake_vl() -> None:
+    """对 localize_status 模块级 requests 打桩：所有 task 返回 completed。
+
+    uvicorn 与 job runner 与本脚本同进程，模块级打桩对 sync /invoke 与
+    /jobs 两条链路同时生效——demo 不依赖外部 video-localizer 服务。
+    """
+    now = datetime.now(timezone.utc)
+
+    def fake_get(url, timeout=None, **_kw):
+        tid = url.rsplit("/", 1)[-1]
+        class _R:
+            status_code = 200
+            _json = {
+                "task_id": tid,
+                "status": "completed",
+                "started_at": now.isoformat(),
+                "finished_at": now.isoformat(),
+            }
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return self._json
+        return _R()
+
+    _ls.requests.get = fake_get
 
 
 def section(title: str) -> None:
@@ -57,6 +89,7 @@ def _poll(url: str, timeout_s: float = 30.0) -> dict:
 
 
 def main() -> None:
+    _install_fake_vl()
     port = _free_port()
     base = f"http://127.0.0.1:{port}/api/v1"
     server = uvicorn.Server(
@@ -96,18 +129,18 @@ def main() -> None:
     check(all("input_schema" in s for s in manifest["skills"]), "manifest 技能缺 input_schema")
     print(f"   manifest 技能数: {len(manifest['skills'])}（示例: {manifest['skills'][0]['id']}）")
 
-    r = httpx.get(f"{base}/manifest/inventory_risk", timeout=10)
-    check(r.status_code == 200 and r.json()["id"] == "inventory_risk", "单技能发现失败")
+    r = httpx.get(f"{base}/manifest/localize_status", timeout=10)
+    check(r.status_code == 200 and r.json()["id"] == "localize_status", "单技能发现失败")
     r = httpx.get(f"{base}/manifest/nope", timeout=10)
     body = r.json()
     check(r.status_code == 404 and body["error"] == "unknown_skill", "未知技能应 404 unknown_skill")
-    check("inventory_risk" in body["available"], "available 列表应含 inventory_risk")
+    check("localize_status" in body["available"], "available 列表应含 localize_status")
     print("   单查 OK；未知 id → 404 + available")
 
     # 段2：同步 invoke（happy）
     section("2. 同步 invoke（happy）")
     r = httpx.post(
-        f"{base}/skills/inventory_risk/invoke",
+        f"{base}/skills/localize_status/invoke",
         json=_INVOKE_ARGS,
         headers={"X-FlowMind-Trace-Id": "demo-trace-001"},
         timeout=30,
@@ -117,7 +150,7 @@ def main() -> None:
     check(body["ok"] is True, f"invoke ok != True: {body.get('error')}")
     check(body["trace"]["trace_id"] == "demo-trace-001", "X-FlowMind-Trace-Id 未贯穿")
     check(isinstance(body["metrics"]["latency_ms"], (int, float)), "latency_ms 缺失")
-    check("summary" in (body.get("data") or {}), "data.summary 缺失")
+    check("tasks" in (body.get("data") or {}), "data.tasks 缺失")
     print(f"   ok=True  trace_id={body['trace']['trace_id']}"
           f"  latency={body['metrics']['latency_ms']:.1f}ms")
 
@@ -129,7 +162,7 @@ def main() -> None:
     check(body["ok"] is False and body["error"]["code"] == "NOT_FOUND", "未知技能应 NOT_FOUND 信封")
     print("   未知技能 → 404 + NOT_FOUND 信封")
 
-    r = httpx.post(f"{base}/skills/inventory_risk/invoke", json={}, timeout=10)
+    r = httpx.post(f"{base}/skills/localize_status/invoke", json={}, timeout=10)
     body = r.json()
     check(r.status_code == 422, f"缺字段状态码 {r.status_code} != 422")
     check(body["ok"] is False and body["error"]["code"] == "VALIDATION", "缺字段应 VALIDATION 信封")
@@ -137,7 +170,7 @@ def main() -> None:
     print("   缺字段 → 422 + VALIDATION 信封（含 details.errors）")
 
     r = httpx.post(
-        f"{base}/skills/inventory_risk/invoke",
+        f"{base}/skills/localize_status/invoke",
         content="broken",
         headers={"Content-Type": "application/json"},
         timeout=10,
@@ -147,7 +180,7 @@ def main() -> None:
 
     # 段4：异步 job（happy）
     section("4. 异步 job（happy）")
-    r = httpx.post(f"{base}/jobs", json={"skill_id": "inventory_risk", "args": _INVOKE_ARGS}, timeout=10)
+    r = httpx.post(f"{base}/jobs", json={"skill_id": "localize_status", "args": _INVOKE_ARGS}, timeout=10)
     check(r.status_code == 202, f"提交状态码 {r.status_code} != 202")
     submitted = r.json()
     job_id = submitted["job_id"]
@@ -165,7 +198,7 @@ def main() -> None:
     check(final["status"] == "succeeded", f"job 终态 {final['status']} != succeeded")
     check(final["started_at"] and final["finished_at"], "终态 job 缺时间戳")
     check(final["created_at"] <= final["started_at"] <= final["finished_at"], "时间戳无序")
-    check(final["result"]["ok"] is True and final["result"]["skill"] == "inventory_risk", "job result 异常")
+    check(final["result"]["ok"] is True and final["result"]["skill"] == "localize_status", "job result 异常")
     print("   终态 succeeded  result.ok=True  时间戳有序")
 
     r = httpx.get(f"{base}/jobs", timeout=10)
@@ -184,7 +217,7 @@ def main() -> None:
     check(r.status_code == 400 and r.json()["error"] == "invalid_request", "缺 skill_id 应 400 invalid_request")
     print("   缺 skill_id → 400 invalid_request")
 
-    r = httpx.post(f"{base}/jobs", json={"skill_id": "inventory_risk", "args": {}}, timeout=10)
+    r = httpx.post(f"{base}/jobs", json={"skill_id": "localize_status", "args": {}}, timeout=10)
     check(r.status_code == 202, "已知技能但 args 非法应正常入队（202）")
     final = _poll(f"{base}/jobs/{r.json()['job_id']}")
     check(final["status"] == "succeeded", f"runner 未崩，job 应 succeeded，实际 {final['status']}")
