@@ -142,6 +142,10 @@ Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
 与 Python 功能包 **:8002** 共存）：把本仓库的 7 个 `localize_*` 工具 + 网关
 内置 `dify__*` 工具聚合为**单一 `/mcp` 端点**对外。
 
+- **独立仓库**：`go-kernel/` 是独立 git 仓库（VANexus/go-kernel），不随
+  本仓库分发（外层 `.gitignore` 已忽略该目录）——需单独 `git clone` 到
+  本仓库根旁，源码与文档中的 `go-kernel/...` 路径引用才可达。
+
 - **端口约定**：Python 功能包 :8002（FastMCP + 任务 REST）＝网关后端；
   Go 网关 :8080（`/mcp`、`/api/v1/tasks` 透传、`/api/v1/federation/*`、
   `/metrics`）＝对客户端的唯一入口。客户端连 :8080，不直连 :8002。
@@ -181,7 +185,7 @@ Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
 ```bash
 conda run -n flowmind ruff check src                       # lint（唯一质量门）
 for f in examples/*_demo.py; do
-  PYTHONPATH=$PWD/src conda run -n flowmind python "$f"    # 8 个 demo 全 PASS
+  PYTHONPATH=$PWD/src conda run -n flowmind python "$f"    # 9 个 demo 全 PASS
 done
 ```
 

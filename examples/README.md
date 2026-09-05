@@ -7,7 +7,7 @@ GPU / PG / MQTT / Milvus / API key）：
 PYTHONPATH=$PWD/src conda run -n flowmind python examples/<name>_demo.py
 ```
 
-## 8 个 demo 一览
+## 9 个 demo 一览
 
 | 脚本 | 演示能力 | 你将看到 |
 |---|---|---|
@@ -19,6 +19,7 @@ PYTHONPATH=$PWD/src conda run -n flowmind python examples/<name>_demo.py
 | [`localize_search_demo.py`](./localize_search_demo.py) | 字幕语义检索（BGE + Milvus） | 向量命中、task_id 过滤、空库空态、服务不可用 → ok=False |
 | [`localize_video_demo.py`](./localize_video_demo.py) | 本地化流水线本体 | mock 全链路（ASR→翻译→擦除→克隆 TTS→合成）、无 key 显式 degraded、文件不存在 |
 | [`api_server_demo.py`](./api_server_demo.py) | 单端口 REST 任务通道冒烟 | health/manifest 发现、POST 202 → 轮询 → 流式下载、422/429 错误语义 |
+| [`federation_register_demo.py`](./federation_register_demo.py) | 联邦自注册（PG+MQTT 双通道） | register QoS1 payload 契约、单通道降级仍完成注册、双通道全挂静默降级、心跳与优雅注销 |
 
 ## 🚀 Agent 开箱即用：`discover()`
 
@@ -54,7 +55,7 @@ for f in examples/*_demo.py; do
 done
 ```
 
-8 个 demo 全 PASS 是改动合并前的回归底线（本仓库无单测，demo 即冒烟测试）。
+9 个 demo 全 PASS 是改动合并前的回归底线（本仓库无单测，demo 即冒烟测试）。
 
 ## demo 都做了什么
 

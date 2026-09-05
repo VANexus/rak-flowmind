@@ -38,7 +38,11 @@ def _resolve_version() -> str:
     except Exception:  # noqa: BLE001  未安装态继续回落 pyproject
         pass
     try:
-        root = Path(__file__).resolve().parents[2]  # src/flowmind/federation/
+        # 层级：__file__ = <repo>/src/flowmind/federation/register.py →
+        # parents[0]=federation/ [1]=flowmind/ [2]=src/ [3]=<repo>/，
+        # pyproject.toml 在仓库根（parents[3]）——源码态部署（PYTHONPATH
+        # 直指 src/ 或 editable 安装）版本解析都靠它兜底。
+        root = Path(__file__).resolve().parents[3]  # <repo>/（pyproject.toml 所在）
         data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
         return str(data["project"]["version"])
     except Exception:  # noqa: BLE001  元数据读取失败不阻塞注册

@@ -191,14 +191,23 @@ def main() -> None:
     _load_dotenv()
     host = os.environ.get("FLOWMIND_MCP_HOST", "127.0.0.1")
     port = int(os.environ.get("FLOWMIND_MCP_PORT", "8002"))
+    if port != 8002:
+        logger.warning(
+            "生效端口 %s != 8002：网关约定后端端口为 8002，"
+            "请检查 FLOWMIND_MCP_PORT/.env 是否为残留旧值（如 8001）", port)
     mcp.settings.host = host
     mcp.settings.port = port
     # 在 run 之前注册路由（与 /mcp 同 Starlette 应用同端口）
     register_rest_routes(mcp)   # /api/v1/manifest 技能发现
     register_task_routes(mcp)   # /api/v1/tasks 任务通道 + /api/v1/health
     _add_middlewares()          # CORS + 鉴权占位
-    _wrap_streamable_lifespan()  # 联邦优雅注销挂进 lifespan（SIGTERM 路径）
-    _start_federation(port)     # 联邦自注册（默认关；失败静默）
+    # 联邦装配顺序（先启动，后条件包裹）：start_federation 先判定开关并
+    # 尝试注册，仅在拿到注销回调（联邦确已启动）时才包裹 lifespan——
+    # 未启用（默认）/启动失败时不碰 FastMCP lifespan 链，启动路径与
+    # 不包裹时严格等价，主流程零变化。
+    _start_federation(port)      # 联邦自注册（默认关；失败静默）
+    if _federation_stop is not None:
+        _wrap_streamable_lifespan()  # 联邦优雅注销挂进 lifespan（SIGTERM 路径）
     mcp.run(transport="streamable-http")
 
 
