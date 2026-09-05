@@ -183,3 +183,22 @@ conda run -n flowmind mcp-base-gpu          # 前台起单端口服务
 # MCP 探针（python + mcp 库，streamablehttp_client → list_tools 应恰好 7 个 localize_*）
 # REST 探活：curl http://127.0.0.1:8002/api/v1/health
 ```
+
+## MCP 联邦网关（go-kernel）
+
+仓库内 `go-kernel/` 是 Go 编写的 **MCP 联邦网关**（独立 go module）：
+
+- **端口约定**：Python 功能包 :8002 = 网关后端；Go 网关 :8080 = 对外唯一
+  入口（`/mcp`、`/api/v1/tasks` 透传、`/api/v1/federation/*`、`/metrics`、
+  `/api/health`）。
+- **关系**：网关把本仓库 7 个 `localize_*` 工具以
+  `{prefix}__{remote_tool}`（`video_localizer__*`）代理聚合，另附内置
+  `dify__*` 三工具；tools/call 全名路由 → 剥前缀 → 转发 → 结果透传。
+- **注册协议**：`FLOWMIND_FEDERATION_REGISTER=1` 时经 MQTT
+  （`mcp-base-gpu/federation/{register,heartbeat,unregister}`，QoS 1/0/1）
+  + PG（`federation_backends`）双通道自注册；30s 心跳、90s 无心跳标
+  offline（stale，工具保留）、熔断连续失败 3 次拒路由；默认关。
+- **铁律**：注册/心跳/注销 payload 与 PG 表结构改动必须双侧同步
+  （`src/flowmind/federation/` ↔ `go-kernel/internal/{mqttclient,federation,pgstore}`）；
+  工具结果 structuredContent 顶层必须是 object（Python mcp pydantic 约束）。
+  完整契约与部署见 `go-kernel/README.md` 与 `go-kernel/deploy/README.md`。

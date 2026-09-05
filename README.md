@@ -136,6 +136,27 @@ Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
 流水线尾部静默跳过、`localize_search` 显式报错）；PG 是任务引擎硬依赖，
 缺失显式报错。MQTT 认证：`FLOWMIND_MQTT_USERNAME/PASSWORD`（空 = 匿名）。
 
+## MCP 联邦网关（Go go-kernel）
+
+仓库旁挂载了一个 Go 联邦网关 `go-kernel/`（独立 go module，占用 **:8080**，
+与 Python 功能包 **:8002** 共存）：把本仓库的 7 个 `localize_*` 工具 + 网关
+内置 `dify__*` 工具聚合为**单一 `/mcp` 端点**对外。
+
+- **端口约定**：Python 功能包 :8002（FastMCP + 任务 REST）＝网关后端；
+  Go 网关 :8080（`/mcp`、`/api/v1/tasks` 透传、`/api/v1/federation/*`、
+  `/metrics`）＝对客户端的唯一入口。客户端连 :8080，不直连 :8002。
+- **动态注册**：本仓库以 `FLOWMIND_FEDERATION_REGISTER=1` 启动后，经
+  MQTT（`mcp-base-gpu/federation/{register,heartbeat,unregister}`）+ PG
+  （`federation_backends` 表）双通道自注册，30s 心跳 / 90s 无心跳标
+  offline / 优雅停机注销；默认关，不影响现有部署。
+- **代理语义**：工具名 `{prefix}__{remote_tool}`（如
+  `video_localizer__localize_status`）；后端断连工具保留（stale），调用
+  返回 `BACKEND_UNAVAILABLE / BACKEND_TIMEOUT` 结构化错误，重连自动恢复。
+- **协议契约改动必须双侧同步**：`src/flowmind/federation/` ↔
+  `go-kernel/internal/{mqttclient,federation,pgstore}`，详见
+  [go-kernel/README.md](./go-kernel/README.md)（topic 契约表、指标清单、
+  K8s 部署）。
+
 ## GPU 部署约定
 
 - **硬件**：NVIDIA P104-100（8GB，Pascal 6.1）。torch 锁 `2.5.1+cu121`

@@ -150,6 +150,30 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
 # MCP 探针：python + mcp 库 streamablehttp_client → list_tools 应恰好 7 个 localize_*
 ```
 
+## MCP 联邦网关（go-kernel）
+
+仓库内另有 `go-kernel/`（独立 Go module，提交单独走）——**MCP 联邦网关**，
+与 Python 功能包的关系与约定：
+
+- **端口约定**：Python 功能包 :8002（FastMCP + 任务 REST）＝网关后端；
+  Go 网关 :8080＝对客户端唯一入口（`/mcp`、`/api/v1/tasks` 透传、
+  `/api/v1/federation/*` 管理 API、`/metrics`、`/api/health`）。
+- **聚合关系**：网关把本仓库 7 个 `localize_*` 工具以
+  `{prefix}__{remote_tool}` 全名代理（`video_localizer__*`），另附内置
+  `dify__*` 三工具；对 MCP 客户端呈现单一 `/mcp`。
+- **注册协议**：本仓库 `FLOWMIND_FEDERATION_REGISTER=1` 启动后，经 MQTT
+  （`mcp-base-gpu/federation/{register,heartbeat,unregister}`，QoS 1/0/1）
+  + PG（`federation_backends`）双通道自注册；30s 心跳、90s 无心跳标
+  offline（stale，工具保留）、优雅停机注销；默认关，不影响现有 demo。
+- **开发铁律**：
+  - 注册/心跳/注销 payload 与 PG 表结构改动**必须双侧同步**：
+    `src/flowmind/federation/` ↔ `go-kernel/internal/{mqttclient,federation,pgstore}`；
+  - 工具结果 structuredContent 顶层必须是 object（Python mcp pydantic
+    校验约束，裸标量/数组直接 ValidationError）；
+  - go-kernel 侧提交前跑 `go vet ./... && go test ./...`（含
+    `go test -race ./internal/...`），命令详见 `go-kernel/AGENTS.md`；
+  - 契约细节（topic 表、指标清单、K8s 部署）见 `go-kernel/README.md`。
+
 ## 千万别做（Anti-patterns）
 
 | 行为 | 为什么错 |
