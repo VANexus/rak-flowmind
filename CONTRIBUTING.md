@@ -5,19 +5,20 @@
 ## 快速开始
 
 ```bash
-uv sync --extra dev          # 安装运行时 + 开发依赖
-uv run pytest                # 全量测试
-uv run ruff check src tests  # lint
+conda env update -n flowmind -f environment.yml   # 安装依赖（依赖真源 = environment.yml）
+conda run -n flowmind pip install --no-deps "simple-lama-inpainting>=0.1.2"  # stale metadata 见 environment.yml 注释
+conda run -n flowmind pip install -e . --no-deps  # 包本体
+conda run -n flowmind ruff check src              # lint
 ```
 
 ## 核心约定（务必遵守）
 
-- **云优先（最高原则）**：**不做任何本地 AI 处理**。ASR / TTS / 翻译 / OCR / 生图 / LLM 等全部走云端 API，禁止引入本地模型推理。确定性 mock 后端仅作测试基建（显式 `backend="mock"`）；无 API key 时必须显式报错，绝不静默降级到 mock 出假结果。
+- **本地优先（最高原则，2026-09 GPU 化起）**：ASR / OCR / 向量嵌入走本地模型（GPU 可行域内，见 `CLAUDE.md`「本地模型」段），LLM / TTS / 生图继续云 API。auto 开关 = 本地可用即用本地，无库回落云；无可用后端必须显式报错，绝不静默降级出假结果。
 - **语言**：注释、文档字符串、日志、提交信息用**中文**；变量/函数/类名用**英文**。
 - **提交格式**：`<type>: <中文描述>`，type ∈ `feat`/`fix`/`docs`/`refactor`/`test`/`chore`。
 - **错误永不静默**：任何失败都通过 `SkillResult(ok=False, error=...)` 或 `degraded=True` 返回结构化结果，绝不吞异常、绝不返回半成品。
 - **可自定义项只经 config 暴露**：不要把「某个用户的默认值」硬编码进代码。阈值等放进技能的 config 模型（带通用默认），由终端用户对话初始化覆盖。
-- **TDD**：先写失败测试（RED），再实现（GREEN），小步提交。
+- **验证靠真实运行**：本仓库无单测，改完跑对应 `examples/*_demo.py` + 直接 `invoke()` 看 envelope。
 
 ## 如何新增一个技能
 
@@ -72,14 +73,14 @@ from flowmind.skills import your_skill  # noqa: F401
 
 若技能有可调参数，在 `src/flowmind/config.py` 加一个配置模型（带通用默认），并纳入 `FlowmindConfig`；在技能里用 `load_config()` 读取。个性化由终端用户对话初始化（见 `README.md` 的「Agent 初始化剧本」）写入 `flowmind.config.toml`。
 
-### 4. 写测试
+### 4. 加 demo 冒烟
 
-在 `tests/test_<your_skill>.py` 里，优先通过 `invoke("<id>", args)` 做端到端断言：验证 `ok`、业务数据、四段式链四要素齐全、以及边界（非法入参 → `VALIDATION` 结构化错误）。
+在 `examples/<your_skill>_demo.py` 里通过 `invoke("<id>", args)` 走 envelope 层，覆盖三段式：happy / 默认参数 / 非法入参（→ `VALIDATION` 结构化错误）。
 
 ## 提交 PR 前的检查清单
 
-- [ ] `uv run pytest` 全绿，输出干净（无告警）
-- [ ] `uv run ruff check src tests` 通过
+- [ ] `conda run -n flowmind ruff check src` 通过
+- [ ] 新技能 demo 跑通（三段式齐备）
 - [ ] 新技能已在 `skills/__init__.py` 注册
 - [ ] 无 `# TODO` 遗留给下游开发者；可调项已走 config
 - [ ] 提交信息符合 `<type>: <中文描述>`

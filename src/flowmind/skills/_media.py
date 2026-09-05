@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 
 
@@ -15,7 +16,11 @@ class MediaError(Exception):
 
 
 def _run(cmd: list[str], timeout: float = 300.0) -> tuple[int, str, str]:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    # 显式 UTF-8 解码：父进程 locale 被翻成 C 时，跟随 locale 解码非 ASCII 输出会崩溃
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", timeout=timeout,
+    )
     return proc.returncode, proc.stdout, proc.stderr
 
 
@@ -96,13 +101,32 @@ def burn_subtitles(
 
 
 def mix_audio(
-    video_path: str, dub_path: str, out_path: str, *, keep_background: bool = False
+    video_path: str, dub_path: str, out_path: str, *, keep_background: bool = False,
+    bg_path: str | None = None,
 ) -> str:
-    """把配音轨合回视频。keep_background=True 时原声降为 -12dB 背景。"""
+    """把配音轨合回视频。keep_background=True 时背景音降为 -12dB 混入。
+
+    bg_path：背景音源（原始视频的音轨 wav）。擦除链输出的视频是**无声**的，
+    不能用 [0:a] 当背景——必须显式传原始音轨；缺省时回退旧行为（视频自带音轨）。
+    配音 0.9 倍预留峰值余量 + 显式 normalize=0，避免 amix 归一化衰减/削波。
+    """
     if keep_background:
-        afilter = "[0:a]volume=-12dB[bg];[bg][1:a]amix=inputs=2:duration=first[aout]"
-        amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]
-        inputs = ["-i", video_path, "-i", dub_path]
+        if bg_path and os.path.exists(bg_path):
+            # 背景来自独立音轨：video + dub + bg 三输入
+            afilter = (
+                "[2:a]volume=-12dB[bg];[1:a]volume=0.9[dub];"
+                "[bg][dub]amix=inputs=2:duration=first:normalize=0[aout]"
+            )
+            inputs = ["-i", video_path, "-i", dub_path, "-i", bg_path]
+            amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]
+        else:
+            # 视频自带音轨（旧行为兜底）
+            afilter = (
+                "[0:a]volume=-12dB[bg];[1:a]volume=0.9[dub];"
+                "[bg][dub]amix=inputs=2:duration=first:normalize=0[aout]"
+            )
+            inputs = ["-i", video_path, "-i", dub_path]
+            amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]
     else:
         amap = ["-map", "0:v", "-map", "1:a"]
         inputs = ["-i", video_path, "-i", dub_path]

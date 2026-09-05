@@ -1,22 +1,32 @@
-"""localize_retry 技能：用同样的入参重新提交一个失败/取消的任务。
+"""localize_retry 技能：重提一个终态的本地化任务（本地任务引擎）。
 
-内部走两步：GET /tasks/{id} 拿原参数 → POST /tasks（单条）重提。
-HTTP 层统一走 VLClient（vl_client.py）。
-对 Agent 来说一次调用就行，不用自己拿 source_video 再调 batch。
+内部两步：TaskStore 读原任务行（args_json 即原始入参）→ TaskManager.submit
+复制原参数重新创建任务，返回 original_task_id + new_task_id。对 Agent 来说
+一次调用就行，不用自己取 args 再调 localize_submit。
+
+重提准入语义：
+- failed / cancelled / interrupted（终态）→ 复制原 args 重新 submit
+- succeeded → 拒绝（degraded）：任务已成功无需重提
+- queued / running（非终态）→ 拒绝（degraded）：排队/运行中任务不允许重提，
+  先 localize_cancel 再重提
+- 任务不存在 → degraded + video（与原 VL 404 语义对齐）
+
+队列背压：重提遇 TaskQueueFull 向上抛 → invoke() 兜底 ok=False（429 语义，
+决策记录同 localize_submit）。
 """
 from __future__ import annotations
 
-import requests  # noqa: F401  保留模块级引用：测试 fixture 经 <mod>.requests 打桩拦截 VLClient
-
 from pydantic import BaseModel, Field
 
-from flowmind.config import LocalizerConfig, load_config
 from flowmind.contracts import ReasoningChain, SkillOutput
 from flowmind.errors import is_retriable
 from flowmind.skill import skill
-from flowmind.vl_client import VLAPIError, VLClient
+from flowmind.tasks.manager import get_task_manager
 
-_VERSION = "0.1.0"
+_VERSION = "0.2.0"
+
+# 允许重提的终态（succeeded 显式排除：成功任务无重提价值）
+_RETRYABLE_STATUSES = frozenset({"failed", "cancelled", "interrupted"})
 
 
 # ── 入参 ──
@@ -31,119 +41,107 @@ class RetryInput(BaseModel):
 class RetryReport(BaseModel):
     """retry 技能业务载荷。"""
     original_task_id: str
-    new_task_id: str
+    new_task_id: str          # 重提创建的新任务 id（拒绝时为空串）
     original_status: str | None
+    skill_id: str             # 原任务的技能（重提沿用）
     source_video: str
-    target_lang: str
-    enable_tts: bool
-    remove_subtitles: bool
+    target_lang: str | None
     failure_category: str | None = None
     retriable: bool = False
-    message: str | None = None    # 失败时的人类可读原因
+    message: str | None = None    # 拒绝/失败时的人类可读原因
 
 
 # ── 入口 ──
 
-@skill(id="localize_retry", name="重提失败任务", version=_VERSION)
+@skill(id="localize_retry", name="重提本地化任务", version=_VERSION)
 def localize_retry(inp: RetryInput) -> SkillOutput[RetryReport]:
-    """拿原 task 的入参（source_video/target_lang/enable_tts/remove_subtitles），
-    调 POST /tasks 单条重新提交，返回新 task_id。
+    """复制原任务 args_json 重新 submit，返回新 task_id。
 
-    失败分类（在 RetryReport.failure_category）：
-    - 原 task 不存在（404）→ video
-    - 原 task 没 source_video（VL 假完成场景）→ video
-    - POST /tasks 5xx → transient（可重试）
-    - 连接错 / 超时 → environment（先查网络）
+    数据流：task_id → TaskStore 读原行（终态校验）→ TaskManager.submit
+    （同 skill_id + 原 args）→ RetryReport + ReasoningChain → SkillResult 信封。
     """
-    cfg: LocalizerConfig = load_config().localizer
-    client = VLClient(cfg)
+    manager = get_task_manager()
+    rec = manager.get_task(inp.task_id)
 
-    # 1) GET 原 task 拿参数
-    try:
-        original = client.get(f"/tasks/{inp.task_id}")
-    except VLAPIError as exc:
-        return _fail_output(inp.task_id, exc, exc.category)
-    original_status = original.get("status")
+    if rec is None:
+        return _reject(inp.task_id, None, "", "任务不存在，无法重提", "video")
 
-    source_video = original.get("source_video")
-    target_lang = original.get("target_language") or "en"
-    enable_tts = bool(original.get("enable_tts", False))
-    remove_subtitles = bool(original.get("remove_subtitles", True))
-
-    if not source_video:
-        return _fail_output(
-            inp.task_id,
-            Exception(f"Task {inp.task_id} has no source_video, cannot retry"),
+    status = rec.get("status")
+    if status == "succeeded":
+        return _reject(inp.task_id, status, "", "任务已成功，无需重提", "video")
+    if status not in _RETRYABLE_STATUSES:
+        return _reject(
+            inp.task_id, status, "",
+            f"任务未到终态（{status}），排队/运行中任务拒绝重提；"
+            f"如需终止可先 localize_cancel",
             "video",
         )
 
-    # 2) POST /tasks 单条重提
-    payload = {
-        "video_path": source_video,
-        "target_lang": target_lang,
-        "source_lang": original.get("source_lang") or "zh",
-        "enable_tts": enable_tts,
-        "remove_subtitles": remove_subtitles,
-    }
-    if original.get("chat_id"):
-        payload["chat_id"] = original["chat_id"]
-    try:
-        new_body = client.post("/tasks", payload)
-    except VLAPIError as exc:
-        return _fail_output(inp.task_id, exc, exc.category)
-    new_task_id = new_body.get("task_id") or new_body.get("job_id") or ""
+    original_args = dict(rec.get("args") or {})
+    source_video = str(original_args.get("video_path") or "")
+    if not source_video:
+        return _reject(
+            inp.task_id, status, "",
+            "原任务 args 缺 video_path，无法重提（存储行异常）", "video",
+        )
+
+    skill_id = str(rec.get("skill_id") or "localize_video")
+    new_task_id = manager.submit(skill_id, original_args)
 
     report = RetryReport(
         original_task_id=inp.task_id,
         new_task_id=new_task_id,
-        original_status=original_status,
+        original_status=status,
+        skill_id=skill_id,
         source_video=source_video,
-        target_lang=target_lang,
-        enable_tts=enable_tts,
-        remove_subtitles=remove_subtitles,
+        target_lang=original_args.get("target_lang"),
     )
     chain = ReasoningChain(
-        conclusion=f"已重提任务 {inp.task_id} → 新 task {new_task_id}（status={original_status} → queued）",
+        conclusion=(
+            f"已重提任务 {inp.task_id} → 新任务 {new_task_id}"
+            f"（status={status} → queued）"
+        ),
         triggered_rules=[],
         evidence=[],
-        causal_analysis=f"沿用原参数：source_video={source_video} / target_lang={target_lang} / "
-                        f"enable_tts={enable_tts} / remove_subtitles={remove_subtitles}",
-        risk_note="新任务独立调度；原 task 的失败原因若仍存在会再次失败，看 error 字段定位。",
+        causal_analysis=(
+            f"复制原 args 重新 submit：skill_id={skill_id} / "
+            f"video_path={source_video} / target_lang={original_args.get('target_lang')}"
+        ),
+        risk_note=(
+            "新任务独立调度；原任务失败原因若仍存在会再次失败，"
+            "先看原任务 error 字段定位。"
+        ),
     )
     return SkillOutput(
         data=report, reasoning=[chain], confidence=1.0, sample_size=1,
     )
 
 
-def _fail_output(task_id: str, exc: Exception, category: str) -> SkillOutput[RetryReport]:
-    """统一的失败返回：degraded SkillOutput，category / message 在 report 字段里。
-
-    注意：message 字段不直接放 `str(exc)`（避免泄漏内部 host / 凭证）；仅保留
-    异常类型名 + category，Agent 足够据此决策。
-    """
+def _reject(task_id: str, status: str | None, new_task_id: str,
+            message: str, category: str) -> SkillOutput[RetryReport]:
+    """统一的拒绝返回：degraded SkillOutput，原因在 message 字段里。"""
     report = RetryReport(
         original_task_id=task_id,
-        new_task_id="",
-        original_status=None,
+        new_task_id=new_task_id,
+        original_status=status,
+        skill_id="",
         source_video="",
-        target_lang="",
-        enable_tts=False,
-        remove_subtitles=False,
+        target_lang=None,
         failure_category=category,
         retriable=is_retriable(category),
-        message=f"重提失败（{category}）：{type(exc).__name__}",
+        message=message,
     )
     chain = ReasoningChain(
-        conclusion=f"重提任务 {task_id} 失败（{category}）",
+        conclusion=f"重提任务 {task_id} 被拒绝（{category}）",
         triggered_rules=[],
         evidence=[],
-        causal_analysis=f"重提任务端点 → {type(exc).__name__}",
+        causal_analysis=message,
         risk_note=(
-            f"{'可重试' if is_retriable(category) else '需查环境或视频资源'}；"
-            f"video 类通常需要更换 source_video。"
+            f"{'可重试' if is_retriable(category) else '需确认任务状态'}；"
+            f"queued/running 任务须先 localize_cancel 才能重提。"
         ),
     )
     return SkillOutput(
         data=report, reasoning=[chain], confidence=0.0, sample_size=1,
-        degraded=True, degradation_reason=category,
+        degraded=True, degradation_reason=f"retry_rejected_{category}",
     )

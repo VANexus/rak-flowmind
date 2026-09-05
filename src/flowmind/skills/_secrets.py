@@ -6,10 +6,10 @@ key 只落在这里。任何技能需要 key 时经 get_api_key(env_name) 读取
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-import os
 
 _loaded = False
 

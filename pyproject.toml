@@ -1,50 +1,34 @@
 [project]
-name = "rak-flowmind"
-version = "0.1.0"
-description = "FlowMind Skill SDK —— 对任意 Agent 友好的技能底座"
+name = "mcp-base-gpu"
+version = "0.2.0"
+description = "视频本地化 MCP over HTTP SaaS 服务端 —— 7 个 localize_* 工具 + PG 任务引擎"
 readme = "README.md"
 requires-python = ">=3.11"
+# ⚠️ 依赖真源 = environment.yml（conda，2026-09 GPU 化升级接管）。
+# 下面 dependencies 仅为 pip 安装兜底快照，新增依赖请改 environment.yml。
 dependencies = [
     "mcp>=1.27,<2",
     "pydantic>=2",
-    "tomli-w>=1.0",
-    # feishu_kb skill deps
     "numpy>=1.26",
-    "jieba>=0.42.1",
-    "rank-bm25>=0.2.2",
-    "scikit-learn>=1.3",
-    # PR #4: localize_* HTTP calls
     "requests>=2.34.2",
-    # PR #5: allin-api gpt-image-2 + chat completions
     "httpx>=0.27",
     "python-dotenv>=1.2.2",
     "dashscope>=1.27.1",
-    # content_typeset 技能：公众号 Markdown -> 内联样式 HTML（doocs/md 主题）
-    "markdown-it-py>=4.0",
-    "css-inline>=0.20",
-    # content_* 技能 + flowmind-mcp-http（Streamable HTTP transport 起服务）
     "uvicorn>=0.30",
-    # A2A 协议层
-    "a2a-sdk>=0.1.0",
-    # 编排层
-    "langchain>=0.3",
-    "langchain-core>=0.3",
-    "langgraph>=0.2",
-    "playwright>=1.62.0",
+    # 任务引擎基础设施（PG 存储 / MQTT 事件 / Milvus 向量库）
+    "psycopg2-binary>=2.9",
+    "paho-mqtt>=2.0",
+    "pymilvus>=2.4",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
     "ruff>=0.6",
-    "python-docx>=1.0",  # 用于 scripts/build_seed_from_docx.py 重生 seed
 ]
 
 [project.scripts]
-flowmind-mcp = "flowmind.server:main"
-flowmind-mcp-http = "flowmind.server_http:main"
-flowmind-init = "flowmind.interactive:main"
+mcp-base-gpu = "flowmind.server_http:main"   # 单端口唯一入口（MCP + 任务 REST）
+flowmind-mcp = "flowmind.server:main"        # stdio 调试入口
 
 [build-system]
 requires = ["hatchling"]
@@ -53,15 +37,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/flowmind"]
 
-[tool.pytest.ini_options]
-# addopts 显式加载 asyncio 插件，使 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 下仍能跑异步测试
-addopts = ["-p", "asyncio"]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-markers = [
-    "real_backend: 不打桩出图后端（测 select_backend 真实错误路径）",
-]
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# 显式固定规则集：经典默认（E4/E7/E9/F）+ I（import 排序，仓库约定按字母序）。
+# ruff 0.16 起默认规则集大扩容（全量启用），不加这条会导致存量代码大面积误报。
+select = ["E4", "E7", "E9", "F", "I"]

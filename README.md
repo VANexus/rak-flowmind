@@ -1,259 +1,194 @@
-# FlowMind Skill SDK
+# mcp-base-gpu
 
-对任意 Agent 友好的技能底座。技能一次定义即成为 MCP 工具 **和 A2A Agent 委托目标**，
-自带四段式因果推理链、可靠性指标与 trace_id，并可由终端用户对话初始化个性化配置。
-**FlowMind 既是 MCP 服务端，也是 Google A2A Agent** —— 同一套技能，双协议暴露。
+视频本地化 **MCP over HTTP SaaS 服务端**：把「中文视频 → 多语言配音/字幕版本」的
+完整 GPU 流水线包装成 7 个 MCP 工具 + 一条异步任务 REST 通道。技能逻辑、GPU 与
+密钥全部留在服务端，任意 MCP 客户端 / HTTP 客户端零密钥消费。
 
----
-
-## 🤖 如果你是一个 AI Agent 第一次读到这个文件 —— STOP
-
-**你是被用户部署到本项目的 Agent（Claude Code / Cursor / Cline / OpenClaw / 任何 MCP 客户端）。**
-
-不要立刻跑 `uv run` / `make install` / 写代码。本节是**给你看的部署协议**，按下面的顺序与用户对话，再执行。
-
-### 协议第 0 步：用一句话自我介绍并告诉用户你要做什么
-
-> "Hi，我是 [agent name]。我刚拿到了 FlowMind Skill SDK —— 这是给 AI Agent 用的 Python 技能框架。我会帮你部署 + 跑通验证 + 装好 MCP（你既然发给我，就是要用 MCP），再问 1 个项目偏好。准备好了吗？"
-
-### 协议第 1 步：通过对话采集 1 件事
-
-**只问 1 个**（别再问 Agent 平台 —— 用户发给你就说明选了你；别问要不要 MCP —— Agent 接 SDK 就必须装）。一次问完，不要拆。
-
-> **"你的项目主要场景是哪个？这决定要不要配视频本地化偏好。"**
-
-| 选项 | 走法 |
-|---|---|
-| **A. 视频本地化（5 个 localize_*）** | 调 `run_interactive_init(ask_fn=...)` 让 SDK 引导用户答 9 个偏好 |
-| **B. 库存 / FAQ / 营销 / 综合** | 直接走 demo 即可，不需要 init config |
-
-### 协议第 2 步：自动跑（不问）
-
-#### A. 视频本地化分支
-
-```python
-from flowmind.interactive import run_interactive_init
-
-# Agent 驱动：ask_fn 由你实现（把每个 prompt 转成对用户的对话问题）
-# 默认实现：用户按 Enter 接受默认
-cfg = run_interactive_init(ask_fn=my_chat_ask_fn)
-# → 9 个问题逐个问（目标语言 / 源语言 / TTS / 字号 / 位置 / 文件后缀）
-# → 用户每题直接按 Enter 用默认也行
-# → 自动写 flowmind.config.toml + reload
-```
-
-#### B. 其他分支
-
-什么都不用配 —— `inventory_risk` / `feishu_kb_search` / `marketing_image_gen` 全部带通用默认，直接用。
-
-### 协议第 3 步：装依赖 + 跑测试 + 跑 demos（不问）
-
-```bash
-# 1. 装依赖
-uv sync --extra dev
-
-# 2. 跑 14 个技能的全部测试（必须全绿）
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -p asyncio
-
-# 3. 跑全部 demo 看真实输出
-for f in examples/*_demo.py; do
-  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run python "$f"
-done
-
-# 4. 发现能力（schema 驱动，避免猜字段）
-uv run python -c "
-from flowmind import discover
-for s in discover():
-    print(s['id'], '-', s['description'])
-"
-```
-
-任何一步报错 → 读 CLAUDE.md「关键约定」段排查。
-
-### 协议第 4 步：起 MCP server（必装，不问）
-
-用户既然发给你这个 Agent，**就是要走 MCP**。直接装：
-
-```bash
-# 后台启动（stdio 传输）
-nohup uv run flowmind-mcp > /tmp/flowmind-mcp.log 2>&1 &
-```
-
-**自动检测 Agent 平台并写配置**（不要问）：
-
-```python
-# 检测当前 Agent 平台
-import os
-from pathlib import Path
-
-home = Path.home()
-if (home / ".claude").exists():
-    # Claude Code / Claude Desktop
-    config_path = home / ".claude" / "mcp_servers.json"   # 路径按平台调整
-elif (home / ".cursor").exists():
-    config_path = home / ".cursor" / "mcp.json"
-elif (home / ".config" / "cline" / "cline_mcp_settings.json").exists():
-    config_path = home / ".config" / "cline" / "cline_mcp_settings.json"
-else:
-    config_path = None  # 让用户手动粘贴 stdio config
-
-mcp_config = {
-    "mcpServers": {
-        "flowmind": {
-            "command": "uv",
-            "args": ["--directory", str(Path(__file__).parent), "run", "flowmind-mcp"],
-        }
-    }
-}
-```
-
-把这段 JSON 写到对应路径（或显示给用户让他们粘贴）。
-
-### 协议第 5 步：交付摘要
-
-> "部署完成。你现在可以：
-> - **MCP 工具**：在我（[agent name]）里能看到 14 个工具 —— `inventory_risk` / `feishu_kb_search` / `marketing_image_gen` / 5 个 `localize_*` / 5 个 `content_*`
-> - **直接 Python**：`from flowmind import invoke, discover` 就能用
-> - **继续开发**：让我帮你加新技能（触发 flowmind-add-skill）或处理 PR（flowmind-handle-pr）
->
-> 任何问题直接问我。"
+- **单端口双通道**：`/mcp`（Streamable HTTP）承载轻量同步调用，`/api/v1/tasks`
+  承载分钟级长任务（提交 202 → 轮询 → 流式下载）。
+- **任务引擎**：PostgreSQL 持久化（重启不丢）、MQTT 实时进度推送（终态 retain）、
+  单卡 GPU 串行执行（防 OOM）、TTL 自动清理。
+- **字幕语义检索**：每个任务的 ASR 分段向量化入 Milvus，跨任务「找讲过某句话的视频片段」。
 
 ---
 
-## 人类用户视角（人类读 README，不是 Agent）
+## 🤖 如果你是一个 AI Agent 第一次读到这个文件
 
-如果你**不是** Agent 在读这段，跳过上面 🤖 段。往下看：
+不要急着跑命令。按下面三步接入：
 
-## 安装
+1. **装依赖**（依赖真源 = `environment.yml`）：
 
-```bash
-uv sync --extra dev
-```
+   ```bash
+   conda env update -n flowmind -f environment.yml
+   conda run -n flowmind pip install --no-deps "simple-lama-inpainting>=0.1.2"
+   conda run -n flowmind pip install -e . --no-deps
+   conda run -n flowmind ruff check src          # lint 必须全绿
+   ```
 
-## 作为 MCP 服务器运行
+2. **起服务 + 探活**：
 
-```bash
-uv run flowmind-mcp   # stdio 传输
-```
+   ```bash
+   conda run -n flowmind mcp-base-gpu            # 单端口 8002（后台加 nohup）
+   curl http://127.0.0.1:8002/api/v1/health      # {"status":"ok",...}
+   ```
 
-## 直接调用（非 MCP）
+3. **接入 MCP**（Streamable HTTP，端点 `http://127.0.0.1:8002/mcp`）：
+   工具清单以 `tools/list` 为准（7 个 `localize_*`），字段 schema 用
+   `GET /api/v1/manifest/<skill_id>` 查询——**不要猜字段、不要读源码**。
 
-```python
-import flowmind.skills  # 触发技能注册
-from flowmind.skill import invoke
+架构细节与不变量见 `CLAUDE.md`；开发工作流见 `AGENTS.md`。
 
-result = invoke("inventory_risk", {"items": [
-    {"sku": "A", "on_hand": 100, "unit_cost": 2.0, "sales_30d": 60},
-]})
-print(result.ok, result.data.summary, result.reasoning)
-```
+---
 
-## 可用技能
+## 7 个工具（MCP tools/call 与部分 REST 共用同一技能层）
 
-- `inventory_risk` —— 库销比/库存风险分析。输入 SKU 列表，输出风险分级、
-  资金占用汇总与四段式推理链。完整清单见 `python -c "import flowmind.skills, json; from flowmind.manifest import build_manifest; print(json.dumps(build_manifest(), ensure_ascii=False, indent=2))"`。
-- `feishu_kb_search` —— 飞书 FAQ 检索
-- `marketing_image_gen` —— 营销生图（多平台/多风格）
-- `localize_batch` / `localize_status` / `localize_cancel` / `localize_download` / `localize_retry` —— 视频本地化 5 步编排
-- `content_idea_design` —— 内容选题思路设计（xhs/wechat/douyin）
-- `content_copywrite` —— 平台化文案生成（小红书种草 / 公众号长文 / 抖音口播）
-- `content_hot_topics` —— 平台热点雷达（聚合热榜，API 不可达降级种子）
-- `content_audit` —— 平台规则审计（规则库扫描 + LLM 复核）
-- `content_image_gen` —— 平台比例 AI 配图（3:4 / 16:9 / 9:16）
+| 工具 | 语义 | 通道 |
+|---|---|---|
+| `localize_submit` | 批量提交视频本地化异步任务（每视频一个 task，PG 落库 queued） | MCP / REST |
+| `localize_status` | 查询任务状态与进度（stage / pct / error） | MCP / REST |
+| `localize_retry` | 重试失败任务（沿用原参数重新入队） | MCP |
+| `localize_cancel` | 协作式取消（queued 直接落终态；running 在阶段边界生效） | MCP |
+| `localize_download` | 列出已完成任务产物 + 下载 URL | MCP / REST |
+| `localize_search` | 字幕语义检索（自然语言 → 768 维向量 → Milvus 余弦检索） | MCP |
+| `localize_video` | 本地化流水线本体（由任务引擎串行执行，Agent 一般不直连） | MCP |
 
-## Web / HTTP 消费（flowmind-mcp-http）
+## 两条通道的分工
 
-MCP 默认 stdio；供 Web 前端（如 cross-dashboard）等 HTTP 客户端消费时，
-以 **Streamable HTTP** 传输启动（技能与密钥全部留在 flowmind，客户端零密钥）：
-
-```bash
-# 后台启动（Streamable HTTP，默认 http://127.0.0.1:8001/mcp）
-FLOWMIND_MCP_HOST=127.0.0.1 FLOWMIND_MCP_PORT=8001 nohup uv run flowmind-mcp-http > /tmp/flowmind-mcp-http.log 2>&1 &
-```
-
-## 作为 A2A Agent 运行
-
-FlowMind 同时实现 [Google A2A 协议](https://github.com/google/A2A)，可接受任意 A2A 客户端的任务委托：
+- **MCP tools/call**：轻技能同步调用（状态查询 / 检索 / 重试 / 取消），
+  SkillResult 信封（`ok` / `data` / `reasoning` / `metrics` / `trace`）。
+- **REST /api/v1/tasks**：分钟级 GPU 长任务专用——提交立即 202（不阻塞），
+  轮询 `GET /api/v1/tasks/{task_id}`，完成后 `GET .../download?file=<name>`
+  流式取产物（basename 白名单校验，防路径穿越）。
 
 ```bash
-# 启动 HTTP 服务器（MCP + A2A 双协议，单端口 8001）
-uv run flowmind-mcp-http
-```
-
-**1. 发现 Agent Card**（A2A 客户端自发现入口）：
-
-```bash
-curl http://localhost:8001/.well-known/agent.json
-```
-
-**2. 提交任务**（JSON-RPC `tasks/send`）：
-
-```bash
-curl -X POST http://localhost:8001/a2a \
+# 提交（body 与 localize_submit 同形状；本地路径必须位于 data_dir/uploads/ 内）
+curl -X POST http://127.0.0.1:8002/api/v1/tasks \
   -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0", "id": "req-1", "method": "tasks/send",
-    "params": {
-      "id": "task-1",
-      "message": {"role": "user", "parts": [{"type": "text", "text": "帮我分析库存风险，SKU 为 A001"}]},
-      "metadata": {"include_reasoning": true}
-    }
-  }'
+  -d '{"videos": ["https://cdn.example.com/demo.mp4"], "target_lang": "en"}'
+# → 202 {"task_ids": ["..."], "accepted": 1, ...}
+
+# 轮询 / 下载
+curl http://127.0.0.1:8002/api/v1/tasks/<task_id>
+curl -o out.mp4 "http://127.0.0.1:8002/api/v1/tasks/<task_id>/download?file=demo_sub.mp4"
 ```
 
-**3. 编排器**自动走 Planner → Executor → Recovery → Summarizer 四节点，LLM 规划技能调用序列，返回结果 + 可选推理链。
+状态码：`202` 受理（队列中途满 → 202 + warning 部分受理）；`429` 队列满背压；
+`422` 入参校验；`404` 任务/产物不存在；健康探针恒 200（组件状态见 `components`）。
 
-> 前置：需设置 `LONGCAT_API_KEY` 环境变量（编排器 LLM）。完整 demo 见 `examples/a2a_demo.py`。
+## 异步任务语义
 
-## 给 Agent 的初始化剧本（AGENT INIT PLAYBOOK）
+- **状态机**：`queued → running → succeeded | failed | cancelled`；
+  服务重启时遗留 `queued/running` 标为 `interrupted`（启动恢复）。
+  终态写入带 CAS 状态守卫（仅 queued/running 可写）：cancel 与任务完成
+  并发时 first-writer-wins，终态绝不互相覆盖（cancelled 也不会被 retry
+  重复执行）。
+- **终态分类**：`succeeded` = 产物就绪（degraded 的空结果任务也算成功）；
+  `failed` = 入参/内部/技能级失败（`error` 列有原因）。
+- **产物路径语义**：本地路径输入 → 产物落源文件旁 `<stem>_localized.mp4`；
+  URL 输入（SaaS 主路径）→ 产物落 `data_dir/outputs/<task_id>/output.mp4`，
+  经 `output_paths` 白名单由 download 端点寻址，与工作目录同 TTL 清理。
+- **输入沙箱**：提交通道（MCP `localize_submit` 与 REST `POST /api/v1/tasks`）
+  的本地路径必须位于 `data_dir/uploads/` 内（URL 不受限）；`uploads` 不存在
+  或路径越界 → `422`/VALIDATION。这是鉴权实装前的隔离层：防任意服务器
+  路径探测、产物外带与 `ffmpeg -y` 覆盖写源目录。`FLOWMIND_ALLOW_ANY_PATH=1`
+  仅限本地测试放行。
+- **进度推送**：MQTT 主题 `mcp-base-gpu/tasks/{task_id}/events`，QoS=1，
+  终态消息 retain（新订阅者连接即见最终状态；终态落库后残余进度自动停发，
+  不污染 retain）；MQTT 未配置时自动降级纯 PG 落库。
+- **TTL 清理**：终态任务工作目录与 `data_dir/outputs/<task_id>/` 超
+  `task_ttl_seconds` 回收（DB 行保留供审计）。
 
-> 本节面向**装载此包的 Agent**。首次为某用户使用本 SDK 前，请执行以下步骤，
-> 通过对话把技能阈值调整为「用户自己的默认」。不要让开发者改代码——
-> 一切定制都写入 `flowmind.config.toml`。
+## 字幕语义检索（Milvus）
 
-**步骤 1：检查是否已初始化**
+任务成功后，ASR 分段经 BGE（`BAAI/bge-base-zh-v1.5`，768 维）嵌入写入
+Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
+把自然语言 query 嵌入后检索，支持按 task_id 限定范围。向量化是增值步骤：
+- **未配置**（`FLOWMIND_MILVUS_URI` 与 `FLOWMIND_EMBEDDING_BASE_URL` 均空，
+  内置默认即未配置）：流水线尾部静默跳过（记 info，`data.vectorized=false`），
+  `localize_search` 返回结构化错误——不刷 warning；
+- **调用失败**（已配置但服务不可达/出错）：降级 warning，不影响本地化主产出。
+- 开关：`FLOWMIND_VECTORIZE=0` 显式关闭（`data.vectorized=null`）。
 
-```python
-from flowmind.config import is_initialized
-if not is_initialized():
-    ...  # 执行步骤 2、3
-```
+## 配置
 
-**步骤 2：与用户对话采集业务画像**
+配置源优先级（全仓库统一）：**环境变量 → `flowmind.config.toml` → 内置默认**。
+模板见 `.env.example`（云 key + 基础设施地址 + 任务治理参数）；可调参数见
+`config.py`（`LocalizerConfig` 业务参数 / `InfraConfig` 基础设施）。密钥绝不进 toml / commit。
 
-依次询问（用户不答则用括号内通用默认）：
-- 经营类目与结算货币？（`currency="USD"`）
-- 期望的健康周转天数上限？（`dsi_healthy_max=60`）
-- 关注/预警的周转天数分界？（`dsi_watch_max=90`、`dsi_warn_max=120`）
-- 视为「断货风险」的低周转天数？（`dsi_low=15`）
-- 单 SKU「资金占用过高」的金额阈值？（`capital_high=100000`）
+部署时需关注的治理参数（env 覆盖，详见 `.env.example`）：
 
-**步骤 3：写入用户专属配置**
+| 环境变量 | 默认 | 语义 |
+|---|---|---|
+| `FLOWMIND_DATA_DIR` | `~/flowmind-data` | 任务工作目录基准（`uploads/` `tasks/` `outputs/` 根；部署必配绝对路径） |
+| `FLOWMIND_MAX_PENDING_TASKS` | `100` | 待处理上限（queued+running，超出 429 背压） |
+| `FLOWMIND_TASK_TTL_SECONDS` | `3600` | 终态任务 workdir/outputs 的 GC 保留周期（DB 行保留供审计） |
 
-```python
-from flowmind.config import FlowmindConfig, InventoryConfig, save_config
-save_config(FlowmindConfig(inventory=InventoryConfig(
-    currency="CNY",          # ← 用步骤 2 采集到的值替换
-    dsi_healthy_max=45,
-    dsi_watch_max=75,
-    dsi_warn_max=100,
-    dsi_low=10,
-    capital_high=80000,
-)))
-```
+## 基础设施依赖
 
-此后所有技能调用将自动采用用户设定的阈值（`flowmind.config.toml`），
-未设定项回落通用默认。用户可随时要求重新初始化以调整。
+| 组件 | 用途 | 开发机 | 集群内部（svc 短名示例） |
+|---|---|---|---|
+| PostgreSQL + PgBouncer | 任务存储（事务模式，短连接快进快出） | mesh `RAK_PG_*` | `pgbouncer.agentic.svc:6432/mcp_base_gpu` |
+| EMQX (MQTT) | 任务进度事件（明文 1883 / TLS 可选 / 认证可选） | mesh `RAK_MQTT_HOST` | `emqx.agentic.svc:1883` |
+| Milvus | 字幕分段向量库 | 自建（如 mesh NodePort） | `http://milvus.agentic.svc:19530` |
+| BGE 嵌入服务 | 字幕向量化（TEI / OpenAI 双形状自适应） | 自建（如本机 127.0.0.1:31997） | 集群内注入服务地址 |
 
-**或者用对话式向导（推荐）**：
+未配置的基础设施按语义降级（MQTT → 纯落库；Milvus/嵌入 → 向量化显式禁用，
+流水线尾部静默跳过、`localize_search` 显式报错）；PG 是任务引擎硬依赖，
+缺失显式报错。MQTT 认证：`FLOWMIND_MQTT_USERNAME/PASSWORD`（空 = 匿名）。
+
+## MCP 联邦网关（Go go-kernel）
+
+仓库旁挂载了一个 Go 联邦网关 `go-kernel/`（独立 go module，占用 **:8080**，
+与 Python 功能包 **:8002** 共存）：把本仓库的 7 个 `localize_*` 工具 + 网关
+内置 `dify__*` 工具聚合为**单一 `/mcp` 端点**对外。
+
+- **独立仓库**：`go-kernel/` 是独立 git 仓库（VANexus/go-kernel），不随
+  本仓库分发（外层 `.gitignore` 已忽略该目录）——需单独 `git clone` 到
+  本仓库根旁，源码与文档中的 `go-kernel/...` 路径引用才可达。
+
+- **端口约定**：Python 功能包 :8002（FastMCP + 任务 REST）＝网关后端；
+  Go 网关 :8080（`/mcp`、`/api/v1/tasks` 透传、`/api/v1/federation/*`、
+  `/metrics`）＝对客户端的唯一入口。客户端连 :8080，不直连 :8002。
+- **动态注册**：本仓库以 `FLOWMIND_FEDERATION_REGISTER=1` 启动后，经
+  MQTT（`mcp-base-gpu/federation/{register,heartbeat,unregister}`）+ PG
+  （`federation_backends` 表）双通道自注册，30s 心跳 / 90s 无心跳标
+  offline / 优雅停机注销；默认关，不影响现有部署。
+- **代理语义**：工具名 `{prefix}__{remote_tool}`（如
+  `video_localizer__localize_status`）；后端断连工具保留（stale），调用
+  返回 `BACKEND_UNAVAILABLE / BACKEND_TIMEOUT` 结构化错误，重连自动恢复。
+- **协议契约改动必须双侧同步**：`src/flowmind/federation/` ↔
+  `go-kernel/internal/{mqttclient,federation,pgstore}`，详见
+  [go-kernel/README.md](./go-kernel/README.md)（topic 契约表、指标清单、
+  K8s 部署）。
+
+## GPU 部署约定
+
+- **硬件**：NVIDIA P104-100（8GB，Pascal 6.1）。torch 锁 `2.5.1+cu121`
+  （cu124+ 已剔除 Pascal，勿升级；`torchaudio` 必须在 `qwen-tts` 之后重新钉回配套版）。
+- **模型缓存**：`HF_HOME=/srv/data/models`、`TORCH_HOME=/srv/data/models/torch`、
+  下载代理 `http://127.0.0.1:7890`（写入 `~/.bashrc`，新 shell 生效）。
+- **显存预算**：whisper ~1.5G + Qwen3-TTS ~4G + LaMa ~1.5G ≈ 7.5G——
+  任务引擎 workers=1 串行 + `gpu_lane()` 信号量双道闸，**绝不放宽并发**。
+- **系统依赖**：`sudo apt install sox fonts-noto-cjk ffmpeg`。
+
+## 鉴权扩展点
+
+单入口 `server_http.py` 挂有 `AuthPlaceholderMiddleware`（当前 no-op）：
+对接既有登录授权后端时，在该中间件校验 `Authorization` 头、解析
+`tenant_id` 写入 `request.state`——MCP 与 REST 两条通道经同一入口，
+鉴权策略一处生效（`tasks` 表已预留 `tenant_id` 列）。
+
+## 验证
+
+本仓库无单测（用户决策：验证靠真实运行）：
 
 ```bash
-uv run flowmind-init      # CLI 9 步向导
+conda run -n flowmind ruff check src                       # lint（唯一质量门）
+for f in examples/*_demo.py; do
+  PYTHONPATH=$PWD/src conda run -n flowmind python "$f"    # 9 个 demo 全 PASS
+done
 ```
 
-或 Agent 调：
+## License
 
-```python
-from flowmind.interactive import run_interactive_init
-cfg = run_interactive_init(ask_fn=my_llm_ask)  # Agent 驱动对话
-```
+见 [LICENSE](LICENSE)。

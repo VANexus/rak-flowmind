@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 DEFAULT_BASE = "https://dashscope.aliyuncs.com/api/v1"
 TARGET_MODEL = "qwen-audio-3.0-tts-flash"
 DEFAULT_VOICE = "longanhuan_v3.6"
@@ -27,7 +26,8 @@ def synthesize_text(
     text: str, *, out_path: str, voice_id: str, api_key: str,
     target_model: str = TARGET_MODEL,
 ) -> str:
-    """单句合成 mp3/wav。voice_id 即预设音色名（如 longanhuan_v3.6）。"""
+    """单句合成 mp3/wav。voice_id 即预设音色名（如 longanhuan_v3.6）
+    或百炼声音复刻提前生成的音色 ID。"""
     if not voice_id:
         raise ValueError(
             "收到空音色。请传预设音色名（如 longanhuan_v3.6），"
@@ -38,21 +38,30 @@ def synthesize_text(
         model=target_model, timeout=None,
         headers={"Authorization": f"Bearer {api_key}"},
         payload={"model": target_model, "voice": voice_id, "text": text},
+        api_key=api_key,
     )
 
 
 def _call_ws_synth(text: str, *, out_path: str, voice_id: str, model: str,
-                   timeout: float | None, headers: dict, payload: dict) -> str:
-    """dashscope SpeechSynthesizer 薄适配层。测试通过 monkeypatch 替换本函数。
+                   timeout: float | None, headers: dict, payload: dict,
+                   api_key: str | None = None) -> str:
+    """dashscope SpeechSynthesizer 薄适配层。测试通过 monkeypatch 替换。
     懒 import：不装 dashscope 不影响包导入。
+
+    api_key 显式赋给 SDK 全局（SpeechSynthesizer 构造时读取
+    dashscope.api_key，缺失即抛 InputRequired("apikey is required!")；
+    不能依赖 ASR 先跑过设置的副作用）。
     """
     try:
+        import dashscope  # noqa: F401  显式设置全局 key 需要
         from dashscope.audio.tts_v2 import SpeechSynthesizer  # type: ignore
     except ImportError as exc:
         raise TTSError(
             "未安装 dashscope SDK（uv add dashscope 后可用）",
             category="environment",
         ) from exc
+    if api_key:
+        dashscope.api_key = api_key
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -61,10 +70,15 @@ def _call_ws_synth(text: str, *, out_path: str, voice_id: str, model: str,
         with open(out_path, "wb") as f:
             f.write(audio)
     except Exception as exc:  # SDK 异常形态多变，统一分类
+        import traceback
+        traceback.print_exc()  # 不吞异常：完整链路打到 stderr 供排查
         msg = str(exc).lower()
         if "throttl" in msg or "429" in msg:
             raise TTSError("合成限流", category="transient", retriable=True) from exc
-        raise TTSError(f"合成失败: {type(exc).__name__}", category="video") from exc
+        raise TTSError(
+            f"合成失败: {type(exc).__name__}: {exc or '(无错误信息)'}",
+            category="video",
+        ) from exc
     return out_path
 
 

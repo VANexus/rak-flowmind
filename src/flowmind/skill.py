@@ -7,6 +7,7 @@ invoke() 统一为技能套上 SkillResult 信封（trace/计时/错误兜底）
 from __future__ import annotations
 
 import inspect
+import traceback
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -171,7 +172,13 @@ def invoke(skill_id: str, raw_args: dict, trace: TraceContext | None = None) -> 
     try:
         out: SkillOutput = spec.func(inp)
     except Exception as exc:  # 兜底：技能内部异常不外泄为崩溃
-        return _fail(skill_id, tr, SkillError(code="INTERNAL", message=str(exc)))
+        # INTERNAL 附带 traceback（调试约定：INTERNAL → 看 error.details）。
+        # 截断保留尾部：最深调用栈与异常类型/消息在尾部，排障价值最高。
+        tb = traceback.format_exc()[-4000:]
+        return _fail(
+            skill_id, tr,
+            SkillError(code="INTERNAL", message=str(exc), details={"traceback": tb}),
+        )
 
     latency_ms = (perf_counter() - start) * 1000.0
     metrics = ReliabilityMetrics(

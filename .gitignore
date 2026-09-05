@@ -41,3 +41,9 @@ cc_debug.png
 
 # TikHub response disk cache (runtime artifact, not committed)
 .cache/
+
+# Go 联邦网关（独立 git 仓库 VANexus/go-kernel：单独 clone 到仓库根旁才可达，不随本仓库入库）
+go-kernel/
+
+# Trae IDE 本地过程产物
+.trae/

@@ -8,7 +8,7 @@
 用法：
     from flowmind.discover import discover
     info = discover()                      # 全部技能
-    info = discover("inventory_risk")      # 单个技能
+    info = discover("localize_status")     # 单个技能
 """
 from __future__ import annotations
 

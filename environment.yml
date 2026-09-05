@@ -1,0 +1,68 @@
+# ──────────────────────────────────────────────────────────────
+# mcp-base-gpu 依赖真源（conda 完全接管；uv.lock 已废弃删除）
+#
+# 定位：视频本地化 MCP over HTTP SaaS 服务端（7 个 localize_* 技能
+# + PG 任务引擎 + MQTT 事件 + Milvus 字幕检索）。
+#
+# 安装 / 更新（simple-lama 须单独 --no-deps 补装，原因见本地模型栈段）：
+#   conda env update -n flowmind -f environment.yml   # 或 env create
+#   conda run -n flowmind pip install --no-deps "simple-lama-inpainting>=0.1.2"
+#   conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
+#
+# GPU 说明（NVIDIA P104-100，8GB，Compute Capability 6.1 / Pascal）：
+#   - torch 锁 2.5.1+cu121：cu121 构建含 sm_61（Pascal），且携带
+#     nvidia-*-cu12 pip 依赖（含 cuDNN 9），与 ctranslate2(faster-whisper)
+#     的 GPU 运行时需求对齐。cu124+ 构建已剔除 Pascal，勿升级改源。
+#   - 模型缓存/下载已配在 ~/.bashrc：HF_HOME=/srv/data/models + 代理 127.0.0.1:7890
+# ──────────────────────────────────────────────────────────────
+name: flowmind
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # ── GPU 运行时（Pascal 6.1 约束见文件头注释）──
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - torch==2.5.1+cu121
+      #   CUDA 伴生库必须钉到 torch 2.5.1+cu121 metadata 所需的精确版本：
+      #   conda env update 的 pip 子进程带 -U，裸名称会被解析到最新版
+      #   （cublas 12.9 / cudnn 9.25），与 torch 的 CUDA 12.1 运行时不兼容。
+      - nvidia-cublas-cu12==12.1.3.1
+      - nvidia-cudnn-cu12==9.1.0.70
+      # ── 本地模型栈（进程内库，lazy import）──
+      - faster-whisper>=1.0        # 本地 ASR（CTranslate2，支持 CC≥6.0）
+      - rapidocr-onnxruntime>=1.3  # 本地 OCR（CPU，字幕条定位）
+      # ⚠️ simple-lama-inpainting 不能进本 pip 段：0.1.2 的依赖声明
+      #   （pillow>=9.5,<10）是 stale metadata——Pillow 9.5 无 py3.12 wheel，
+      #   源码编译又需系统 libjpeg 头，任何完整 resolver pass 都必失败；
+      #   其本体与 Pillow 12 运行时兼容（仅用 Image.open/convert），
+      #   Pillow 由 rapidocr 等依赖带入，故按文件头序列用 --no-deps 单独补装
+      #   （字幕擦除 erase_backend=local/lama 用，big-lama 首次用时代理下载模型）。
+      - qwen-tts>=0.1.1            # 本地声音克隆（Qwen3-TTS 0.6B Base，零样本；
+                                   #   首次用时代理下载模型到 HF 缓存）
+      # ⚠️ qwen-tts 会把 torchaudio 升到不匹配 torch 2.5.1 的版本
+      #    （libcudart.so.13 加载失败），必须在其后重新钉回 cu121 配套版
+      - torchaudio==2.5.1+cu121
+      - demucs>=4.0                # 本地人声分离（htdemucs，MIT）；BGM 净化用
+                                   #   ⚠️ 模型 ~160MB 首次经代理下载到 TORCH_HOME
+                                   #   （/srv/data/models/torch，见 CLAUDE.md 缓存约定）
+      # 系统级依赖（不在 conda/pip 管辖）：sudo apt install sox
+      #   （qwen-tts 依赖的 python-sox 包装需要 sox 二进制）
+      # 系统级依赖：sudo apt install fonts-noto-cjk ffmpeg
+      #   （中文字幕渲染 + 擦除/混音全流程）
+      # ── 框架与服务 ──
+      - mcp>=1.27,<2               # MCP 协议（FastMCP v1；v2 需重验 _make_tool 反射）
+      - pydantic>=2
+      - uvicorn>=0.30              # Streamable HTTP / REST 服务运行时
+      - python-dotenv>=1.2.2       # 服务进程启动加载 .env（密钥不入 toml/commit）
+      - requests>=2.34.2
+      - httpx>=0.27
+      - dashscope>=1.27.1          # 云回落（qwen-audio ASR/TTS / qwen3.5-ocr / 声音复刻）
+      - numpy>=1.26
+      # ── 任务引擎基础设施（PG 存储 / MQTT 事件 / Milvus 向量库）──
+      - psycopg2-binary>=2.9       # TaskStore（经 PgBouncer 事务模式，短连接）
+      - paho-mqtt>=2.0             # 任务进度事件（EMQX，终态 retain）
+      - pymilvus>=2.4              # 字幕分段向量库（localize_segments，768 维 bge）
+      # ── 开发工具 ──
+      - ruff>=0.6                  # lint（合并前唯一质量门；本仓库无单测，验证靠 demo）

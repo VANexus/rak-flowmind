@@ -39,13 +39,20 @@ def install_mock_pipeline() -> None:
     lv._media.extract_frame = lambda v, t, o: (Path(o).write_bytes(b"") or o)
     lv._media.burn_subtitles = lambda vp, op, ass, erase_regions=None: (
         Path(op).write_bytes(b"x") or op)
-    lv._media.mix_audio = lambda vp, d, op, keep_background=False: op
+    lv._media.mix_audio = lambda vp, d, op, keep_background=False, bg_path=None: op
+    lv._inpaint.available = lambda: False     # demo 走 delogo 分支（不跑真 LaMa）
+    lv._local_tts.available = lambda: False   # demo 走云 TTS 分支（不加载 4GB 本地模型）
+    lv._music_sep.available = lambda: False   # demo 不做真人声分离（无 demucs 依赖）
+    lv._local_asr.available = lambda: False   # auto 后端回落到已 mock 的云 ASR
+    lv._local_ocr.available = lambda: False   # auto 后端回落到已 mock 的云 OCR
     lv._cloud_asr.transcribe_local = lambda wav, api_key, **kw: segs
-    lv._locate_region = lambda src, dur, wd, key, cfg, **kw: {"x": 120, "y": 900, "w": 640, "h": 70}
+    lv._locate_region = lambda src, dur, wd, key, cfg, **kw: [
+        {"x": 120, "y": 900, "w": 640, "h": 70}]
     lv._llm_translate.translate_segments = lambda s, **kw: translated
     lv._cloud_tts.synthesize_segments = lambda segments, **kw: [
         f"{kw['out_dir']}/seg_{x['index']:04d}.mp3" for x in segments]
-    lv._concat_wavs = lambda wavs, out: out
+    lv._build_timed_audio = lambda segs, dubs, dur, out: out
+    lv._replace_audio = lambda vp, audio, out: out
 
 
 def main() -> None:
