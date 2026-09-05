@@ -167,6 +167,26 @@ class ContentConfig(BaseModel):
     hot_topic_limit: int = 20
     hot_topic_timeout_s: float = 10.0
 
+    # ── 热榜引擎多榜（content_hot_boards）：榜型 → DailyHotApi 端点映射 ──
+    # 4 榜型：general 综合 / vertical 垂类 / topic 话题 / inspiration 灵感
+    # 小红书/公众号无公开对应榜，用真实聚合 API 的可代理端点；端点名随源可用性调整。
+    hot_board_endpoints: dict[str, str] = Field(
+        default_factory=lambda: {
+            "general": "thepaper",      # 综合 → 澎湃热榜
+            "vertical": "douyin",       # 垂类 → 抖音热点
+            "topic": "toutiao",         # 话题 → 头条热榜
+            "inspiration": "baidu",     # 灵感 → 百度热搜
+        },
+    )
+    hot_board_labels: dict[str, str] = Field(
+        default_factory=lambda: {
+            "general": "综合热榜",
+            "vertical": "垂类热榜",
+            "topic": "话题热榜",
+            "inspiration": "灵感热榜",
+        },
+    )
+
     # ── 生成约束 ──
     max_ideas: int = 6          # 思路设计上限
     max_tags: int = 6           # 文案标签上限

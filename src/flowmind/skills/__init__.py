@@ -11,6 +11,7 @@ from flowmind.skills import b2b_push_feishu  # noqa: F401
 from flowmind.skills import b2b_push_wecom  # noqa: F401
 from flowmind.skills import content_audit  # noqa: F401
 from flowmind.skills import content_copywrite  # noqa: F401
+from flowmind.skills import content_hot_boards  # noqa: F401
 from flowmind.skills import content_hot_topics  # noqa: F401
 from flowmind.skills import content_idea_design  # noqa: F401
 from flowmind.skills import content_image_gen  # noqa: F401
