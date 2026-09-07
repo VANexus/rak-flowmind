@@ -1,43 +1,21 @@
-"""技能包：导入各技能以触发 @skill 注册。"""
-from flowmind.skills import alibaba_listing_generate  # noqa: F401
-from flowmind.skills import alibaba_product_list  # noqa: F401
-from flowmind.skills import alibaba_product_post  # noqa: F401
-from flowmind.skills import alibaba_product_recommend  # noqa: F401
-from flowmind.skills import b2b_channel_verify  # noqa: F401
-from flowmind.skills import b2b_daily_digest  # noqa: F401
-from flowmind.skills import b2b_keyword_trends  # noqa: F401
-from flowmind.skills import b2b_longtail_keywords  # noqa: F401
-from flowmind.skills import b2b_push_feishu  # noqa: F401
-from flowmind.skills import b2b_push_wecom  # noqa: F401
-from flowmind.skills import content_audit  # noqa: F401
-from flowmind.skills import content_copywrite  # noqa: F401
-from flowmind.skills import content_hot_boards  # noqa: F401
-from flowmind.skills import content_hot_topics  # noqa: F401
-from flowmind.skills import content_idea_design  # noqa: F401
-from flowmind.skills import content_image_gen  # noqa: F401
-from flowmind.skills import content_publish_check  # noqa: F401
-from flowmind.skills import content_typeset  # noqa: F401
-from flowmind.skills import content_wechat_account_test  # noqa: F401
-from flowmind.skills import content_wechat_e2e  # noqa: F401
-from flowmind.skills import content_wechat_publish_status  # noqa: F401
-from flowmind.skills import content_wechat_publish  # noqa: F401
-from flowmind.skills import content_web_fetch  # noqa: F401
-from flowmind.skills import content_xhs_draft  # noqa: F401
-from flowmind.skills import content_xhs_e2e  # noqa: F401
-from flowmind.skills import crawler_deadlink  # noqa: F401
-from flowmind.skills import crawler_sentiment  # noqa: F401
-from flowmind.skills import crawler_viral  # noqa: F401
-from flowmind.skills import content_crawler_suite  # noqa: F401
-from flowmind.skills import feishu_kb  # noqa: F401
-from flowmind.skills import image_prompt_reverse  # noqa: F401
-from flowmind.skills import inventory_risk  # noqa: F401
-from flowmind.skills import localize_batch      # noqa: F401
-from flowmind.skills import localize_cancel     # noqa: F401
-from flowmind.skills import localize_download   # noqa: F401
-from flowmind.skills import localize_retry      # noqa: F401
-from flowmind.skills import localize_status     # noqa: F401
-from flowmind.skills import localize_video      # noqa: F401
-from flowmind.skills import marketing_image_gen  # noqa: F401
-from flowmind.skills import tiktok_ad_intel      # noqa: F401
-from flowmind.skills import tiktok_content_intel  # noqa: F401
-from flowmind.skills import tiktok_shop_intel    # noqa: F401
+"""技能包：导入各技能以触发 @skill 注册。
+
+mcp-base-gpu 主线仅注册视频本地化技能（localize_*）。
+
+224a194 合并修复（2026-09-07）：合并曾把 35 个不存在或已按 f72fb2d 裁剪决策
+移除的技能模块写入 import 列表，导致 `import flowmind.skills` 直接 ImportError、
+服务无法启动。本列表收敛为当前实际存在且可完整加载的模块：
+- content_hot_boards 依赖的 _content_common.py 已被 f72fb2d 裁剪，该技能
+  待依赖补全后再恢复注册；
+- 其余 content_* / b2b_* / alibaba_* / crawler_* / tiktok_* 等待源码分支
+  合入后再逐个恢复，禁止幽灵 import 入库。
+"""
+from flowmind.skills import (  # noqa: F401
+    localize_cancel,
+    localize_download,
+    localize_retry,
+    localize_search,
+    localize_status,
+    localize_submit,
+    localize_video,
+)
