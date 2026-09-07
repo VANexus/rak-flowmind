@@ -332,6 +332,32 @@ class CrawlerConfig(BaseModel):
     max_concurrent: int = 10           # 死链检测并发数
 
 
+class AuthConfig(BaseModel):
+    """调用方凭证校验（ECO-ADR-0011 A 阶段）。
+
+    token 格式的契约真源在生态 ADR §4b（Go/Python/TS 三侧逐字节一致）。
+    密钥与 go-kernel 的 ``KERNEL_TRUSTED_SECRET`` 同一值：上游 → 网关 →
+    后端交换后的下游 token 均用同一 HMAC 格式（网关不直通客户端凭证）。
+
+    **空 = 鉴权整体关闭**（dev / 独立部署语义：现有 examples/*_demo.py
+    与直连用法不受影响，任务不记租户）。非空时所有未豁免路径必须带
+    合法 Bearer，且任务访问变为 fail-closed。
+    """
+
+    secret: str = Field(default="", validate_default=True)  # env FLOWMIND_AUTH_SECRET
+
+    # 豁免在凭证之外的路径前缀：健康探针（K8s probe）与发现面（manifest）
+    # 必须匿名可达，否则集群探针永久失败。
+    exempt_prefixes: list[str] = Field(
+        default_factory=lambda: ["/api/v1/health", "/api/v1/manifest"])
+
+    @field_validator("secret", mode="before")
+    @classmethod
+    def _env_secret(cls, v: str) -> str:
+        """env FLOWMIND_AUTH_SECRET 覆盖（空值不生效，回落 config/默认）。"""
+        return os.environ.get("FLOWMIND_AUTH_SECRET", "").strip() or v
+
+
 class FederationBackendConfig(BaseModel):
     """联邦自注册配置（federation 包：功能包加入 MCP 网关联邦）。"""
 
@@ -404,6 +430,7 @@ class FlowmindConfig(BaseModel):
     b2b_push: B2bPushConfig = Field(default_factory=B2bPushConfig)
     wechat_publish: WechatPublishConfig = Field(default_factory=WechatPublishConfig)
     crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     federation: FederationBackendConfig = Field(
         default_factory=FederationBackendConfig)
 

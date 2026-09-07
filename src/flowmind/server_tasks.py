@@ -88,8 +88,9 @@ def register_task_routes(mcp) -> None:
         accepted, rejected = _split_paths(
             inp.videos, load_config().localizer.allowed_extensions)
         manager = await anyio.to_thread.run_sync(get_task_manager)
-        # 鉴权占位中间件实装后从凭证解析 tenant_id 写入 request.state；
-        # 现为 no-op 不设置 → None（管道已接通，store.tenant_id 列就绪）
+        # 租户归属：RakAuthMiddleware 校验 Bearer 后写入 request.state（并与
+        # flowmind.auth 的上下文同源）；未启用鉴权时为 None——manager.submit
+        # 会回退到上下文解析，并在“启用鉴权但无凭证”时拒写（fail-closed）。
         tenant_id = getattr(request.state, "tenant_id", None)
         task_ids: list[str] = []
         for video in accepted:

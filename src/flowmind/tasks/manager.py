@@ -38,10 +38,12 @@ import sys
 import threading
 import time
 import uuid
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from flowmind import auth
 from flowmind.config import load_config
 from flowmind.contracts import new_trace
 from flowmind.skill import invoke
@@ -111,10 +113,18 @@ class TaskManager:
                tenant_id: str | None = None) -> str:
         """提交任务，返回 task_id；pending 超限抛 TaskQueueFull（调用方回 429）。
 
-        tenant_id 由调用方透传（REST 端点读 request.state，鉴权占位
-        中间件实装后由其写入；MCP 通道暂无租户上下文传 None），
-        落 store.tenant_id 列——多租户隔离的存储管道已接通。
+        租户归属（ECO-ADR-0011）：``tenant_id`` 不传时从当前调用方上下文
+        （请求中间件绑定的凭证）取——这样 MCP 通道的技能（localize_submit /
+        localize_retry 调本方法时并不持租户参数）也自动归因，REST 端点
+        显式传值则优先。已启用鉴权而上下文无凭证 → **拒写**（fail-closed），
+        绝不落下无主任务。
         """
+        required, scope_tenant = auth.tenant_scope()
+        if tenant_id is None:
+            if required and scope_tenant is None:
+                raise PermissionError(
+                    "无调用方凭证，拒绝创建无租户归属的任务（fail-closed）")
+            tenant_id = scope_tenant
         task_id = uuid.uuid4().hex
         with self._submit_lock:
             pending = self.store.count_pending()
@@ -148,9 +158,10 @@ class TaskManager:
         running 任务置 flag 后流水线在阶段边界退出（协作取消语义不变），
         但终态立即对用户可见（cancelled）。
 
-        返回 False：任务不存在或已是终态（含并发下已被人先写终态），幂等不报错。
+        返回 False：任务不存在、已是终态、**不属于当前租户**（含并发下已被
+        人先写终态），幂等不报错——与读路径一致，不给跨租户取消留口子。
         """
-        rec = self.store.get_task(task_id)
+        rec = self._visible(self.store.get_task(task_id))
         if rec is None or rec["status"] in TERMINAL_STATUSES:
             return False
         with self._lock:
@@ -167,10 +178,33 @@ class TaskManager:
         return ok
 
     def get_task(self, task_id: str) -> dict | None:
-        return self.store.get_task(task_id)
+        """按调用方租户范围读任务（跨租户与不存在**同形**返回 None）。
+
+        故意不给 403而是回 404：“此 task_id 存在但不属于你”本身就是泄密
+        （枚举探针可用它探测他人任务是否存在）。本方法是所有读/操作
+        技能的唯一入口（localize_status / cancel / retry / download）。
+        后台路径（worker / GC / recover）直接用 store.get_task，不受影响。
+        """
+        return self._visible(self.store.get_task(task_id))
 
     def list_tasks(self, status: str | None = None, limit: int = 100) -> list[dict]:
-        return self.store.list_tasks(status=status, limit=limit)
+        required, tenant = auth.tenant_scope()
+        if required and tenant is None:
+            return []  # 启用鉴权但无凭证：fail-closed，不返回任何行
+        rows = self.store.list_tasks(status=status, limit=limit)
+        if not required or tenant is None:
+            return rows
+        return [r for r in rows if r.get("tenant_id") == tenant]
+
+    @staticmethod
+    def _visible(rec: dict | None) -> dict | None:
+        """按当前调用方租户过滤单条记录（无权限一律当作不存在）。"""
+        required, tenant = auth.tenant_scope()
+        if not required:
+            return rec
+        if rec is None or tenant is None or rec.get("tenant_id") != tenant:
+            return None
+        return rec
 
     def shutdown(self) -> None:
         """停 GC 与线程池（进程退出；running 任务由下次启动 recover）。"""

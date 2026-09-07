@@ -18,25 +18,28 @@
 启动：conda run -n flowmind mcp-base-gpu
 配置（环境变量）：
   FLOWMIND_MCP_HOST    默认 127.0.0.1（集群部署 0.0.0.0）
-  FLOWMIND_MCP_PORT    默认 8002（前置 Go 网关占 8080，本服务作为其后端）
+  FLOWMIND_MCP_PORT    默认 8002（ECO-ADR-0006：本服务 :8002，前置 Go 网关 :8090）
   FLOWMIND_CORS_ORIGINS  逗号分隔的允许来源
+  FLOWMIND_AUTH_SECRET   调用方凭证校验密钥（与 go-kernel 的
+                       KERNEL_TRUSTED_SECRET 同值；**空 = 鉴权关闭**，
+                       见 flowmind.auth）
 基础设施（PG / MQTT / Milvus / 嵌入服务）env 优先、config.toml 兜底，
 见 flowmind.config.InfraConfig 与 .env.example。
 """
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 from collections.abc import Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
 
+from flowmind.auth import TokenError, use_caller, verify_token
+from flowmind.config import get_config
 from flowmind.server import mcp
 from flowmind.server_rest import register_rest_routes
 from flowmind.server_tasks import register_task_routes
@@ -50,19 +53,89 @@ logger = logging.getLogger(__name__)
 _federation_stop: Callable[[], None] | None = None
 
 
-class AuthPlaceholderMiddleware(BaseHTTPMiddleware):
-    """多租户鉴权占位中间件（当前 no-op，请求原样放行）。
+class RakAuthMiddleware:
+    """调用方凭证校验中间件（ECO-ADR-0011 A 阶段实装，替早前的 no-op 占位）。
 
-    这是接入既有登录授权后端时的扩展点：对接时在 dispatch() 中
-    校验 Authorization 头（JWT / 签名 / 会话票据），校验失败直接返回
-    401 JSONResponse；通过后从凭证解析 tenant_id 写入
-    ``request.state.tenant_id``——下游任务 REST 端点与技能层即可按租户
-    隔离（TaskStore.tenant_id 列已预留）。本中间件挂在应用外层，
-    MCP 与 REST 两条通道经同一入口，鉴权策略对两者同时生效。
+    为何是**纯 ASGI** 而非 BaseHTTPMiddleware：BaseHTTPMiddleware 把下游
+    放到另一个 task 里跑，中间件内设的 contextvar 不一定可见；租户上下文
+    必须让技能层读到，所以直接写 ASGI 入口（同一 task 上下文，
+    anyio.to_thread 会再拷贝一层到 worker 线程）。
+
+    行为：
+      * 密钥未配（dev / 独立部署）→ 原样放行，不绑上下文
+        （``tenant_scope()`` 返回 (False, None)，不过滤）；
+      * 豁免前缀（默认 /api/v1/health 与 /api/v1/manifest）→ 匿名可达，
+        否则集群 K8s 探针与发现面会死；
+      * 其余请求：校验 ``Authorization: Bearer``，失败按 code 回 401
+        （**不回显凭证本身**，只回失败类别）；成功则绑进上下文 +
+        ``scope["state"]["tenant_id"]``（供 REST 端点取用）。
+
+    不信任任何自填身份头：``X-Rak-Tenant`` 在此仅作诊断参考，归属一律
+    以已校验 token 为准（ADR-0011 §4c）。
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:
-        return await call_next(request)
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        cfg = get_config().auth
+        if not cfg.secret or _auth_exempt(scope.get("path", ""), cfg.exempt_prefixes):
+            await self.app(scope, receive, send)
+            return
+
+        token = _bearer_token(scope.get("headers") or [])
+        if token is None:
+            await _unauthorized(send, "missing_token",
+                                "缺少 Authorization: Bearer 凭证")
+            return
+        try:
+            caller = verify_token(token)
+        except TokenError as exc:
+            await _unauthorized(send, exc.code, str(exc))
+            return
+
+        scope.setdefault("state", {})["tenant_id"] = caller.tenant_id
+        scope["state"]["principal"] = caller.principal
+        with use_caller(caller):
+            await self.app(scope, receive, send)
+
+
+def _auth_exempt(path: str, prefixes: list[str]) -> bool:
+    """路径是否命中豁免前缀（健康探针 / 发现面）。"""
+    return any(path == p or path.startswith(p.rstrip("/") + "/")
+               for p in (prefixes or []))
+
+
+def _bearer_token(headers) -> str | None:
+    """从 ASGI 头部取 Bearer 凭证（头部名为小写 bytes）。"""
+    for name, value in headers:
+        if name != b"authorization":
+            continue
+        raw = value.decode("latin-1").strip()
+        scheme, _, rest = raw.partition(" ")
+        if scheme.lower() == "bearer" and rest.strip():
+            return rest.strip()
+        return None
+    return None
+
+
+async def _unauthorized(send, code: str, detail: str) -> None:
+    """统一 401 JSON（与 REST 侧错误形状一致；detail 绝不包含凭证）。"""
+    body = json.dumps({"error": code, "detail": detail}).encode("utf-8")
+    await send({
+        "type": "http.response.start",
+        "status": 401,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+            (b"www-authenticate", b'Bearer error="invalid_token"'),
+        ],
+    })
+    await send({"type": "http.response.body", "body": body})
 
 
 def _cors_origins() -> list[str]:
@@ -89,7 +162,7 @@ def _add_middlewares() -> None:
 
     def streamable_http_app_with_middleware():
         app = original()
-        app.add_middleware(AuthPlaceholderMiddleware)
+        app.add_middleware(RakAuthMiddleware)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=_cors_origins(),

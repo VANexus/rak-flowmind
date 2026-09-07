@@ -18,7 +18,7 @@ conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
 conda run -n flowmind ruff check src              # lint（必须通过）
 for f in examples/*_demo.py; do
   PYTHONPATH=$PWD/src conda run -n flowmind python "$f"
-done                                              # 跑 8 个 demo 冒烟
+done                                              # 跑 9 个 demo 冒烟
 ```
 
 如果遇到任何概念不清楚，先看本文件对应章节，再问。
@@ -38,8 +38,9 @@ src/flowmind/
 ├── config.py          # FlowmindConfig = LocalizerConfig + InfraConfig（env → toml → 默认）
 ├── skill.py           # @skill 装饰器 + invoke() 入口 ── 融合点
 ├── manifest.py        # build_manifest() ── Agent 视角的能力清单
+├── auth.py            # 调用方凭证校验（Bearer 短期 token）+ 租户上下文——ECO-ADR-0011
 ├── server.py          # FastMCP v1 薄壳 ── 把 _REGISTRY 暴露成 MCP tool
-├── server_http.py     # 单端口唯一入口（8002）：MCP + REST 路由 + CORS/鉴权占位中间件
+├── server_http.py     # 单端口唯一入口（8002）：MCP + REST 路由 + CORS + 凭证校验中间件
 ├── server_rest.py     # 发现 API：GET /api/v1/manifest[/id]
 ├── server_tasks.py    # 任务 REST：POST/GET /api/v1/tasks、download、health
 ├── tasks/
@@ -56,7 +57,7 @@ src/flowmind/
     ├── localize_search.py     # Milvus 语义检索
     ├── localize_video.py      # 流水线本体（ASR→OCR→译→擦→TTS→混→向量化）
     └── _*.py          # 12 个 helper（_cloud_asr/_local_asr/_bge_embed/_media/_inpaint…）
-examples/              # 8 个 demo（冒烟验证的唯一手段，本仓库无单测）
+examples/              # 9 个 demo（冒烟验证的唯一手段，本仓库无单测）
 docs/                  # 设计文档
 ```
 
@@ -190,12 +191,14 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
 | 放宽 TaskManager `workers=1` 或 `gpu_lane` 信号量 | 单卡 8GB 显存预算 ~7.5G，并发即 OOM |
 | 升级 torch / cu121 钉版、调整 environment.yml 钉版顺序 | Pascal 6.1 硬约束；torchaudio 必须在 qwen-tts 之后；cublas/cudnn 已钉 torch 配套版；simple-lama 不在 pip 段（--no-deps 补装） |
 | 跳过 `ruff check src` 直接 commit | lint 是合并前唯一的质量门 |
+| 拿 `X-Rak-Tenant` 请求头做租户归属 | 归属只认已校验的 `Authorization: Bearer` token；头是可伪造的（ECO-ADR-0011 §4c） |
+| 启用鉴权后让无凭证路径“看到全部任务” | 必须 fail-closed：无凭证 = 看不到任何任务（`auth.tenant_scope()` 已定三态） |
 | 把 `flowmind.config.toml` / `.env` / 集群凭证提交进 git | 用户私有配置 + 安全红线 |
 
 ## 提交前 Checklist
 
 - [ ] `conda run -n flowmind ruff check src` 全绿
-- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（8 个全 PASS 为准）
+- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（9 个全 PASS 为准）
 - [ ] 提交信息 `<type>: <中文描述>`
 - [ ] 若改了 `environment.yml`：确认已 `conda env update` 且 demo 通过、torch 栈未破坏
 - [ ] 若改了 `config.py` / `skills/__init__.py`：留意 merge conflict hotspot

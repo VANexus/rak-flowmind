@@ -91,7 +91,7 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
 - **`server.py`** —— FastMCP（**v1**，`mcp>=1.27,<2`）遍历注册表动态登记 MCP tool。
   `_make_tool` 靠设置 `__annotations__` 驱动 schema 推断 —— v1 特定技巧，勿升 v2。
 - **`server_http.py`** —— **单端口唯一入口**（8002，作为 Go 网关静态后端）：组合 MCP（`/mcp`）+ REST 路由 +
-  中间件（CORS + `AuthPlaceholderMiddleware` 鉴权占位）。`.env` 加载在此发生。
+  中间件（CORS + `RakAuthMiddleware` 调用方凭证校验，见 `flowmind/auth.py` / ECO-ADR-0011）。`.env` 加载在此发生。
 - **`server_rest.py`** —— 发现 API：`GET /api/v1/manifest[/id]`（custom_route 模式）。
 - **`server_tasks.py`** —— 任务 REST：`POST /api/v1/tasks`（202/429 背压）/
   `GET /api/v1/tasks/{id}` / `GET .../download?file=`（basename 白名单防穿越）/
@@ -137,7 +137,7 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
   返回结构化结果，绝不吞异常、不返回半成品。`invoke()` 是统一执行点。
 - **不留代码 TODO 给下游开发者**：可调项全部实现并带通用默认，走 config。
 - **`trace_id` 贯穿**每次调用（REST 任务通道以 task_id 即 trace_id 贯穿）。
-- **验证靠真实运行**：无单测，改完跑 `examples/*_demo.py`（8 个，全 PASS 为准）
+- **验证靠真实运行**：无单测，改完跑 `examples/*_demo.py`（9 个，全 PASS 为准）
   + 直接 `invoke("<id>", args)` 看 envelope。
 - **API key 永不进 toml / commit**：`AI_LLM_API_KEY` / `AI_SPEECH_API_KEY` 只从
   env / gitignored `.env` 读（经 `skills/_secrets.get_api_key`）。集群凭证
@@ -167,9 +167,10 @@ ok=False / INTERNAL + 「稍后重试」message，即 429 语义；REST 层按�
 for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python "$f"; done
 ```
 
-8 个 demo：`localize_video / submit / status / retry / cancel / download / search /
-api_server`。前 7 个用 mock 流水线/内存 fake manager（不依赖 GPU / 集群），
-`api_server_demo` 起真实 uvicorn 测任务 REST 通道（400/422/429/部分受理/穿越防护）。
+9 个 demo：`localize_video / submit / status / retry / cancel / download / search /
+api_server / auth_token`。前 7 个用 mock 流水线/内存 fake manager（不依赖 GPU / 集群），
+`api_server_demo` 起真实 uvicorn 测任务 REST 通道（400/422/429/部分受理/穿越防护），
+`auth_token_demo` 用 TestClient 测凭证校验（不需集群与 GPU）。
 真实 GPU / 集群链路的任务生命周期冒烟单独做（起服务 + MCP 探针 + REST 提交）。
 
 ## 贡献新技能
