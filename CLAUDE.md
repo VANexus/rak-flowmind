@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+> ⚠️ **维护冻结声明（2026-09-07，生态裁决）**：本仓库当前功能核心是 GPU
+> 视频本地化，保持主分支最新即可，不做非必要改动；非经用户明确授权，
+> 禁止重构、依赖升级或主线外功能开发。生态定位见 `../ECOSYSTEM.md`。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 项目定位
