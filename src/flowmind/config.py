@@ -97,6 +97,12 @@ class LocalizerConfig(BaseModel):
     http_timeout: float = 30.0          # 业务 HTTP 调用超时（秒）
     health_timeout: float = 2.0         # /health 探活超时（≤3s，见 test_localize_failfast）
 
+    # ── 任务引擎（TaskManager；2026-09-08 从 9b45745 恢复——config 重构丢失，
+    #    导致 TaskManager 初始化必 AttributeError、任务引擎整体不可用）──
+    data_dir: str = "~/flowmind-data"   # 任务工作目录基准（~ 由 manager 展开为绝对路径）
+    max_pending_tasks: int = 100        # 待处理任务上限（超出拒绝受理，背压）
+    task_ttl_seconds: int = 3600        # 终态任务保留时长（秒），超时回收
+
     # ── 语言默认值 ──
     target_lang_default: str = "en"     # Agent 不传时落到的目标语言
     source_lang_default: str = "zh"     # 同上，源语言
