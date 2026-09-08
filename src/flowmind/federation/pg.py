@@ -24,24 +24,27 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 与 Go pgstore.go ddl[0] 逐字段一致（双侧同步约定）
-_DDL_BACKENDS = """
-CREATE TABLE IF NOT EXISTS federation_backends (
+# 与 Go pgstore.go ddl[0] 逐字段一致（双侧同步约定）；
+# schema 前缀 = 统一库 rak 的 mcp 域（ECO-ADR-0013，go-kernel 域归属）
+_PG_SCHEMA = "mcp"
+
+_DDL_BACKENDS = f"""
+CREATE TABLE IF NOT EXISTS {_PG_SCHEMA}.federation_backends (
     backend_id     TEXT PRIMARY KEY,
     version        TEXT NOT NULL DEFAULT '',
     url            TEXT NOT NULL,
     transport      TEXT NOT NULL DEFAULT 'streamable-http',
     prefix         TEXT NOT NULL DEFAULT '',
-    capabilities   JSONB NOT NULL DEFAULT '{}',
+    capabilities   JSONB NOT NULL DEFAULT '{{}}',
     status         TEXT NOT NULL DEFAULT 'active',
     registered_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_heartbeat TIMESTAMPTZ,
-    auth_config    JSONB NOT NULL DEFAULT '{}'
+    auth_config    JSONB NOT NULL DEFAULT '{{}}'
 )
 """
 
-_SQL_REGISTER = """
-INSERT INTO federation_backends
+_SQL_REGISTER = f"""
+INSERT INTO {_PG_SCHEMA}.federation_backends
     (backend_id, version, url, transport, prefix, capabilities, status, last_heartbeat)
 VALUES (%s, %s, %s, %s, %s, %s, 'active', now())
 ON CONFLICT (backend_id) DO UPDATE SET
@@ -55,10 +58,10 @@ ON CONFLICT (backend_id) DO UPDATE SET
 """
 
 _SQL_HEARTBEAT = (
-    "UPDATE federation_backends SET last_heartbeat = now() WHERE backend_id = %s"
+    f"UPDATE {_PG_SCHEMA}.federation_backends SET last_heartbeat = now() WHERE backend_id = %s"
 )
 _SQL_UNREGISTER = (
-    "UPDATE federation_backends SET status = 'offline' WHERE backend_id = %s"
+    f"UPDATE {_PG_SCHEMA}.federation_backends SET status = 'offline' WHERE backend_id = %s"
 )
 
 
@@ -151,7 +154,7 @@ class FederationPGStore:
             with conn.cursor() as cur:
                 cur.execute(_DDL_BACKENDS)
             self._ready = True
-            logger.info("联邦注册表就绪（federation_backends）")
+            logger.info(f"联邦注册表就绪（{_PG_SCHEMA}.federation_backends）")
 
     def _execute(self, sql: str, params: tuple, *, context: str) -> bool:
         """执行单条写语句（短连接 + autocommit；失败只日志返回 False）。"""

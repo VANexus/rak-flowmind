@@ -27,7 +27,9 @@ from flowmind.tasks import TERMINAL_STATUSES, TaskStoreError
 
 logger = logging.getLogger(__name__)
 
-_SCHEMA_NAME = "public"
+# 统一库 rak 的 flowmind 域（ECO-ADR-0013）：本表归 flowmind 仓独占，
+# 与 go-kernel 的 mcp 域物理隔离（用户裁决：仓库独立、schema 分开）
+_SCHEMA_NAME = "flowmind"
 _TABLE_NAME = "tasks"
 
 # 幂等建表 + 查询索引（status 过滤 + created_at 排序是 list_tasks 的固定形态）
