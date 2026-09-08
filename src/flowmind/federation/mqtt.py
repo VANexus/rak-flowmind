@@ -88,6 +88,13 @@ class FederationPublisher:
         try:
             client = self._get_client()
             info = client.publish(topic, body, qos=qos)
+            # connect_async 是异步的：首条消息常在连接完成前发布（rc=4 no conn）。
+            # register 一旦丢失，网关就永远不知道本后端（heartbeat 只带 backend_id，
+            # 心跳线程不会补发 register）——所以对 NO_CONN 做一次「等连接完成」
+            # 的有界重试（5s 内 on_connect 必到；仍失败则按既有降级路径处理）。
+            if info.rc == 4:  # mqtt.MQTT_ERR_NO_CONN
+                self._connected.wait(timeout=5.0)
+                info = client.publish(topic, body, qos=qos)
             if info.rc != 0:  # mqtt.MQTT_ERR_SUCCESS == 0
                 raise RuntimeError(f"publish rc={info.rc}")
             if wait and qos > 0:
