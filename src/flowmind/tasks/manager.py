@@ -38,7 +38,6 @@ import sys
 import threading
 import time
 import uuid
-
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

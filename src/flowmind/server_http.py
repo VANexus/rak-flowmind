@@ -154,8 +154,9 @@ def _transport_security():
     421）。白名单 = localhost 变体 + 联邦宣告地址（FLOWMIND_FEDERATION_URL，
     即网关 mcpclient 实际访问的 host）+ FLOWMIND_MCP_ALLOWED_HOSTS 追加项。
     网关是唯一 MCP 消费方，且已有独立的应用层鉴权；这里只放行部署面宣告的主机。"""
-    from mcp.server.transport_security import TransportSecuritySettings
     from urllib.parse import urlsplit
+
+    from mcp.server.transport_security import TransportSecuritySettings
 
     hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
     fed = os.environ.get("FLOWMIND_FEDERATION_URL", "").strip()
