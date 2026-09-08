@@ -149,6 +149,27 @@ def _cors_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
+def _transport_security():
+    """SDK 的 DNS-rebinding 防护（transport_security.py 会对非白名单 Host 返回
+    421）。白名单 = localhost 变体 + 联邦宣告地址（FLOWMIND_FEDERATION_URL，
+    即网关 mcpclient 实际访问的 host）+ FLOWMIND_MCP_ALLOWED_HOSTS 追加项。
+    网关是唯一 MCP 消费方，且已有独立的应用层鉴权；这里只放行部署面宣告的主机。"""
+    from mcp.server.transport_security import TransportSecuritySettings
+    from urllib.parse import urlsplit
+
+    hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    fed = os.environ.get("FLOWMIND_FEDERATION_URL", "").strip()
+    if fed:
+        sp = urlsplit(fed if "://" in fed else "http://" + fed)
+        if sp.hostname:
+            hosts.append(f"{sp.hostname}:*")
+            hosts.append(sp.hostname)
+    extra = os.environ.get("FLOWMIND_MCP_ALLOWED_HOSTS", "")
+    hosts += [h.strip() for h in extra.split(",") if h.strip()]
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True, allowed_hosts=hosts)
+
+
 def _add_middlewares() -> None:
     """在 FastMCP 的 Starlette 应用实例层挂载鉴权占位 + CORS 中间件。
 
@@ -161,6 +182,9 @@ def _add_middlewares() -> None:
     original = mcp.streamable_http_app
 
     def streamable_http_app_with_middleware():
+        # 先注入 Host 白名单（DNS-rebinding 防护）：网关以 FLOWMIND_FEDERATION_URL
+        # 宣告的地址访问本服务，默认的 localhost-only 白名单会 421 拒之门外。
+        mcp.settings.transport_security = _transport_security()
         app = original()
         app.add_middleware(RakAuthMiddleware)
         app.add_middleware(
