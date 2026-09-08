@@ -9,8 +9,8 @@ mcp-base-gpu SaaS 化的任务引擎（阶段 2）。模块边界（import 无�
 
 基础设施事实记录（2026-09-04 探测，凭证绝不入库）：
 
-- PostgreSQL：集群 app 业务用户无 CREATEDB/CREATE SCHEMA 权限（42501），
-  库 ``mcp_base_gpu`` 已由管理员建好（owner=app）。连接串从 env
+- PostgreSQL：2026-09-08 起任务表在统一库 ``rak`` 的 ``flowmind`` schema
+  （ECO-ADR-0013，登录角色 flowmind 由管理员预建）。连接串从 env
   ``FLOWMIND_PG_DSN`` 读；未设置时回落开发机 mesh 的
   ``RAK_PG_HOST/RAK_PG_PORT/RAK_PG_APP_USER/RAK_PG_APP_PASS``。
   经 PgBouncer 事务模式：短连接 + autocommit，不用 advisory lock /

@@ -127,7 +127,7 @@ Milvus collection `localize_segments`（HNSW + COSINE）。`localize_search`
 
 | 组件 | 用途 | 开发机 | 集群内部（svc 短名示例） |
 |---|---|---|---|
-| PostgreSQL + PgBouncer | 任务存储（事务模式，短连接快进快出） | mesh `RAK_PG_*` | `pgbouncer.agentic.svc:6432/mcp_base_gpu` |
+| PostgreSQL | 任务存储（短连接快进快出；统一库 rak 的 flowmind schema，ECO-ADR-0013） | mesh `RAK_PG_*` | `pg-np.database.svc:5432/rak` |
 | EMQX (MQTT) | 任务进度事件（明文 1883 / TLS 可选 / 认证可选） | mesh `RAK_MQTT_HOST` | `emqx.agentic.svc:1883` |
 | Milvus | 字幕分段向量库 | 自建（如 mesh NodePort） | `http://milvus.agentic.svc:19530` |
 | BGE 嵌入服务 | 字幕向量化（TEI / OpenAI 双形状自适应） | 自建（如本机 127.0.0.1:31997） | 集群内注入服务地址 |

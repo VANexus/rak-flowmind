@@ -8,8 +8,9 @@ PgBouncer 事务模式适配（硬约束）：
 - 连接失败重试 1 次（瞬时抖动），仍失败抛 TaskStoreError（错误永不静默）。
 
 决策记录：
-- 建库：app 业务用户无 CREATEDB 权限（42501），``mcp_base_gpu`` 库已由
-  管理员建好（owner=app）；本模块只做**幂等建表**（IF NOT EXISTS）。
+- 建库：app 业务用户无 CREATEDB 权限（42501）；2026-09-08 起任务表迁入统一库
+  ``rak`` 的 ``flowmind`` schema（ECO-ADR-0013，登录角色 flowmind 由管理员预建）。
+  本模块只做**幂等建表**（IF NOT EXISTS）。
 - 线程安全：无共享可变连接（每操作短借连接），仅建表标志用锁保护。
 - TTL GC 语义：manager 只清 workdir 不删 DB 行（行保留供审计与状态查询）。
 """

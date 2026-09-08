@@ -382,7 +382,7 @@ class InfraConfig(BaseModel):
 
     # ── PostgreSQL（TaskStore；经 PgBouncer 事务模式）──
     pg_dsn: str = ""                     # 完整连接串；env FLOWMIND_PG_DSN 优先
-    pg_db: str = "mcp_base_gpu"          # RAK_PG_* 兜底路径使用的库名
+    pg_db: str = "rak"                   # RAK_PG_* 兜底路径使用的库名（统一库，schema 见 tasks/store.py）
 
     # ── MQTT（EMQX，任务事件推送 mcp-base-gpu/tasks/{id}/events）──
     mqtt_host: str = ""                  # 空 = 发布器禁用（纯 PG 落库降级）
