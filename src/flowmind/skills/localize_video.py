@@ -73,6 +73,10 @@ class LocalizeVideoInput(BaseModel):
     output_path: str | None = Field(
         default=None, description="输出 mp4 路径；None=输入同目录 <stem>_localized.mp4"
     )
+    watermark_bbox: tuple[float, float, float, float] | None = Field(
+        default=None,
+        description="固定水印区域归一化坐标 (x0,y0,x1,y1)，各坐标范围 0-1",
+    )
     keep_background_audio: bool = Field(default=True, description="原声 -12dB 保留为背景（BGM/环境音不丢）；显式传 False 可输出纯配音")
     tts_backend: str | None = Field(
         default=None,
@@ -102,6 +106,17 @@ class LocalizeVideoInput(BaseModel):
             raise ValueError("video_path 不能为空")
         return v.strip()
 
+    @field_validator("watermark_bbox")
+    @classmethod
+    def _valid_watermark_bbox(cls, v):
+        if v is not None and (
+            any(coord < 0 or coord > 1 for coord in v)
+            or v[2] <= v[0]
+            or v[3] <= v[1]
+        ):
+            raise ValueError("watermark_bbox 必须是 0-1 范围内的非空区域")
+        return v
+
 
 class LocalizeVideoReport(BaseModel):
     """流水线业务载荷。"""
@@ -114,6 +129,7 @@ class LocalizeVideoReport(BaseModel):
     asr_backend: str = "cloud"            # 实际使用的 ASR 后端（local/cloud）
     ocr_backend: str = "cloud"            # 实际使用的 OCR 后端（local/cloud）
     erase_backend: str | None = None      # 实际使用的擦除后端（lama/delogo；增量字段）
+    watermark_removed: bool = False
     # 字幕向量化（增量字段）：True=已写入 Milvus；False=未写入（未配置或失败，
     # 由阶段消息与日志区分）；None=开关关闭
     vectorized: bool | None = None
@@ -228,6 +244,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             asr_backend=report["asr_backend"],
             ocr_backend=report["ocr_backend"],
             erase_backend=report["erase_backend"],
+            watermark_removed=report["watermark_removed"],
             vectorized=report["vectorized"],
         ),
         reasoning=[chain], confidence=0.9,
@@ -402,19 +419,26 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
                           regions=regions, width=width, height=height)
     out_path = _resolve_out_path(args, src, workdir)
     # 精准擦除：OCR 文本行框逐框外扩（不再合成大横带误伤前景主体）
-    erase_regs = _prep_erase_regions(regions, width, height)
+    subtitle_erase_regs = _prep_erase_regions(regions, width, height)
+    watermark_regions = _watermark_region(args.watermark_bbox, width, height)
+    erase_regs = subtitle_erase_regs + watermark_regions
     src_local = _ensure_local(src, workdir)
     # 擦除后端：auto=LaMa 可用则用（复杂背景无拉丝）否则 delogo；
     # local=强制 LaMa（缺失/失败显式报错，不静默回落）；delogo=旧硬横带
     erase_used = "delogo"
     eff_erase = (args.erase_backend or getattr(cfg, "erase_backend", "auto")).lower()
-    progress_cb("erase", 57.0, f"擦除字幕区（{eff_erase}，{len(erase_regs)} 框）")
+    progress_cb(
+        "erase", 57.0,
+        f"擦除字幕/水印（{eff_erase}，{len(erase_regs)} 框）",
+    )
     if erase_regs and eff_erase in ("auto", "local", "lama"):
         if _inpaint.available():
             with gpu_lane():
                 _inpaint.erase_regions(
-                    src_local, erase_regs,
-                    str(workdir / "inpainted.mp4"), str(workdir))
+                    src_local, subtitle_erase_regs,
+                    str(workdir / "inpainted.mp4"), str(workdir),
+                    solid_regions=watermark_regions,
+                )
             erased_video = _media.burn_subtitles(
                 str(workdir / "inpainted.mp4"),
                 str(workdir / "subbed.mp4"), ass_path)
@@ -531,6 +555,7 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         "asr_backend": asr_backend,
         "ocr_backend": ocr_backend,
         "erase_backend": erase_used,
+        "watermark_removed": bool(watermark_regions),
         "vectorized": vectorized,
     }
 
@@ -565,7 +590,7 @@ def _select_asr(cfg, speech_key: str) -> tuple[str, object]:
     - cloud  = 强制 dashscope 流式
     - auto   = 本地库可导入即用本地；否则回落云；两端都不可用显式报错
     """
-    chosen = (cfg.asr_backend or "auto").lower()
+    chosen = (getattr(cfg, "asr_backend", None) or "auto").lower()
 
     def _local(p: str, lang: str | None) -> list[dict]:
         return _local_asr.transcribe_local(
@@ -595,7 +620,7 @@ def _select_ocr(cfg, speech_key: str) -> tuple[str, object]:
 
     语义同 _select_asr：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto。
     """
-    chosen = (cfg.ocr_backend or "auto").lower()
+    chosen = (getattr(cfg, "ocr_backend", None) or "auto").lower()
 
     def _local(frames: list[str], w: int | None, h: int | None) -> list[dict]:
         return _local_ocr.locate_subtitle_region(frames, frame_width=w, frame_height=h)
@@ -682,38 +707,31 @@ def _est_text_width(text: str, font_size: int) -> float:
 
 
 def _fit_subtitle(text: str, base_fs: int, play_res_w: int = 1280,
-                  margin_lr: int = 120, min_fs: int = 14) -> tuple[int, str]:
-    """按文字长度动态匹配字号，返回 (font_size, 可能折行的 text)。
-
-    策略：先整句逐步缩号（下限 min_fs）；仍放不下则在句中找断点
-    （优先标点/空格，其次几何中点）折两行，再缩号到放下。
-    """
+                  margin_lr: int = 120) -> tuple[int, str]:
+    """保持统一字号，按单词换行；无空格长词按字符折行。"""
     safe_w = play_res_w - margin_lr * 2
-    if _est_text_width(text, base_fs) <= safe_w:
-        return base_fs, text
-    # 单行缩号
-    fs = base_fs
-    while fs > min_fs and _est_text_width(text, fs) > safe_w:
-        fs -= 1
-    if _est_text_width(text, fs) <= safe_w:
-        return fs, text
-    # 两行折行：从几何中点向外找最近的断点字符
-    mid = len(text) // 2
-    split = None
-    for radius in range(len(text)):
-        for idx in (mid + radius, mid - radius):
-            if 0 < idx < len(text) and text[idx] in " ,.!?:;、，。！？：；-/）)":
-                split = idx + 1
-                break
-        if split is not None:
-            break
-    split = split or mid
-    l1, l2 = text[:split].strip(), text[split:].strip()
-    fs = base_fs
-    while fs > min_fs and max(_est_text_width(l1, fs),
-                              _est_text_width(l2, fs)) > safe_w:
-        fs -= 1
-    return fs, f"{l1}\\N{l2}"
+    lines: list[str] = []
+    line = ""
+    for word in text.split():
+        if _est_text_width(word, base_fs) > safe_w:
+            if line:
+                lines.append(line)
+                line = ""
+            for char in word:
+                if line and _est_text_width(line + char, base_fs) > safe_w:
+                    lines.append(line)
+                    line = ""
+                line += char
+            continue
+        candidate = f"{line} {word}".strip()
+        if line and _est_text_width(candidate, base_fs) > safe_w:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    return base_fs, "\\N".join(lines)
 
 
 _FONT_CANDIDATES = ("Noto Sans CJK SC", "Noto Serif CJK SC",
@@ -776,7 +794,7 @@ def _write_ass(segments: list[dict], workdir: Path, cfg,
     """把译文句段写成 ASS 字幕（底部居中，带半透明底条）。
 
     字号/下边距动态匹配原字幕（regions=OCR 原始行框时按行高与行底推导）；
-    长句仍经 _fit_subtitle 缩号/折行防溢出（匹配字号为上限）。
+    长句经 _fit_subtitle 按固定字号折行，避免逐句字号跳变。
     regions 缺省回退 cfg.subtitle_font_size / 固定 MarginV=40。
     """
     base_fs, margin_v = _match_original_style(regions or [], width, height)
@@ -801,9 +819,8 @@ def _write_ass(segments: list[dict], workdir: Path, cfg,
         return f"{int(h):01d}:{int(m):02d}:{s:05.2f}"
 
     for seg in segments:
-        fs, text = _fit_subtitle(str(seg["text"]).replace("\n", " "), font_size)
-        styled = text if fs == font_size else f"{{\\fs{fs}}}{text}"
-        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{styled}")
+        _, text = _fit_subtitle(str(seg["text"]).replace("\n", " "), font_size)
+        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{text}")
     path = workdir / "subs.ass"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
@@ -859,6 +876,22 @@ def _prep_erase_regions(regions: list[dict], width: int | None,
     return out
 
 
+def _watermark_region(
+    bbox: tuple[float, float, float, float] | None,
+    width: int,
+    height: int,
+) -> list[dict]:
+    """Convert a normalized fixed watermark box to a clipped pixel rectangle."""
+    if bbox is None:
+        return []
+    x0, y0, x1, y1 = bbox
+    left, top = round(x0 * width), round(y0 * height)
+    right, bottom = round(x1 * width), round(y1 * height)
+    if right <= left or bottom <= top:
+        raise ValueError("watermark_bbox must define a non-empty region")
+    return [{"x": left, "y": top, "w": right - left, "h": bottom - top}]
+
+
 def _replace_audio(video_path: str, audio_wav: str, out_path: str) -> str:
     """用新音频替换视频原声（视频全长，音频不足部分自动补静音）。"""
     # 先取视频时长，再用 apad 补静音到该时长
@@ -890,15 +923,17 @@ def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
     # wav 命名按 zip 位置（而非 seg['index']）：调用方传入的 segments
     # 已是过滤后的 tts_segs（index 可能非连续/缺失），位置必唯一防覆盖
     for pos, (seg, dub) in enumerate(zip(segments, dubs)):
-        # mp3 → wav；配音比原句长时用 atempo 加速压到句时长内（上限 2 倍速，
-        # 再长接受轻微溢出，避免过度压缩变调）
+        # mp3 → wav；限制加速幅度，过长时保留轻微时间溢出而不赶词
         wav_p = str(tmp_dir / f"dub_{pos:04d}.wav")
         cmd = ["ffmpeg", "-y", "-i", dub]
         seg_dur = seg["end"] - seg["begin"]
+        filters = []
         if seg_dur > 0.3:
             tempo = _media.probe_media(dub)[0] / seg_dur
             if tempo > 1.02:  # 2% 以内不压，避免徒增变速伪影
-                cmd += ["-filter:a", f"atempo={min(tempo, 2.0):.4f}"]
+                filters.append(f"atempo={min(tempo, 1.25):.4f}")
+        filters.append("loudnorm=I=-18:TP=-2:LRA=7")
+        cmd += ["-filter:a", ",".join(filters)]
         cmd += ["-ac", "1", "-ar", "16000", wav_p]
         rc, _, err = _media.run_ffmpeg(cmd)
         if rc != 0:

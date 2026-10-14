@@ -13,6 +13,7 @@ dependencies = [
     "requests>=2.34.2",
     "httpx>=0.27",
     "python-dotenv>=1.2.2",
+    "tomli-w>=1.0",
     "dashscope>=1.27.1",
     "uvicorn>=0.30",
     # 任务引擎基础设施（PG 存储 / MQTT 事件 / Milvus 向量库）

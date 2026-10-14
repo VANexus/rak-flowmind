@@ -115,7 +115,8 @@ def mix_audio(
             # 背景来自独立音轨：video + dub + bg 三输入
             afilter = (
                 "[2:a]volume=-12dB[bg];[1:a]volume=0.9[dub];"
-                "[bg][dub]amix=inputs=2:duration=first:normalize=0[aout]"
+                "[bg][dub]amix=inputs=2:duration=first:normalize=0,"
+                "alimiter=limit=0.95[aout]"
             )
             inputs = ["-i", video_path, "-i", dub_path, "-i", bg_path]
             amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]
@@ -123,7 +124,8 @@ def mix_audio(
             # 视频自带音轨（旧行为兜底）
             afilter = (
                 "[0:a]volume=-12dB[bg];[1:a]volume=0.9[dub];"
-                "[bg][dub]amix=inputs=2:duration=first:normalize=0[aout]"
+                "[bg][dub]amix=inputs=2:duration=first:normalize=0,"
+                "alimiter=limit=0.95[aout]"
             )
             inputs = ["-i", video_path, "-i", dub_path]
             amap = ["-filter_complex", afilter, "-map", "0:v", "-map", "[aout]"]

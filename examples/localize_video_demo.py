@@ -19,6 +19,8 @@ import flowmind.skills.localize_video as lv
 from flowmind.discover import field_names
 from flowmind.skill import invoke
 
+MOCK_CALLS = {}
+
 
 def section(title: str) -> None:
     print(f"\n{'─' * 60}\n  {title}\n{'─' * 60}")
@@ -40,7 +42,17 @@ def install_mock_pipeline() -> None:
     lv._media.burn_subtitles = lambda vp, op, ass, erase_regions=None: (
         Path(op).write_bytes(b"x") or op)
     lv._media.mix_audio = lambda vp, d, op, keep_background=False, bg_path=None: op
-    lv._inpaint.available = lambda: False     # demo 走 delogo 分支（不跑真 LaMa）
+    lv._inpaint.available = lambda: True      # mock LaMa 遮罩传递，不加载模型
+
+    def mock_erase(src, regions, out_path, workdir, solid_regions=None):
+        MOCK_CALLS["lama"] = {
+            "subtitle_regions": regions,
+            "solid_regions": solid_regions,
+        }
+        Path(out_path).write_bytes(b"x")
+        return out_path
+
+    lv._inpaint.erase_regions = mock_erase
     lv._local_tts.available = lambda: False   # demo 走云 TTS 分支（不加载 4GB 本地模型）
     lv._music_sep.available = lambda: False   # demo 不做真人声分离（无 demucs 依赖）
     lv._local_asr.available = lambda: False   # auto 后端回落到已 mock 的云 ASR
@@ -69,12 +81,20 @@ def main() -> None:
         "target_lang": "en",
         "voice_id": "cosyvoice-v3.5-plus-demo-abc",
         "output_path": "/tmp/demo_localized.mp4",
+        "watermark_bbox": (0.04, 0.02, 0.37, 0.08),
     })
+    if not r.ok:
+        raise AssertionError(f"mock localization failed: {r.error}")
+    assert r.data.watermark_removed is True
+    assert MOCK_CALLS["lama"]["solid_regions"] == [
+        {"x": 26, "y": 7, "w": 211, "h": 22},
+    ]
     print(f"  ok              : {r.ok}")
     print(f"  output_path     : {r.data.output_path}")
     print(f"  时长            : {r.data.duration_seconds}s")
     print(f"  ASR 句数        : {r.data.asr_segment_count}")
     print(f"  原字幕区已擦除  : {r.data.subtitle_region_erased}")
+    print(f"  水印区已送修复  : {r.data.watermark_removed}")
     print(f"  使用音色        : {r.data.voice_used}")
     print(f"  trace_id        : {r.trace.trace_id[:8]}...")
     print(f"  推理结论        : {r.reasoning[0].conclusion}")

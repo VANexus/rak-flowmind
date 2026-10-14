@@ -64,18 +64,30 @@ def _get_lama():
     return _lama_singleton
 
 
-def erase_regions(src: str, regions: list[dict], out_path: str, workdir: str) -> str:
-    """对视频矩形区域逐帧 LaMa 修复，输出无声视频。
+def erase_regions(
+    src: str,
+    regions: list[dict],
+    out_path: str,
+    workdir: str,
+    solid_regions: list[dict] | None = None,
+) -> str:
+    """逐帧 LaMa 修复字幕框，并可对固定水印框执行整框修复。
 
     经 _inpaint_frames_adapter 薄适配层执行，测试可 monkeypatch 替换。
     """
-    if not regions:
+    if not regions and not solid_regions:
         raise InpaintError("擦除区列表为空（应先走 OCR 定位）", category="video")
-    return _inpaint_frames_adapter(src, regions, out_path, workdir)
+    return _inpaint_frames_adapter(
+        src, regions, out_path, workdir, solid_regions=solid_regions,
+    )
 
 
 def _inpaint_frames_adapter(
-    src: str, regions: list[dict], out_path: str, workdir: str,
+    src: str,
+    regions: list[dict],
+    out_path: str,
+    workdir: str,
+    solid_regions: list[dict] | None = None,
 ) -> str:
     """逐帧修复主体：抽帧 → 掩码 → LaMa → 重编码。"""
     try:
@@ -111,13 +123,23 @@ def _inpaint_frames_adapter(
     from PIL import Image, ImageDraw, ImageFilter
     roi = Image.new("L", (width, height), 0)
     draw = ImageDraw.Draw(roi)
-    for r in regions:
-        draw.rectangle([
-            max(0, int(r["x"]) - 4), max(0, int(r["y"]) - 4),
-            min(width, int(r["x"] + r["w"]) + 4),
-            min(height, int(r["y"] + r["h"]) + 4),
-        ], fill=255)
+    solid_roi = Image.new("L", (width, height), 0)
+    solid_draw = ImageDraw.Draw(solid_roi)
+
+    def _draw_regions(target, boxes):
+        for r in boxes or []:
+            target.rectangle([
+                max(0, int(r["x"]) - 4), max(0, int(r["y"]) - 4),
+                min(width, int(r["x"] + r["w"]) + 4),
+                min(height, int(r["y"] + r["h"]) + 4),
+            ], fill=255)
+
+    _draw_regions(draw, regions)
+    _draw_regions(draw, solid_regions)
+    _draw_regions(solid_draw, solid_regions)
     roi_np = np.asarray(roi) > 0
+    solid_roi_np = np.asarray(solid_roi) > 0
+    subtitle_roi_np = roi_np & ~solid_roi_np
     roi_w = max((int(r["w"]) for r in regions), default=0)
 
     def _frame_mask(img: Image.Image) -> Image.Image:
@@ -131,7 +153,7 @@ def _inpaint_frames_adapter(
         - 帧内无可辨识白字（彩色字/白底白字）→ 回落整块 ROI
         """
         gray = np.asarray(img.convert("L"))
-        text = (gray >= 200) & roi_np
+        text = (gray >= 200) & subtitle_roi_np
         try:
             from scipy import ndimage
             lab, n = ndimage.label(text)
@@ -152,7 +174,7 @@ def _inpaint_frames_adapter(
             return roi
         dilated = Image.fromarray((text * 255).astype("uint8"))
         dilated = dilated.filter(ImageFilter.MaxFilter(17))
-        keep = (np.asarray(dilated) > 0) & roi_np  # 不越出 ROI
+        keep = ((np.asarray(dilated) > 0) & subtitle_roi_np) | solid_roi_np
         return Image.fromarray((keep * 255).astype("uint8"))
 
     # 3) LaMa 逐帧修复（模型首个帧时懒下载；修复结果存 jpg 省盘）

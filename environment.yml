@@ -54,6 +54,7 @@ dependencies:
       # ── 框架与服务 ──
       - mcp>=1.27,<2               # MCP 协议（FastMCP v1；v2 需重验 _make_tool 反射）
       - pydantic>=2
+      - tomli-w>=1.0
       - uvicorn>=0.30              # Streamable HTTP / REST 服务运行时
       - python-dotenv>=1.2.2       # 服务进程启动加载 .env（密钥不入 toml/commit）
       - requests>=2.34.2
