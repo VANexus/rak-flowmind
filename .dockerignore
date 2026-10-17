@@ -1,0 +1,21 @@
+# 构建上下文瘦身（deploy/ocr-sidecar 的镜像只用 `src/flowmind` 一个目录，其余全是白搭的传输）。
+# 实证口径：本仓工作区 40MB，其中 docs/ 占 29MB（厂商文档），排除后上下文降到 MB 级。
+.git
+.gitignore
+.github
+docs
+examples
+scripts
+~
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.venv
+venv
+.pytest_cache
+.ruff_cache
+.env
+.env.*
+*.md
+environment.yml
+LICENSE

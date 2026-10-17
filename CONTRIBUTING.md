@@ -59,19 +59,26 @@ def my_skill(inp: MyInput) -> SkillOutput[MyReport]:
 
 > **要点**：技能函数返回轻量 `SkillOutput`（业务数据 + 推理链）。框架的 `invoke()` 会统一注入 `trace_id`、计时填充可靠性指标、并把异常兜底为结构化错误 —— 你**不用**自己写这些管道。四段式推理链的「触发规则/数据证据」两段应由 `rules.evaluate_rules()` 自动产出，不要手写。
 
-### 2. 注册（触发 `@skill`）
+### 2. 注册进族（触发 `@skill`）
 
-在 `src/flowmind/skills/__init__.py` 追加一行：
+技能按**族**分组。在 `src/flowmind/skills/__init__.py` 的 `FAMILIES` 族表里，把模块名
+**按字母序**加进对应族（`localize` / `dsp`，或新建一族）：
 
 ```python
-from flowmind.skills import your_skill  # noqa: F401
+FAMILIES: dict[str, tuple[str, ...]] = {
+    "localize": ("localize_cancel", ..., "localize_video"),
+    "dsp": ("dsp_bgm_match", ..., "your_skill"),   # ← 字母序插入
+}
 ```
 
-就这样 —— `server.py`（MCP 暴露）、`manifest.py`（能力清单）会**自动**发现并暴露它，无需改动。
+`_register_families()` 会导入选中族的模块（导入即 `@skill` 登记），`server.py`（MCP 暴露）、
+`manifest.py`（能力清单）会**自动**发现并暴露它，无需改动。**不要**用裸 `import` 追加——
+族表是唯一真源（`FLOWMIND_SKILL_FAMILIES` 按族筛选注册，裸 import 会绕过族筛选、
+破坏「禁止幽灵 import」纪律）。
 
 ### 3. 可自定义阈值 → 放进 config
 
-若技能有可调参数，在 `src/flowmind/config.py` 加一个配置模型（带通用默认），并纳入 `FlowmindConfig`；在技能里用 `load_config()` 读取。个性化由终端用户对话初始化（见 `README.md` 的「Agent 初始化剧本」）写入 `flowmind.config.toml`。
+若技能有可调参数，在 `src/flowmind/config.py` 加一个配置模型（带通用默认），并纳入 `FlowmindConfig`；在技能里用 `load_config()` 读取。个性化由终端用户对话初始化（见 `README.md` 的「🤖 如果你是一个 AI Agent 第一次读到这个文件」段）写入 `flowmind.config.toml`。
 
 ### 4. 加 demo 冒烟
 

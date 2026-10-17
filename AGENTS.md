@@ -18,14 +18,17 @@ conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
 conda run -n flowmind ruff check src              # lint（必须通过）
 for f in examples/*_demo.py; do
   PYTHONPATH=$PWD/src conda run -n flowmind python "$f"
-done                                              # 跑 9 个 demo 冒烟
+done                                              # 跑 18 个 demo 冒烟
 ```
 
 如果遇到任何概念不清楚，先看本文件对应章节，再问。
 
-> **定位**（2026-09 收敛后）：`mcp-base-gpu` = 视频本地化 MCP over HTTP SaaS 服务端，
-> 单端口 8002 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。
+> **定位**（2026-09 收敛后）：`mcp-base-gpu` = MCP over HTTP SaaS 服务端，
+> 单端口 8002 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。缺省加载两族共 15 个工具
+> —— **localize 族 7 个**（视频本地化 GPU 流水线）+ **dsp 族 8 个**（抖音成片，算力全下沉云厂商）。
 > **无单测 / 无 Makefile / 无 pytest**——验证靠 `examples/*_demo.py` 冒烟 + 真实调用。
+> **Docker 只有一处**：`deploy/ocr-sidecar/`（本机 OCR 侧车容器，**可选层、不挡启动**，cross-dashboard
+> ADR-100）；起停看：`python scripts/ocr_sidecar_dev.py`（`--status` / `--down`）。
 > GPU（P104-100，Pascal 6.1）与基础设施约定见 `CLAUDE.md`「本地模型」「架构」段。
 > worktree 中验证一律 `PYTHONPATH=<worktree>/src conda run -n flowmind ...`。
 
@@ -49,15 +52,16 @@ src/flowmind/
 │   ├── events.py      # MQTT 事件（mcp-base-gpu/tasks/{id}/events，终态 retain）
 │   ├── vectors.py     # Milvus 字幕向量库（localize_segments，768 维 HNSW/COSINE）
 │   └── gpu.py         # gpu_lane() / model_cache_guard() 双道闸
+├── federation/        # 联邦自注册（MQTT + PG 双通道；默认关）——可选
 └── skills/
-    ├── __init__.py    # import 各技能触发 @skill 注册（按字母序）
-    ├── localize_submit.py     # 批量提交（TaskQueueFull → 429 语义）
-    ├── localize_status.py     # 参考：轻量只读（demo 惯用替身）
-    ├── localize_retry.py / localize_cancel.py / localize_download.py
-    ├── localize_search.py     # Milvus 语义检索
-    ├── localize_video.py      # 流水线本体（ASR→OCR→译→擦→TTS→混→向量化）
-    └── _*.py          # 12 个 helper（_cloud_asr/_local_asr/_bge_embed/_media/_inpaint…）
-examples/              # 9 个 demo（冒烟验证的唯一手段，本仓库无单测）
+    ├── __init__.py    # FAMILIES 族表（localize/dsp）+ 族筛选 → 导入即 @skill 注册
+    ├── localize_*.py  # localize 族 7 个（submit/status/retry/cancel/download/search/video）
+    ├── dsp_*.py       # dsp 族 8 个（tts/timeline/image_to_video/bgm/subtitle/cover/cart/render）
+    ├── content_hot_boards.py  # 未入族占位（helper 缺失，见 __init__ 注释）
+    └── _*.py          # 18 个 helper（_cloud_asr/_local_asr/_dsp_align/_dsp_mediakit/_bge_embed…）
+examples/              # 18 个 demo（冒烟验证的唯一手段，本仓库无单测）
+scripts/               # 开发工具（非包内）：check_dsp_env.py 环境自检、ocr_sidecar_dev.py 侧车起停看
+deploy/ocr-sidecar/    # OCR 侧车镜像 + compose（本仓唯一的 Docker 落点）——可选层，不挡启动
 docs/                  # 设计文档
 ```
 
@@ -74,7 +78,8 @@ docs/                  # 设计文档
 
 1. 在 `src/flowmind/skills/<name>.py` 写 `@skill` 函数（优先参考 `localize_status.py`
    —— 轻量只读；失败语义用 degraded SkillOutput 模式，见 CLAUDE.md）
-2. `src/flowmind/skills/__init__.py` 按字母序追加 import（`@skill` 重复 id 抛 ValueError）
+2. `src/flowmind/skills/__init__.py` 的**族表 `FAMILIES`** 里按字母序追加模块名
+   （`@skill` 重复 id 抛 ValueError；详见下方「技能族与族筛选」）
 3. 可调参数：`config.py` 加 Config 类 + 纳入 `FlowmindConfig`
 4. `examples/<name>_demo.py` 加 demo（三段式：happy / 默认 / 错误）
 5. `ruff check src` 全绿 + demo 跑通 → commit
@@ -83,6 +88,18 @@ docs/                  # 设计文档
 - ❌ 不改 `server.py` / `contracts.py` / `manifest.py` / `skill.py`（除非改对外契约）
 - ❌ 不留 `# TODO` 给下游开发者（可调项走 config + 通用默认）
 - ❌ 不吞异常（任何失败必须走 `SkillResult(ok=False, error=...)` 或 `degraded=True`）
+
+**技能族与族筛选（`FLOWMIND_SKILL_FAMILIES`）**：技能按**族**分组，族表在
+`src/flowmind/skills/__init__.py` 的 `FAMILIES`（族名 → 模块名，**显式列名**，
+延续「禁止幽灵 import」纪律：模块缺失即当场报错）。env
+`FLOWMIND_SKILL_FAMILIES`（逗号分隔）选择只注册哪些族；**缺省 = 全部族**
+（行为与历史一致）。现有族：`localize`（视频本地化 7 技能）、`dsp`（抖音成片 8 技能）。
+
+族是「一个功能包一个 prefix」的落地手段：网关把每个 backend 的工具聚合为
+`{prefix}__{remote_tool}`，prefix **每 backend 只有一个**——故新族若要有自己的
+前缀，须以独立进程/部署注册（见 README「dsp 成片技能族」）：
+`FLOWMIND_SKILL_FAMILIES=dsp FLOWMIND_MCP_PORT=8003 FLOWMIND_FEDERATION_BACKEND_ID=dsp
+FLOWMIND_FEDERATION_PREFIX=dsp mcp-base-gpu` → 网关呈现 `dsp__timeline_build` 等八个。
 
 ### 任务 3：理解一段陌生代码
 
@@ -152,13 +169,14 @@ print(r.ok, r.metrics.degraded, r.data.failure_category)
 ```bash
 conda run -n flowmind mcp-base-gpu                 # 前台起（MCP + REST 同端口 8002）
 curl http://127.0.0.1:8002/api/v1/health           # 组件状态
-curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
-# MCP 探针：python + mcp 库 streamablehttp_client → list_tools 应恰好 7 个 localize_*
+curl http://127.0.0.1:8002/api/v1/manifest          # 技能清单（缺省 15 个）
+# MCP 探针：python + mcp 库 streamablehttp_client → list_tools 应恰好 7 个 localize_*（缺省全族则 15 个）
 ```
 
 ## MCP 联邦网关（go-kernel）
 
-仓库内另有 `go-kernel/`（独立 Go module，提交单独走）——**MCP 联邦网关**，
+仓库**旁挂**的 `go-kernel/`（独立 git 仓库 VANexus/go-kernel，需单独 clone 到本仓根旁；
+本仓不随附、外层 `.gitignore` 已忽略）——**MCP 联邦网关**，
 与 Python 功能包的关系与约定：
 
 - **端口约定**：Python 功能包 :8002（FastMCP + 任务 REST）＝网关后端；
@@ -167,14 +185,16 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
 - **聚合关系**：网关把本仓库 7 个 `localize_*` 工具以
   `{prefix}__{remote_tool}` 全名代理（`video_localizer__*`），另附内置
   `dify__*` 三工具；对 MCP 客户端呈现单一 `/mcp`。
+  **prefix 每 backend 只有一个**（PG `federation_backends` 一行一 backend）——
+  新族要自己的前缀即新 backend（独立进程/部署，用 `FLOWMIND_SKILL_FAMILIES`
+  只注册该族）；dsp 族即按此注册为 `prefix=dsp`（工具名 `dsp__*`）。
 - **注册协议**：本仓库 `FLOWMIND_FEDERATION_REGISTER=1` 启动后，经 MQTT
   （`mcp-base-gpu/federation/{register,heartbeat,unregister}`，QoS 1/0/1）
   + PG（`federation_backends`）双通道自注册；30s 心跳、90s 无心跳标
   offline（stale，工具保留）、优雅停机注销；默认关，不影响现有 demo。
 - **开发铁律**：
   - 注册/心跳/注销 payload 与 PG 表结构改动**必须双侧同步**：
-    `src/flowmind/federation/` ↔ `go-kernel/internal/{mqttclient,federation,pgstore}`；
-  - 工具结果 structuredContent 顶层必须是 object（Python mcp pydantic
+    `src/flowmind/federation/` ↔ `go-kernel/internal/{mqttclient,federation,pgstore}`；  - 工具结果 structuredContent 顶层必须是 object（Python mcp pydantic
     校验约束，裸标量/数组直接 ValidationError）；
   - go-kernel 侧提交前跑 `go vet ./... && go test ./...`（含
     `go test -race ./internal/...`），命令详见 `go-kernel/AGENTS.md`；
@@ -198,7 +218,7 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 7 技能清单
 ## 提交前 Checklist
 
 - [ ] `conda run -n flowmind ruff check src` 全绿
-- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（9 个全 PASS 为准）
+- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（18 个全 PASS 为准）
 - [ ] 提交信息 `<type>: <中文描述>`
 - [ ] 若改了 `environment.yml`：确认已 `conda env update` 且 demo 通过、torch 栈未破坏
 - [ ] 若改了 `config.py` / `skills/__init__.py`：留意 merge conflict hotspot

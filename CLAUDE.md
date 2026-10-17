@@ -8,9 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目定位
 
-`mcp-base-gpu` 是**视频本地化 MCP over HTTP SaaS 服务端**：把「中文视频 → 多语言
-配音/字幕版本」的 GPU 流水线（ASR → OCR → 翻译 → 字幕擦除 → TTS 配音 → 混音）
-包装成 **7 个 `localize_*` MCP 工具 + 一条异步任务 REST 通道**，单端口 8002 对外（默认端口，前置 Go 网关占 8080）。
+`mcp-base-gpu` 是**MCP over HTTP SaaS 服务端**，缺省加载两族技能：把「中文视频 →
+多语言配音/字幕版本」的 GPU 流水线（ASR → OCR → 翻译 → 字幕擦除 → TTS 配音 → 混音）
+包装成 **localize 族 7 个 `localize_*` 工具**；把抖音短视频成片（配音 → 时间线切镜 →
+图生视频 → 字幕/封面/贴片 → 合成渲染，算力全下沉云厂商）包装成 **dsp 族 8 个工具**。
+两条通道（`/mcp` 同步技能 + `/api/v1/tasks` 异步长任务）单端口 8002 对外（默认端口，前置 Go 网关占 8080）。
 
 **核心不变量**：**新增一个技能 = 写一个 `@skill` 函数**。注册 / JSON schema /
 MCP tool / manifest / discover() 全自动暴露。加技能**不改动** `server.py` /
@@ -26,11 +28,15 @@ conda run -n flowmind ruff check src                      # lint（必须通过�
 for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python "$f"; done  # demo 冒烟（本仓库无单测）
 conda run -n flowmind mcp-base-gpu                        # 单端口入口（MCP + 任务 REST，默认 8002）
 conda run -n flowmind flowmind-mcp                        # stdio 调试入口
+python scripts/ocr_sidecar_dev.py --status                # 本机 OCR 侧车（容器）：在不在跑 / 引擎是什么；可选层，不挡启动
 ```
 
 **Python 3.12**（conda env `flowmind`）。**依赖真源 = `environment.yml`**；
 `pyproject.toml` 只保留包元数据 / entry points / ruff 配置。
-**不用 Makefile / Docker / pytest**（tests/ 已删除，验证靠 demo + 真实 invoke）。
+**不用 Makefile / pytest**（tests/ 已删除，验证靠 demo + 真实 invoke）；**Docker 只有一处**：
+`deploy/ocr-sidecar/`（本机 OCR 侧车容器，cross-dashboard ADR-100 的第三层）——它与本服务**互不依赖**：
+容器没起时主服务照常启动，消费方如实记 `not_run`。起停看：`python scripts/ocr_sidecar_dev.py`
+（`--status` / `--down`；**不带** `PYTHONPATH=src`——它只编排 docker，不 import `flowmind`）。
 worktree 中验证一律 `PYTHONPATH=<worktree>/src conda run -n flowmind ...`。
 
 ## 本地模型（GPU 化，2026-09）
@@ -110,14 +116,21 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
   - `vectors.py` —— Milvus `localize_segments`（768 维 HNSW/COSINE，按 task_id 幂等
     upsert）+ `health_status()`。
   - `gpu.py` —— `gpu_lane()` / `model_cache_guard()` 双道闸。
-- **`skills/`** —— 7 个 `@skill`（localize_submit/status/retry/cancel/download/search/video）
-  + 12 个 helper（`_cloud_asr` / `_local_asr` / `_bge_embed` / `_media` / `_inpaint` 等）。
+- **`skills/`** —— 15 个 `@skill`，分两族（族表 `FAMILIES` 唯一真源）：**localize 族 7 个**
+  （localize_submit/status/retry/cancel/download/search/video）**+ dsp 族 8 个**
+  （tts_generate/timeline_build/image_to_video/bgm_match/subtitle_build/cover_pick/cart_sticker/render_compose）
+  + 18 个 helper（`_cloud_asr` / `_local_asr` / `_dsp_align` / `_dsp_mediakit` / `_bge_embed` / `_media` / `_inpaint` 等）。
+  `content_hot_boards.py` 为**未入族的占位源码**（依赖的 helper 缺失，不随任何族导入）。
   **耦合注意**：`_local_asr` 用 `_cloud_asr` 的 `ASRError`；`_local_cr` 用 `_cloud_ocr`
   私有函数；`_inpaint` import `_media` —— 这几对必须同进退。
   **输入沙箱**：提交通道的本地路径必须位于 `data_dir/uploads/` 内（URL 不受限），
   收口在 `localize_submit._split_paths`（MCP 与 REST 两通道共用）；
   `FLOWMIND_ALLOW_ANY_PATH=1` 仅限本地测试放行（生产禁设）。鉴权实装前的
   隔离层：防任意路径探测、产物外带、覆盖写源目录。
+- **`federation/`** —— 联邦自注册（可选，默认关）：`FLOWMIND_FEDERATION_REGISTER=1` 时经
+  MQTT（`mcp-base-gpu/federation/{register,heartbeat,unregister}`，QoS 1/0/1）+ PG
+  （`mcp.federation_backends`）双通道上报，30s 心跳 / 90s 无心跳标 offline（工具保留，stale）。
+  任何失败只记日志，**绝不影响技能与任务 REST**。
 
 ### 任务 REST 状态码约定
 
@@ -167,10 +180,13 @@ ok=False / INTERNAL + 「稍后重试」message，即 429 语义；REST 层按�
 for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python "$f"; done
 ```
 
-9 个 demo：`localize_video / submit / status / retry / cancel / download / search /
-api_server / auth_token`。前 7 个用 mock 流水线/内存 fake manager（不依赖 GPU / 集群），
-`api_server_demo` 起真实 uvicorn 测任务 REST 通道（400/422/429/部分受理/穿越防护），
-`auth_token_demo` 用 TestClient 测凭证校验（不需集群与 GPU）。
+18 个 demo。**localize 族 9 个**（`localize_video / submit / status / retry / cancel /
+download / search / api_server / auth_token`）：前 7 个用 mock 流水线/内存 fake manager
+（不依赖 GPU / 集群），`api_server_demo` 起真实 uvicorn 测任务 REST 通道（400/422/429/
+部分受理/穿越防护），`auth_token_demo` 用 TestClient 测凭证校验（不需集群与 GPU）。
+**dsp 族 8 个**（`dsp_tts_generate / timeline_build / image_to_video / bgm_match /
+subtitle_build / cover_pick / cart_sticker / render_compose`）+ **`federation_register_demo`**
+（联邦自注册双通道）。
 真实 GPU / 集群链路的任务生命周期冒烟单独做（起服务 + MCP 探针 + REST 提交）。
 
 ## 贡献新技能
@@ -185,13 +201,14 @@ api_server / auth_token`。前 7 个用 mock 流水线/内存 fake manager（不
 
 ```bash
 conda run -n flowmind mcp-base-gpu          # 前台起单端口服务
-# MCP 探针（python + mcp 库，streamablehttp_client → list_tools 应恰好 7 个 localize_*）
+# MCP 探针（python + mcp 库，streamablehttp_client → list_tools 应恰好 7 个 localize_*；缺省全族则 15 个）
 # REST 探活：curl http://127.0.0.1:8002/api/v1/health
 ```
 
 ## MCP 联邦网关（go-kernel）
 
-仓库内 `go-kernel/` 是 Go 编写的 **MCP 联邦网关**（独立 go module）：
+仓库**旁挂**的 `go-kernel/`（独立 git 仓库 VANexus/go-kernel，需单独 clone；本仓不随附）
+是 Go 编写的 **MCP 联邦网关**：
 
 - **端口约定**：Python 功能包 :8002 = 网关后端；Go 网关 :8080 = 对外唯一
   入口（`/mcp`、`/api/v1/tasks` 透传、`/api/v1/federation/*`、`/metrics`、

@@ -1,0 +1,49 @@
+# flowmind OCR 侧车（RapidOCR / PP-OCRv6）—— 本机 dev 的**独立一层**（cross-dashboard ADR-100）。
+#
+# **只发布到宿主回环**（`127.0.0.1:${OCR_HOST_PORT:-8765}`）：侧车**没有凭据**，一旦发布到 0.0.0.0
+# 就是「同网段任何人白用」。容器内监听 0.0.0.0 是必须的（监听回环则宿主连不进来），真正的边界是
+# 上面这条端口映射，不是容器里的 bind 地址。
+#
+# 起 / 停 / 看（在 rak-flowmind 根目录；cross-dashboard 侧用 `bun run ocr:serve` / `ocr:docker:down` / `ocr:status`）：
+#   docker compose -f deploy/ocr-sidecar/docker-compose.yml up -d      # 起（镜像不在则先构建）
+#   docker compose -f deploy/ocr-sidecar/docker-compose.yml logs -f    # 看日志
+#   docker compose -f deploy/ocr-sidecar/docker-compose.yml down       # 停
+#
+# 换端口（比如与本机原生侧车并存做对账）：OCR_HOST_PORT=8124 docker compose ... up -d
+#   ⚠️ 换完要同步 cross-dashboard `.env` 的 `AI_OCR_API_URL`——**应用只认那个变量**，
+#      端口对不上就是「连不上 ⇒ 这一项如实记没跑」，不会有人替你猜。
+services:
+  ocr-sidecar:
+    build:
+      context: ../..
+      dockerfile: deploy/ocr-sidecar/Dockerfile
+      args:
+        # 与 Dockerfile 同名的两个覆盖点（国内网络）：镜像与 pip 源
+        PYTHON_IMAGE: ${OCR_PYTHON_IMAGE:-python:3.13-slim-bookworm}
+        PIP_INDEX_URL: ${OCR_PIP_INDEX_URL:-https://pypi.org/simple}
+    # 固定 tag（不打 latest）：这个 tag 就是「引擎口径」的版本（见 Dockerfile 顶部为何钉版本）
+    image: flowmind-ocr-sidecar:rapidocr3.10
+    container_name: flowmind-ocr-sidecar
+    ports:
+      - "127.0.0.1:${OCR_HOST_PORT:-8765}:8000"
+    # 崩溃（大图 OOM 之类）自己回来：这是「本机顺手起着的开发件」，不该因为一次异常就永久缺位。
+    # ⚠️ 它**不**意味着应用依赖它：容器没起时应用照常跑，文字核查如实记「这一轮没跑」。
+    restart: unless-stopped
+    # ⚠️ **刻意不给 CPU 限额**（2026-10-16 实测定的，不是漏了）：onnxruntime 的 det/rec 随可用核数
+    #   **近线性**扩展，掐到 2 核就是 5-7 秒/张，而这条链路每镜最多问 4 次 ⇒ 一次质检白等十几秒。
+    #   **实测矩阵**（容器内、同一批图）：
+    #     无 CPU 限额（16 核）**1.1-2.1s** ｜ `cpus: 2`（可见 16 核）6.7-10.9s
+    #     ｜ `cpus: 2` + `cpuset: 0-1` 5.5-7.3s ｜ 再加 `OMP_NUM_THREADS=2` 5.1-6.5s
+    #     ⇒ **瓶颈是核数本身，不是线程超订**（cpuset 只补回一点，OMP 变量对 ORT 自己的线程池无效）。
+    #   「用空闲核」正是原生那条路本来的行为（本机开发件，不是共享服务）；真正的风险是**内存**
+    #   （异常大的图 + opencv），由下面这条兜。真要限额就自己加 `cpus:` —— 但**请连 `cpuset` 一起给**：
+    #   可见核数 ≠ 配额时，ORT 会按可见核数开满线程去抢那点配额，只会更慢。
+    mem_limit: 2g
+    # 只读根文件系统（侧车不落任何盘）+ 只给一块可写 /tmp（onnxruntime / opencv 可能要临时目录）
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

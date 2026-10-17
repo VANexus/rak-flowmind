@@ -32,7 +32,18 @@ dependencies:
       - nvidia-cudnn-cu12==9.1.0.70
       # ── 本地模型栈（进程内库，lazy import）──
       - faster-whisper>=1.0        # 本地 ASR（CTranslate2，支持 CC≥6.0）
-      - rapidocr-onnxruntime>=1.3  # 本地 OCR（CPU，字幕条定位）
+      # 本地 OCR（CPU）。**新包名** `rapidocr` v3（2026-10-16 修漂移：此前钉旧包
+      # `rapidocr-onnxruntime`，而实况是只有新包 ⇒ `available()` 恒 False、「本地优先」静默落到云 OCR）。
+      # 两处消费者：**字幕条定位**（`skills/_local_ocr.py`，带位置/尺寸先验与 <0.5 过滤）与
+      # **dsp 文字核查侧车**（`flowmind.ocr_lines`，零过滤、逐行给四点框与置信度）。
+      # 旧包名仍被 `_local_ocr.py` 认（回落 v1 的返回形状），但**不再是声明的那一个**。
+      - rapidocr>=3.10
+      # ⚠️ onnxruntime **必须显式声明**（2026-10-16 补）：rapidocr 自己不依赖它（只在
+      # `inference_engine/onnxruntime/` 里懒加载），它的依赖里只有 opencv-python-headless ⇒
+      # 少了这一个，`available()` 仍回 True（那探针只做 import，探不到这一层），**引擎初始化才炸**
+      # （OcrLinesError / OCRError，category=environment）——即「本地优先」选了个跑不起来的后端。
+      # 镜像里钉 ==1.31.0（deploy/ocr-sidecar/Dockerfile 顶部有同一句话）；这里按本段惯例用下限。
+      - onnxruntime>=1.31
       # ⚠️ simple-lama-inpainting 不能进本 pip 段：0.1.2 的依赖声明
       #   （pillow>=9.5,<10）是 stale metadata——Pillow 9.5 无 py3.12 wheel，
       #   源码编译又需系统 libjpeg 头，任何完整 resolver pass 都必失败；
@@ -64,5 +75,6 @@ dependencies:
       - psycopg2-binary>=2.9       # TaskStore（经 PgBouncer 事务模式，短连接）
       - paho-mqtt>=2.0             # 任务进度事件（EMQX，终态 retain）
       - pymilvus>=2.4              # 字幕分段向量库（localize_segments，768 维 bge）
+      - boto3>=1.34                # dsp 成片产物对象存储（S3/MinIO 兼容；懒加载）
       # ── 开发工具 ──
       - ruff>=0.6                  # lint（合并前唯一质量门；本仓库无单测，验证靠 demo）
