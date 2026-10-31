@@ -5,7 +5,10 @@
 展示：
 1. 全自动：素材 → 理解→文案→脚本→分镜→渲染 → 成片（mp4+SRT+中间产物）
 2. 审批回路：分镜闸暂停 → revise（带新提示词重跑）→ 再暂停 → approve → 完成
-3. 错误路径：URL 素材被拒（VALIDATION）；不存在的文件 → 项目 failed
+3. copy 审批闸：文案产出后停靠 → approve → 直通成片（闸门逐阶段可插）
+4. edit_retry：预置 failed 项目 → 断点续跑（done 阶段与产物复用）→ 成片；
+   succeeded 项目拒绝重跑
+5. 错误路径：URL 素材被拒（VALIDATION）；不存在的文件 → 项目 failed
 
 mock 方式：
 - FLOWMIND_EDIT_MOCK=1：创意 LLM 走内置桩；渲染走 ffmpeg lavfi 真渲染
@@ -43,6 +46,7 @@ _DATA.mkdir(parents=True, exist_ok=True)
 os.chdir(_TMP)          # get_config 读 cwd 下的 flowmind.config.toml
 
 import flowmind.skills.edit_project as eproj  # noqa: E402
+import flowmind.skills.edit_retry as eretry  # noqa: E402
 import flowmind.skills.edit_review as erev  # noqa: E402
 from flowmind.skill import invoke  # noqa: E402
 from flowmind.tasks import (  # noqa: E402
@@ -92,6 +96,7 @@ class _FakeManager:
 FAKE = _FakeManager()
 eproj.get_task_manager = lambda: FAKE
 erev.get_task_manager = lambda: FAKE
+eretry.get_task_manager = lambda: FAKE
 
 
 def _make_assets() -> tuple[str, str]:
@@ -214,6 +219,89 @@ def scenario_errors(video: str) -> None:
     print(f"    素材不可读 → 项目 failed ✓（error：{st.error[:70]}…）")
 
 
+# ════════════════════════ 场景 4：copy 审批闸 ════════════════════════
+
+def scenario_copy_gate(video: str) -> None:
+    section("场景 4：copy 闸 —— 文案闸停靠 → approve → 直通成片")
+    r = invoke("edit_project", {
+        "assets": [video],
+        "theme": "文案先审的项目",
+        "review_stages": ["copy"],
+    })
+    check(r.ok, f"edit_project 应成功：{r.error}")
+    pid = r.data.project_id
+    st = invoke("edit_status", {"project_ids": [pid]}).data.projects[0]
+    check(st.state == "awaiting_review", f"应停在 awaiting_review：{st.state}")
+    check(st.review and st.review["gate"] == "copy",
+          f"闸门应为 copy：{st.review}")
+    check(st.stages["copy"] == "done" and st.stages["script"] == "pending",
+          f"copy 应已产出、script 未跑：{st.stages}")
+    print(f"    文案产出后停靠 copy 闸 ✓（{st.review['summary'][:50]}…）")
+
+    ar = invoke("edit_review", {
+        "project_id": pid, "stage": "copy", "action": "approve"})
+    check(ar.ok, f"approve 应成功：{ar.error}")
+    st = invoke("edit_status", {"project_ids": [pid]}).data.projects[0]
+    check(st.state == "succeeded", f"approve 后应完成：{st.state}")
+    print("    approve 放行 → 后续阶段直通成片 ✓")
+
+
+# ════════════════════════ 场景 5：edit_retry 断点续跑 ════════════════
+
+def scenario_retry(video: str) -> None:
+    section("场景 5：edit_retry —— 预置 failed 项目 → 断点续跑到成片")
+    import uuid
+
+    from flowmind.editing.models import (
+        AssetMeta,
+        ProjectRecord,
+        UnderstandReport,
+    )
+    from flowmind.editing.pipeline import _write_artifact
+    from flowmind.editing.store import get_project_store
+
+    pid = uuid.uuid4().hex
+    # 预置一个 copy 阶段失败的项目：understand 已 done 且产物在盘，
+    # edit_retry 应从 copy 断点续跑并复用已有产物
+    meta = AssetMeta(
+        id="a1", kind="video", path=str(Path(video).resolve()),
+        duration_s=3.0, width=640, height=360, fps=15.0, has_audio=False,
+        tags=["video", "short"], summary="video 素材 640x360 3.0s")
+    report = UnderstandReport(
+        assets=[meta], total_duration_s=3.0,
+        summary="共 1 个素材（video:a1），素材总时长 3.0s")
+    _write_artifact(pid, "understand.json", report)
+    store = get_project_store()
+    store.save_project(ProjectRecord(
+        project_id=pid, state="failed", stage="copy",
+        stages={"understand": "done", "copy": "pending", "script": "pending",
+                "storyboard": "pending", "render": "pending"},
+        review_stages=[], input={
+            "asset_paths": [str(video)], "theme": "断点续跑演示",
+            "review_stages": [], "aspect_ratio": "16:9"},
+        error="[copy] 模拟：上一次运行在此失败"))
+    print(f"    预置 failed 项目 {pid}（understand 已 done）")
+
+    rr = invoke("edit_retry", {"project_id": pid})
+    check(rr.ok, f"edit_retry 应成功：{rr.error}")
+    check(rr.data.resume_stage == "copy",
+          f"断点应在 copy：{rr.data.resume_stage}")
+    print(f"    resume_stage={rr.data.resume_stage} task_id={rr.data.task_id}")
+
+    st = invoke("edit_status", {"project_ids": [pid]}).data.projects[0]
+    check(st.state == "succeeded", f"续跑后应完成：{st.state}（{st.error}）")
+    pdir = _pdir(pid)
+    check((pdir / "copy.json").exists(), "续跑未复用/产出 copy.json")
+    check((pdir / "output.mp4").exists(), "续跑未产出成片")
+    print("    断点续跑 → copy 起跑直到成片 ✓")
+
+    # 拒绝路径：succeeded 项目不可重跑（degraded 信封，原因在 message）
+    again = invoke("edit_retry", {"project_id": pid})
+    check(again.metrics.degraded and "无需重跑" in (again.data.message or ""),
+          f"succeeded 项目应被拒绝：{again.metrics} / {again.data.message}")
+    print("    succeeded 项目拒绝重跑 ✓")
+
+
 def main() -> None:
     section("环境")
     print(f"    demo 临时目录：{_TMP}")
@@ -224,6 +312,8 @@ def main() -> None:
 
     scenario_full_auto(video, image)
     scenario_review(video)
+    scenario_copy_gate(video)
+    scenario_retry(video)
     scenario_errors(video)
 
     section("ALL PASS ✅")

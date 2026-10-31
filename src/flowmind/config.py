@@ -243,6 +243,15 @@ class EditingConfig(BaseModel):
     # 思考型模型（如 MiniMax M 系）会先出 thinking 块；8192 曾被吃光导致
     # content 为空，放宽到 16384
     llm_max_tokens: int = 16384
+    # 视觉理解模型（understand 抽帧看图）：None=沿用 llm_model；
+    # 创意与视觉可异构（如创意 glm-4.6 / 视觉 glm-4.6v）
+    llm_vision_model: str | None = None
+    # LLM 协议：anthropic=/v1/messages（LongCat/MiniMax/智谱）；
+    # openai=/chat/completions（千问 MaaS 等仅此协议的平台）
+    llm_protocol: Literal["anthropic", "openai"] = "anthropic"
+    # 单阶段 LLM 调用最大尝试次数（瞬时失败退避重试 + 自纠轮共用；
+    # 429 配额墙按此次数退避后仍失败 → 升级为 environment 快速失败）
+    llm_max_attempts: int = 5
 
     # ── 流水线治理 ──
     # CyberCut 是 edit_* 的 DAG 执行后端；旧版 FlowMind 流水线可显式切回。
@@ -279,7 +288,7 @@ class EditingConfig(BaseModel):
     # ── 剪辑渲染（ffmpeg）──
     subtitle_font: str = "Noto Sans CJK SC"  # Windows 部署改 Microsoft YaHei
     subtitle_font_size: int = 22
-    transition: str = "fade"               # fade | none（xfade 仅此两档 v1）
+    # 转场由分镜逐镜表达（StoryShot.transition），不设全局默认档
     transition_duration_s: float = 0.5
     video_bitrate: str = "6M"
     x264_preset: str = "medium"

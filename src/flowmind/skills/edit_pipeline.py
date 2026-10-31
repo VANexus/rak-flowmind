@@ -88,7 +88,7 @@ def edit_pipeline(inp: PipelineInput) -> SkillOutput[PipelineReport]:
             reasoning=[ReasoningChain(
                 conclusion=f"阶段 {exc.stage or '?'} 执行失败",
                 causal_analysis=str(exc)[:500],
-                risk_note="可对失败阶段单独重跑或修改提示词后重试",
+                risk_note="可用 edit_retry 断点续跑（done 阶段与中间产物自动复用）",
                 confidence=1.0)],
             confidence=1.0,
             degraded=True, degradation_reason=exc.category,

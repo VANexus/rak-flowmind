@@ -128,8 +128,27 @@ class ScriptDoc(BaseModel):
 
 # ── storyboard 产物（LLM 生成 + 素材引用校验）──
 
+# xfade 支持且观感适合短视频的转场白名单（none=硬切/1帧 eps）
+TRANSITIONS: frozenset[str] = frozenset({
+    "none", "fade", "zoomin", "slideleft", "slideright",
+    "circleopen", "dissolve", "fadeblack", "radial",
+})
+
+
+def clamp_transition(v: object) -> str:
+    """转场白名单兜底（未知值回 none 硬切，不抛错）。"""
+    return v if isinstance(v, str) and v in TRANSITIONS else "none"
+
+
+class TitleCard(BaseModel):
+    """开场/片尾设计卡：深色底 + 动画大字（v1.3 设计层）。"""
+    main: str                       # 主标题（大字，钩子/CTA，建议 ≤14 字）
+    sub: str = ""                   # 副标题（小字，可选）
+    duration_s: float = Field(default=2.0, ge=1.0, le=4.0)
+
+
 class StoryShot(BaseModel):
-    """单镜头：引用素材区间/图片 + 呈现方式 + 转场。"""
+    """单镜头：引用素材区间/图片 + 呈现方式 + 转场 + 设计参数（v1.3）。"""
     id: str
     section_id: str
     source_asset: str                  # AssetMeta.id
@@ -137,23 +156,35 @@ class StoryShot(BaseModel):
     duration_s: float = Field(ge=0.3, le=60.0)  # 输出时长（含定格）
     mode: Literal["video_clip", "image_kenburns"] = "video_clip"
     pan: Literal["none", "in", "out", "left", "right"] = "none"   # 图片 Ken Burns
-    transition: Literal["fade", "none"] = "fade"
-    speed: float = Field(default=1.0, ge=0.25, le=8.0)    # v1.1 变速（>1 快进）
-    freeze_s: float = Field(default=0.0, ge=0.0, le=5.0)  # v1.1 尾帧定格秒数
+    transition: str = "fade"           # TRANSITIONS 白名单（normalize 兜底）
+    speed: float = Field(default=1.0, ge=0.25, le=4.0)    # v1.1 变速（>1 快进；与提示词 0.25~4 一致）
+    freeze_s: float = Field(default=0.0, ge=0.0, le=3.0)  # v1.1 尾帧定格秒数（与提示词 0~3 一致）
     subtitle_text: str = ""
+    subtitle_emphasis: list[str] = Field(default_factory=list)  # v1.3 字幕关键词高亮
+    badge: str = ""                    # v1.3 右上角角标（如 01/08；空=无）
+    zoom_start: float = Field(default=1.0, ge=0.9, le=1.2)  # v1.3 缓推缓拉
+    zoom_end: float = Field(default=1.0, ge=0.9, le=1.2)
+    hook: bool = False                 # v1.3 钩子镜：字幕居中放大（开场抓人）
     note: str = ""                     # 分镜理由（前端展示 + 审批参考）
 
 
 class StoryboardDoc(BaseModel):
     shots: list[StoryShot] = Field(default_factory=list)
-    bgm_note: str = ""                 # BGM 意向（v1 渲染仅留混音槽位）
+    title_card: TitleCard | None = None    # v1.3 开场设计卡
+    end_card: TitleCard | None = None      # v1.3 片尾 CTA 卡
+    bgm_note: str = ""                 # BGM 意向（bgm_path 存在时实际混音）
     total_duration_s: float = 0.0
 
 
 # ── timeline（render 输入；前端二次编辑的最终时间线）──
 
 class TimelineShot(StoryShot):
-    """绝对时间轴镜头（timeline.json）：加全局起点与字幕区间。"""
+    """绝对时间轴镜头（timeline.json）：加全局起点与字幕区间。
+
+    mode 额外允许 "card"（v1.3 设计卡：渲染深色底，文字走 ASS 动画；
+    该模式只由 pipeline 从 title_card/end_card 合成，LLM 分镜不允许出）。
+    """
+    mode: Literal["video_clip", "image_kenburns", "card"] = "video_clip"  # type: ignore[assignment]
     global_start_s: float = 0.0
     global_end_s: float = 0.0
     source_path: str = ""              # 素材绝对路径（render 直接消费）
@@ -165,6 +196,9 @@ class TimelineDoc(BaseModel):
     fps: int = 30
     duration_s: float = 0.0
     voiceover_path: str | None = None
+    bgm_path: str | None = None        # v1.3 BGM 底乐（含淡入淡出/闪避）
+    title_card: TitleCard | None = None
+    end_card: TitleCard | None = None
     shots: list[TimelineShot] = Field(default_factory=list)
     srt_path: str | None = None
 
