@@ -5,8 +5,9 @@ FastMCP 实例，通过 v1 的 ``custom_route`` 装饰器把路由挂到同一�
 （与 /mcp 同端口 8002），无需新依赖、无需新进程。
 
 端点：
-  GET /api/v1/manifest        → 完整技能清单（含 schema）
+  GET /api/v1/manifest        → 完整技能清单（含 schema + stage_schema）
   GET /api/v1/manifest/{id}   → 单个技能；未知 id 返回 404
+  GET /api/v1/skills/{id}/steps → 该技能的流水线步骤表（前端步骤选择器数据源）
 
 （健康探针 /api/v1/health 在 server_tasks.py，与任务通道同模块。）
 """
@@ -16,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from flowmind import build_manifest, discover
+from flowmind.pipeline_steps import stage_schema
 from flowmind.skill import registry
 
 
@@ -43,3 +45,23 @@ def register_rest_routes(mcp) -> None:
                 status_code=404,
             )
         return JSONResponse(entry)
+
+    @mcp.custom_route("/api/v1/skills/{skill_id}/steps", methods=["GET"])
+    async def skill_steps(request: Request) -> JSONResponse:
+        """返回技能的流水线步骤表（步骤 id / 中文名 / 依赖 / 可跳过 / 进度区间）。
+
+        无步骤注册表的技能返回 ``{"skill_id":..., "steps": [], "pipeline": false}``
+        ——该技能是原子操作（一次调用即完成），前端不渲染步骤面板。
+        """
+        skill_id = request.path_params["skill_id"]
+        if skill_id not in registry():
+            return JSONResponse(
+                {"error": "unknown_skill", "available": sorted(registry())},
+                status_code=404)
+        steps = stage_schema(skill_id)
+        return JSONResponse({
+            "skill_id": skill_id,
+            "pipeline": bool(steps),
+            "total": len(steps),
+            "steps": steps,
+        })

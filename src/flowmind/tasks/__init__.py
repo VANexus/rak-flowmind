@@ -88,6 +88,13 @@ class TaskContext:
     data_dir: Path | str | None = None
     progress_cb: Callable[[str, float, str], None] = field(
         default=lambda stage, pct, message: None)  # noqa: E501 (stage, pct, message)
+    # 步骤状态回调（2026-10-31 SaaS 化）：流水线在每步开始/结束/跳过时调用，
+    # 载荷是结构化 dict（pipeline_steps.StepTracker.build()）。与 progress_cb
+    # 并存——粗粒度进度条继续走 progress_cb，前端步骤面板以此为准。
+    step_cb: Callable[[dict], None] = field(default=lambda payload: None)
+    # 实际执行的步骤集合（TaskManager 按调用方 steps/skip_steps 解析后注入）；
+    # 空 tuple = 该技能无步骤注册表（不做裁剪，全跑）。
+    enabled_steps: tuple[str, ...] = ()
     cancel_check: Callable[[], bool] = field(default=lambda: False)
 
 

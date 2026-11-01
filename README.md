@@ -275,8 +275,9 @@ python scripts/ocr_sidecar_dev.py --down     # 停
 
 ## GPU 部署约定
 
-- **硬件**：NVIDIA P104-100（8GB，Pascal 6.1）。torch 锁 `2.5.1+cu121`
-  （cu124+ 已剔除 Pascal，勿升级；`torchaudio` 必须在 `qwen-tts` 之后重新钉回配套版）。
+- **硬件**：NVIDIA P104-100（8GB，Pascal 6.1）。torch 锁 `2.6.0+cu126`
+  （cu126 是唯一仍带 Pascal 的 CUDA 构建，勿升到 cu128+；
+  `torch`/`torchaudio` 必须在 `qwen-tts`/`funasr` 之后重新钉回配套版）。
 - **模型缓存**：`HF_HOME=/srv/data/models`、`TORCH_HOME=/srv/data/models/torch`、
   下载代理 `http://127.0.0.1:7890`（写入 `~/.bashrc`，新 shell 生效）。
 - **显存预算**：whisper ~1.5G + Qwen3-TTS ~4G + LaMa ~1.5G ≈ 7.5G——

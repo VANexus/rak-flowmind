@@ -54,6 +54,9 @@ FAMILIES: dict[str, tuple[str, ...]] = {
         "dsp_timeline_build",
         "dsp_tts_generate",
     ),
+    "packaging": (
+        "packaging_dieline",
+    ),
 }
 
 

@@ -35,11 +35,22 @@ def available() -> bool:
     return importlib.util.find_spec("demucs") is not None
 
 
-def separate_vocals(src_wav: str, workdir: str) -> str:
-    """分离出伴奏轨（no_vocals），缓存于 workdir/bg_instrumental.wav。"""
-    out = Path(workdir) / "bg_instrumental.wav"
-    if out.exists():
-        return str(out)
+def separate_stems(src_wav: str, workdir: str) -> tuple[str, str]:
+    """分离出人声轨与伴奏轨，返回 (vocals_wav, instrumental_wav)。
+
+    demucs ``--two-stems=vocals`` 单次推理即产出两轨，本函数把两轨都保留：
+    - 人声轨 workdir/vocals.wav —— 供说话人分离（CAM++）提取各说话人参考音频，
+      多人对话场景下逐说话人克隆音色；
+    - 伴奏轨 workdir/bg_instrumental.wav —— 作为背景音源，避免混音后背景里
+      残留原声人声。
+
+    两轨均缓存于 workdir，重复调用直接命中。失败显式抛 MusicSepError
+    （category/retriable 语义与 errors.py 对齐），绝不静默回落含人声的原声。
+    """
+    vocals_out = Path(workdir) / "vocals.wav"
+    inst_out = Path(workdir) / "bg_instrumental.wav"
+    if vocals_out.exists() and inst_out.exists():
+        return str(vocals_out), str(inst_out)
     if not Path(src_wav).exists():
         raise MusicSepError(f"待分离音轨不存在: {src_wav}", category="video")
 
@@ -69,8 +80,10 @@ def separate_vocals(src_wav: str, workdir: str) -> str:
             f"demucs 子进程启动失败: {type(exc).__name__}", category="environment",
         ) from exc
 
-    produced = tmp / "htdemucs" / Path(src_wav).stem / "no_vocals.wav"
-    if rc.returncode != 0 or not produced.exists():
+    stem_dir = tmp / "htdemucs" / Path(src_wav).stem
+    produced_vocals = stem_dir / "vocals.wav"
+    produced_inst = stem_dir / "no_vocals.wav"
+    if rc.returncode != 0 or not produced_vocals.exists() or not produced_inst.exists():
         err = (rc.stderr or rc.stdout or "")[-300:].strip()
         low = err.lower()
         if "download" in low or "connection" in low or "timed out" in low or "unreachable" in low:
@@ -83,7 +96,16 @@ def separate_vocals(src_wav: str, workdir: str) -> str:
             category="transient" if retriable else "unknown", retriable=retriable,
         )
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(produced), str(out))
+    vocals_out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(produced_vocals), str(vocals_out))
+    shutil.move(str(produced_inst), str(inst_out))
     shutil.rmtree(tmp, ignore_errors=True)
-    return str(out)
+    return str(vocals_out), str(inst_out)
+
+
+def separate_vocals(src_wav: str, workdir: str) -> str:
+    """分离出伴奏轨（no_vocals），缓存于 workdir/bg_instrumental.wav。
+
+    separate_stems 的薄封装，只取伴奏轨；签名与返回值保持不变（存量调用方依赖）。
+    """
+    return separate_stems(src_wav, workdir)[1]

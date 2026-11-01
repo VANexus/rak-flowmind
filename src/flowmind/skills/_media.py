@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import NamedTuple
 
 # ffmpeg/ffprobe 所在的 bin 目录（env 键名；值形如 D:\App\ffmpeg\bin 或 /usr/local/bin）
@@ -90,12 +91,20 @@ def probe_media(media_path: str) -> tuple[float, int, int]:
 
 
 def extract_frame(video_path: str, timestamp_s: float, out_path: str) -> str:
-    """抽取指定时间点的一帧 PNG。"""
+    """抽取指定时间点的一帧 PNG。
+
+    ffmpeg 对「超出视频流末帧」的 seek 可能 rc=0 且零帧输出（不落文件，
+    仅告警）——rc 之外必须校验产物存在且非空，否则下游 OCR 会收到
+    不存在的路径（LoadImageError）。
+    """
     rc, _, err = run_ffmpeg([
         "ffmpeg", "-y", "-ss", f"{timestamp_s:.3f}", "-i", video_path,
         "-frames:v", "1", out_path,
     ])
-    if rc != 0:
+    out = Path(out_path)
+    if rc != 0 or not out.is_file() or out.stat().st_size == 0:
+        if out.is_file():
+            out.unlink()  # 清理 0 字节残留，避免下游读到空文件
         raise MediaError(f"抽帧失败: {err[-200:]}")
     return out_path
 

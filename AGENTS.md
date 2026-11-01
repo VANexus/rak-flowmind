@@ -1,9 +1,9 @@
 # AGENTS.md —— Claude Code / AI Agent 开发指南
 
-> ⚠️ **维护冻结声明（2026-09-07，生态裁决）**：本仓库当前功能核心是 GPU
-> 视频本地化，**保持主分支最新即可，不做非必要改动**。生态定位见
-> [../ECOSYSTEM.md](../ECOSYSTEM.md)；非经用户明确授权，禁止在此仓库
-> 进行重构、依赖升级或主线外功能开发。
+> 🚀 **功能迭代期（2026-09-10，用户裁决解冻）**：本仓库核心是 GPU 视频本地化，
+> 当前围绕本主线快速功能迭代（含 AIGC 增值能力）。生态定位见
+> [../.rak-docs/ECOSYSTEM.md](../.rak-docs/ECOSYSTEM.md)；破坏性重构与
+> 对外契约变更仍需用户确认，常规功能开发按本文工作流直接推进。
 
 > 给**使用 Claude Code（或类似 AI 编程助手）参与本仓库开发**的协作者看。
 > 这份文档假设你熟悉 Claude Code 但不熟悉本项目代码结构。
@@ -18,13 +18,13 @@ conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
 conda run -n flowmind ruff check src              # lint（必须通过）
 for f in examples/*_demo.py; do
   PYTHONPATH=$PWD/src conda run -n flowmind python "$f"
-done                                              # 跑 18 个 demo 冒烟
+done                                              # 跑 22 个 demo 冒烟
 ```
 
 如果遇到任何概念不清楚，先看本文件对应章节，再问。
 
 > **定位**（2026-09 收敛后）：`mcp-base-gpu` = MCP over HTTP SaaS 服务端，
-> 单端口 8002 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。缺省加载两族共 15 个工具
+> 单端口 8002 双通道（`/mcp` 轻技能 + `/api/v1/tasks` 长任务）。缺省加载三族共 20 个工具
 > —— **localize 族 7 个**（视频本地化 GPU 流水线）+ **dsp 族 8 个**（抖音成片，算力全下沉云厂商）。
 > **无单测 / 无 Makefile / 无 pytest**——验证靠 `examples/*_demo.py` 冒烟 + 真实调用。
 > **Docker 只有一处**：`deploy/ocr-sidecar/`（本机 OCR 侧车容器，**可选层、不挡启动**，cross-dashboard
@@ -54,12 +54,14 @@ src/flowmind/
 │   └── gpu.py         # gpu_lane() / model_cache_guard() 双道闸
 ├── federation/        # 联邦自注册（MQTT + PG 双通道；默认关）——可选
 └── skills/
-    ├── __init__.py    # FAMILIES 族表（localize/dsp）+ 族筛选 → 导入即 @skill 注册
-    ├── localize_*.py  # localize 族 7 个（submit/status/retry/cancel/download/search/video）
+    ├── __init__.py    # FAMILIES 族表（localize/edit/dsp）+ 族筛选 → 导入即 @skill 注册
+    ├── localize_*.py  # localize 族 7 个（submit/status/retry/cancel/download/search/video）；
+    │                  #   localize_video 为流水线本体（九阶段：ASR→分离→OCR→译→擦→TTS→混→向量化）
+    ├── edit_*.py      # edit 族 5 个（Agent 智能剪辑：理解→文案→脚本→分镜→渲染全流水线）
     ├── dsp_*.py       # dsp 族 8 个（tts/timeline/image_to_video/bgm/subtitle/cover/cart/render）
     ├── content_hot_boards.py  # 未入族占位（helper 缺失，见 __init__ 注释）
-    └── _*.py          # 18 个 helper（_cloud_asr/_local_asr/_dsp_align/_dsp_mediakit/_bge_embed…）
-examples/              # 18 个 demo（冒烟验证的唯一手段，本仓库无单测）
+    └── _*.py          # 23 个 helper（_decide/_diarize/_indextts/_cloud_asr/_local_asr/_dsp_*/_bge_embed/_media/_inpaint…）
+examples/              # 22 个 demo（冒烟验证的唯一手段，本仓库无单测）
 scripts/               # 开发工具（非包内）：check_dsp_env.py 环境自检、ocr_sidecar_dev.py 侧车起停看
 deploy/ocr-sidecar/    # OCR 侧车镜像 + compose（本仓唯一的 Docker 落点）——可选层，不挡启动
 docs/                  # 设计文档
@@ -117,10 +119,11 @@ for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python
 conda run -n flowmind ruff check src
 ```
 
-**依赖真源是 `environment.yml`（conda）**。GPU 相关版本（torch cu121）有 Pascal 6.1
-约束：`torch==2.5.1+cu121` 不可升；`torchaudio` 钉版必须在 `qwen-tts` 之后；
+**依赖真源是 `environment.yml`（conda）**。GPU 相关版本（torch cu126）有 Pascal 6.1
+约束：`torch==2.6.0+cu126` 是唯一仍带 Pascal 的 CUDA 构建（cu128+ 已剔除），勿升到
+cu128+；`torch`/`torchaudio` 钉版必须在 `qwen-tts` / `funasr` 之后；
 `nvidia-cublas-cu12` / `nvidia-cudnn-cu12` 已钉 torch 配套版（conda env update 的
-pip 子进程带 -U，裸名称会被升到 12.9/9.25 破坏 CUDA 12.1 组合）；
+pip 子进程带 -U，裸名称会被升到 12.9/9.25 破坏 CUDA 12.6 组合）；
 `simple-lama-inpainting` 不在 pip 段（stale metadata `pillow<10` 在 py3.12 无解），
 须按文件头序列 `--no-deps` 单独补装（均见 environment.yml 内注释）。
 
@@ -145,8 +148,9 @@ pip 子进程带 -U，裸名称会被升到 12.9/9.25 破坏 CUDA 12.1 组合）
 | REST `404 {"error":"unknown_task"}` | task_id 不存在（或已被 GC 只删了 workdir——DB 行保留，应是 id 错） |
 | health `components.pg=error` | PG 不可达：`FLOWMIND_PG_DSN` / `RAK_PG_*`（source rak .env） |
 | health `components.mqtt=disabled` | `FLOWMIND_MQTT_HOST` / config `infra.mqtt_host` 均空（事件降级纯落库，非故障） |
+| `report.diarize_backend="none"` | funasr 不可用或说话人分离失败（`auto` 下为**显式回落**，看 `quality` / ReasoningChain 的原因文本；`local` 下直接抛错） |
 | MCP 工具列表没出现 | `_make_tool` 的 `__annotations__` 注入没生效 / server 启动失败 |
-| torch `libcudart.so.13` 报错 | qwen-tts 把 torchaudio 拉错版了——按 environment.yml 钉回 `2.5.1+cu121` |
+| torch `libcudart.so.13` 报错 | qwen-tts/funasr 把 torch 栈拉错版了——按 environment.yml 钉回 `2.6.0+cu126` |
 | 入参 schema 多一层 `inp` | FastMCP v1 的固有行为，升 v2 可去（需重验 `_make_tool` 反射） |
 
 ### 单步追踪
@@ -208,8 +212,9 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 技能清单（缺省 15 �
 | 修改 `SkillResult` 信封字段 | 对外契约变更，所有 Agent 都要适配 |
 | 写代码 TODO 留给用户 | 违反"不留 TODO 给下游"约定；可调项走 config |
 | 在技能函数里 `try/except: pass` | 违反"错误永不静默"铁律 |
+| 在 `diarize_backend=auto` 下静默丢弃说话人标签 | 违反"错误永不静默"，必须把跳过原因写进 `report` / `ReasoningChain` |
 | 放宽 TaskManager `workers=1` 或 `gpu_lane` 信号量 | 单卡 8GB 显存预算 ~7.5G，并发即 OOM |
-| 升级 torch / cu121 钉版、调整 environment.yml 钉版顺序 | Pascal 6.1 硬约束；torchaudio 必须在 qwen-tts 之后；cublas/cudnn 已钉 torch 配套版；simple-lama 不在 pip 段（--no-deps 补装） |
+| 升级到 cu128+ 或调整 environment.yml 钉版顺序 | Pascal 6.1 硬约束：仅 cu126 保留 Pascal；torch/torchaudio 必须在 qwen-tts/funasr 之后；cublas/cudnn 已钉 torch 配套版；simple-lama 不在 pip 段（--no-deps 补装） |
 | 跳过 `ruff check src` 直接 commit | lint 是合并前唯一的质量门 |
 | 拿 `X-Rak-Tenant` 请求头做租户归属 | 归属只认已校验的 `Authorization: Bearer` token；头是可伪造的（ECO-ADR-0011 §4c） |
 | 启用鉴权后让无凭证路径“看到全部任务” | 必须 fail-closed：无凭证 = 看不到任何任务（`auth.tenant_scope()` 已定三态） |
@@ -218,7 +223,7 @@ curl http://127.0.0.1:8002/api/v1/manifest          # 技能清单（缺省 15 �
 ## 提交前 Checklist
 
 - [ ] `conda run -n flowmind ruff check src` 全绿
-- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（18 个全 PASS 为准）
+- [ ] 若改了技能行为：对应 `examples/*_demo.py` 跑通（22 个全 PASS 为准）
 - [ ] 提交信息 `<type>: <中文描述>`
 - [ ] 若改了 `environment.yml`：确认已 `conda env update` 且 demo 通过、torch 栈未破坏
 - [ ] 若改了 `config.py` / `skills/__init__.py`：留意 merge conflict hotspot

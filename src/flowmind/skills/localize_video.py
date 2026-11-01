@@ -1,10 +1,12 @@
 """localize_video 技能：视频本地化流水线（单视频同步，本地优先）。
 
 流水线：ffmpeg 提音轨 → ASR 句级时间戳（本地 faster-whisper GPU 优先，
-auto 回落百炼 Paraformer）→ OCR 定位原字幕区（本地 RapidOCR 优先，
-auto 回落 qwen3.5-ocr）→ LongCat 翻译 → ffmpeg 擦除原字幕区
-→ 克隆/预设音色逐句配音（音色 ID 由百炼声音复刻提前生成，
-配音时长自动 atempo 对齐原句）→ 混音（可选保留 -12dB 背景音）+ ASS 字幕烧录。
+auto 回落百炼 Paraformer）→ 说话人分离（funasr CAM++，CPU，逐说话人打标签）
+→ OCR 定位原字幕区（本地 RapidOCR 优先，auto 回落 qwen3.5-ocr）
+→ LongCat 翻译（可选术语表 / 文化替换 / 长度预算）→ ffmpeg 擦除原字幕区
+→ 克隆/预设音色逐句配音（多人对话按说话人路由参考音频；音色 ID 由百炼声音复刻
+提前生成，配音时长分级 atempo 对齐原句）→ 混音（可选保留 -12dB 背景音）
++ ASS 字幕烧录 → 字幕向量化。
 
 后端由 config 后端开关控制（local/cloud/auto）；auto 两端都不可用时
 显式 degraded，绝不静默降级。
@@ -29,6 +31,7 @@ from flowmind.skills import (
     _cloud_asr,
     _cloud_ocr,
     _cloud_tts,
+    _diarize,
     _inpaint,
     _llm_translate,
     _local_asr,
@@ -98,6 +101,43 @@ class LocalizeVideoInput(BaseModel):
                     "local（强制 LaMa，缺失显式报错）/ delogo（旧硬横带）；"
                     "None=读 config.erase_backend",
     )
+    diarize_backend: str | None = Field(
+        default=None,
+        description="说话人分离后端：auto（本地栈可用则分离，否则跳过并单音色克隆）/ "
+                    "local（强制，不可用显式报错）/ off（跳过）；"
+                    "None=读 config.diarize_backend",
+    )
+    speaker_voices: dict[str, str] | None = Field(
+        default=None,
+        description="说话人 → 云端预设音色 ID（如 {\"spk0\": \"longanhuan_v3.6\"}），"
+                    "仅云端 TTS 路径生效；None=整片单 voice_id",
+    )
+
+    # ── 步骤选择（2026-10-31 SaaS 化）：流水线九阶段可裁剪 ──
+    steps: list[str] | None = Field(
+        default=None,
+        description="白名单：只执行这些步骤（如 [\"extract_audio\",\"asr\",\"translate\"]）。"
+                    "None=全部执行。可用步骤见 GET /api/v1/skills/localize_video/steps 或 "
+                    "manifest 的 stage_schema。依赖不满足会 422。",
+    )
+    skip_steps: list[str] | None = Field(
+        default=None,
+        description="黑名单：从全集中剔除这些步骤（如 [\"erase\",\"tts\"]）。"
+                    "必需步骤（extract_audio/asr）不可跳过；依赖被剔除会 422。",
+    )
+
+    @field_validator("steps", "skip_steps")
+    @classmethod
+    def _validate_steps(cls, v: list[str] | None) -> list[str] | None:
+        if not v:
+            return v
+        from flowmind.pipeline_steps import steps_for
+
+        valid = {s.id for s in steps_for("localize_video")}
+        unknown = [x for x in v if x not in valid]
+        if unknown:
+            raise ValueError(f"未知步骤 {unknown}；可选：{sorted(valid)}")
+        return v
 
     @field_validator("video_path")
     @classmethod
@@ -133,6 +173,11 @@ class LocalizeVideoReport(BaseModel):
     # 字幕向量化（增量字段）：True=已写入 Milvus；False=未写入（未配置或失败，
     # 由阶段消息与日志区分）；None=开关关闭
     vectorized: bool | None = None
+    # 说话人分离（增量字段）：实际后端 "cam++" / "none"；quality 见 quality 块
+    diarize_backend: str | None = None
+    # 质量自检报告（增量字段）：speakers / diarize_backend / dub /
+    # translate_over_budget / erase_coverage
+    quality: dict | None = None
     failure_category: str | None = None
     retriable: bool = False
     warning: str | None = None
@@ -143,7 +188,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     """ASR → LLM 翻译 → 原字幕擦除 → 克隆 TTS 配音 → 合成。
 
     双匹配策略：OCR 负责定位原字幕区域（供擦除）；翻译文本一律以 ASR 为准。
-    七阶段主体在 run_localization_pipeline（进度回调 / 协作式取消 /
+    九阶段主体在 run_localization_pipeline（进度回调 / 协作式取消 /
     GPU 串行）；本入口负责预检、工作目录装配与信封转换
     （对外签名与 SkillResult.data 结构不变）。
     """
@@ -162,7 +207,7 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             return _fail(inp, f"扩展名 {ext} 不在允许列表 {cfg.allowed_extensions}", "video")
     # 云 key 按需强制：仅当配音确定走云端时才强制 speech_key
     # （全本地方案 ASR/OCR/TTS 都不需要任何云 key）
-    eff_tts_backend = (inp.tts_backend or getattr(cfg, "tts_backend", "auto")).lower()
+    eff_tts_backend = (inp.tts_backend or cfg.tts_backend).lower()
     tts_wants_cloud = eff_tts_backend == "cloud" or (
         eff_tts_backend == "auto"
         and (bool(inp.voice_id) or not _local_tts.available())
@@ -176,11 +221,13 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     # TaskManager 路径：workdir（data_dir/tasks/<task_id>/work，绝对路径）、
     # 进度回调、取消检查由 TaskContext 注入（contextvars 跨 invoke 传递）；
     # 直连 invoke（demo/调试）：降级默认回调 + data_dir 下随机 workdir。
+    # expanduser() 不可省：data_dir 默认 "~/flowmind-data"，不展开会在 CWD 下
+    # 建出字面名为 "~" 的目录（仓库根目录被污染，与 TaskManager 展开行为不一致）。
     ctx = current_task_context()
     if ctx is not None and ctx.workdir is not None:
         workdir = Path(ctx.workdir)
     else:
-        workdir = Path(cfg.data_dir) / "tasks" / uuid.uuid4().hex / "work"
+        workdir = Path(cfg.data_dir).expanduser() / "tasks" / uuid.uuid4().hex / "work"
     workdir.mkdir(parents=True, exist_ok=True)
     progress_cb = ctx.progress_cb if ctx is not None else _noop_progress
     cancel_check = ctx.cancel_check if ctx is not None else _never_cancel
@@ -206,6 +253,11 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     except _music_sep.MusicSepError as exc:
         return _fail(inp, f"{exc}（可设 bgm_vocal_sep=false 跳过人声分离）",
                      exc.category, retriable=exc.retriable)
+    except _diarize.DiarizeError as exc:
+        # 说话人分离异常：auto 模式已在流水线内降级，只有 local/off 语义
+        # 与环境类错误会走到这里（与 _music_sep 同写法）
+        return _fail(inp, f"{exc}（可设 diarize_backend=off 跳过说话人分离）",
+                     exc.category, retriable=exc.retriable)
     except _llm_translate.LLMTtranslateError as exc:
         return _fail(inp, str(exc), exc.category, retriable=exc.retriable)
     except _media.MediaError as exc:
@@ -218,21 +270,40 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
     # 成功信封（data 字段与语义不变，6 个 demo 断言兼容）
     regions_erased = report["subtitle_region_erased"]
     voice_used = report["voice_used"]
+    # 质量自检（增量）：说话人数 / 配音溢出 / 译文超预算 → 进 ReasoningChain 文本
+    quality = report.get("quality") or {}
+    speakers = quality.get("speakers") or []
+    dub_stats = quality.get("dub") or {}
+    over_budget = quality.get("translate_over_budget") or []
+    overflow = int(dub_stats.get("overflow") or 0)
+    conclusion = (
+        f"本地化完成：{report['display_segment_count']} 句"
+        f"（ASR {report['asr_segment_count']} 句拆分）、"
+        f"{'已擦除[' + report['erase_backend'] + ']' if regions_erased else '未检出'}"
+        f"原字幕区、{'克隆配音 ' + voice_used if voice_used else '未配音'}"
+        f"、说话人 {len(speakers)} 位"
+    )
+    if overflow:
+        conclusion += f"、配音溢出 {overflow} 句"
+    risk_note = "译文为 LLM 生成，正式投放前建议人工抽查。"
+    hints = []
+    if overflow:
+        hints.append(f"配音溢出 {overflow} 句")
+    if over_budget:
+        hints.append(f"译文超预算 {len(over_budget)} 句")
+    if hints:
+        risk_note += f"检测到{'、'.join(hints)}，建议人工抽查对应片段。"
     chain = ReasoningChain(
-        conclusion=(
-            f"本地化完成：{report['display_segment_count']} 句"
-            f"（ASR {report['asr_segment_count']} 句拆分）、"
-            f"{'已擦除[' + report['erase_backend'] + ']' if regions_erased else '未检出'}"
-            f"原字幕区、{'克隆配音 ' + voice_used if voice_used else '未配音'}"
-        ),
+        conclusion=conclusion,
         triggered_rules=[], evidence=[],
         causal_analysis=(
             f"ASR[{report['asr_backend']}] {report['asr_segment_count']} 句 → "
+            f"说话人分离[{report['diarize_backend']}] → "
             f"拆分为 {report['display_segment_count']} 句 → LLM 翻译 → "
             f"OCR[{report['ocr_backend']}] 定位 → 擦除[{report['erase_backend']}] → "
             f"TTS → ffmpeg 合成"
         ),
-        risk_note="译文为 LLM 生成，正式投放前建议人工抽查。",
+        risk_note=risk_note,
     )
     return SkillOutput(
         data=LocalizeVideoReport(
@@ -246,6 +317,8 @@ def localize_video(inp: LocalizeVideoInput) -> SkillOutput[LocalizeVideoReport]:
             erase_backend=report["erase_backend"],
             watermark_removed=report["watermark_removed"],
             vectorized=report["vectorized"],
+            diarize_backend=report.get("diarize_backend"),
+            quality=report.get("quality"),
         ),
         reasoning=[chain], confidence=0.9,
         sample_size=report["asr_segment_count"],
@@ -336,20 +409,97 @@ def _vectorize_segments(task_id: str, segments: list[dict], src: str) -> tuple[b
         return False, "向量化失败（已降级）"
 
 
+# ── 步骤跟踪辅助（2026-10-31 SaaS 化）──
+
+def _pipeline_tracker(args):
+    """构造 StepTracker：读 args.steps / skip_steps + TaskContext.enabled_steps。
+
+    返回 (tracker, enabled_set)。enabled_set 为空 = 全部执行（向后兼容）。
+    步骤状态经 TaskContext.step_cb 上报（无 TaskManager 直连时静默）。
+    """
+    from flowmind.pipeline_steps import StepTracker
+    from flowmind.tasks import current_task_context
+
+    ctx = current_task_context()
+    enabled = tuple(ctx.enabled_steps) if ctx is not None else ()
+    if not enabled:
+        # TaskManager 未注入（直连 invoke / demo）或该技能无注册表：
+        # 从 args 解析选择；args 也没传 → enabled 保持空 = 全跑
+        from flowmind.pipeline_steps import resolve_selection
+        sel, _ = resolve_selection(
+            "localize_video",
+            steps=getattr(args, "steps", None),
+            skip_steps=getattr(args, "skip_steps", None),
+        )
+        enabled = tuple(x.id for x in sel)
+    tracker = StepTracker(
+        "localize_video", enabled=enabled,
+        on_change=(ctx.step_cb if ctx is not None else None),
+    )
+    # 起点快照：任务一启动就让前端看到完整九步（含 skipped），而不是等到首步结束
+    if ctx is not None:
+        try:
+            ctx.step_cb(tracker.build())
+        except Exception:  # noqa: BLE001  上报失败不阻断
+            pass
+    return tracker, set(enabled)
+
+
+# 阶段起始时刻（step_id → monotonic），供 _stage_end 计算耗时
+_STAGE_T0: dict[str, float] = {}
+
+
+def _stage_begin(args, tracker, step_id: str) -> None:
+    """阶段入口：把该步标为 running（未启用的步在 tracker 里已是 skipped）。"""
+    import time as _time
+
+    _STAGE_T0[step_id] = _time.monotonic()
+    tracker._mark(step_id, status="running", started_at=_iso_now(),
+                  ended_at=None, duration_ms=None, skipped=False,
+                  skip_reason=None)
+
+
+def _stage_end(tracker, step_id: str, *, backend: str | None = None,
+               note: str | None = None, skipped: str | None = None) -> None:
+    """阶段出口：标 done（或 skewed/skipped 带原因），并记录实际后端。"""
+    import time as _time
+
+    t0 = _STAGE_T0.pop(step_id, None)
+    dur = int((_time.monotonic() - t0) * 1000) if t0 is not None else None
+    if skipped:
+        tracker._mark(step_id, status="skipped", skipped=True,
+                      skip_reason=skipped, ended_at=_iso_now(),
+                      duration_ms=dur, note=skipped)
+        return
+    fields: dict = {"status": "done", "ended_at": _iso_now(), "skipped": False,
+                    "skip_reason": None, "duration_ms": dur}
+    if backend:
+        fields["backend"] = backend
+    if note:
+        fields["note"] = note
+    tracker._mark(step_id, **fields)
+
+
+def _iso_now() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
 def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
                               progress_cb, cancel_check) -> dict:
-    """七阶段本地化流水线（进度回调 + 协作取消 + GPU 串行）。
+    """九阶段本地化流水线（进度回调 + 协作取消 + GPU 串行）。
 
     阶段与进度区间（pct 0-100）::
 
-        extract_audio 0→10 → asr 10→25 → ocr 25→40 → translate 40→55
-        → erase 55→75 → tts 75→90 → mix 90→97 → vectorize 97→100
+        extract_audio 0→8 → asr 8→20 → diarize 20→32 → ocr 32→44
+        → translate 44→57 → erase 57→75 → tts 75→90 → mix 90→97 → vectorize 97→100
 
     - 每阶段边界调 cancel_check()；命中抛 tasks.CancelledError（协作取消）
     - GPU 推理阶段（本地 ASR / LaMa 擦除 / 本地 TTS）经 tasks.gpu.gpu_lane
-      独占单卡槽；云 API 阶段（dashscope/qwen-ocr/LongCat/云 TTS）不占
+      独占单卡槽；云 API 阶段（dashscope/qwen-ocr/LongCat/云 TTS）不占；
+      说话人分离（CAM++）默认走 CPU，不占显存预算
     - 返回 report dict；无人声提前返回 {"empty_asr": True, ...}
-    - 模块内辅助（_locate_region/_build_timed_audio 等）经模块全局查找
+    - 模块内辅助（_locate_region/_mix_timed_audio 等）经模块全局查找
       调用——demo 的 monkeypatch mock 依赖此行为，调用形状不可变
     """
     cfg = load_config().localizer
@@ -358,19 +508,30 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
     src = args.video_path
     is_url = src.startswith(("http://", "https://"))
 
-    # ── 1) 提取音轨（extract_audio 0→10）──
+    # ── 步骤跟踪 + 裁剪（2026-10-31 SaaS 化）──
+    # 调用方可通过 args.steps / args.skip_steps 选择只跑部分阶段（如"只转写
+    # 不擦除""只翻译不配音"）。enabled 为空 = 全跑（向后兼容）。
+    # _on(): 该步是否执行；with _step(...) 记录 running/done/skipped/failed。
+    _tracker, _enabled = _pipeline_tracker(args)
+    def _on(step_id: str) -> bool:
+        return not _enabled or step_id in _enabled
+
+    # ── 1) 提取音轨（extract_audio 0→8）──
+    _stage_begin(args, _tracker, "extract_audio")
     progress_cb("extract_audio", 1.0, "提取音轨")
     audio_path = _media.extract_audio(
         src, str(workdir / "audio.wav"),
         sample_rate=cfg.asr_sample_rate,
     )
-    progress_cb("extract_audio", 10.0, "音轨已提取")
+    progress_cb("extract_audio", 8.0, "音轨已提取")
+    _stage_end(_tracker, "extract_audio")
 
-    # ── 2) ASR（asr 10→25；本地 faster-whisper 占 GPU 槽，auto 回落云）──
+    # ── 2) ASR（asr 8→20；本地 faster-whisper 占 GPU 槽，auto 回落云）──
     _cancel_boundary("asr", cancel_check)
+    _stage_begin(args, _tracker, "asr")
     asr_backend, asr_fn = _select_asr(cfg, speech_key)
     source_lang = args.source_lang or cfg.source_lang_default
-    progress_cb("asr", 12.0, f"ASR 转写（{asr_backend}）")
+    progress_cb("asr", 9.0, f"ASR 转写（{asr_backend}）")
     if asr_backend == "local":
         with gpu_lane():
             segments = asr_fn(audio_path, source_lang)
@@ -380,39 +541,151 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
     if not is_url:
         duration_s, width, height = _media.probe_media(src)
     if not segments:
+        # 无人声提前返回：ASR 步如实收尾（done 但 note 说明零识别），
+        # 其余未执行步骤由 manager 终态收尾兜底——不留 running 假态
+        _stage_end(_tracker, "asr", backend=asr_backend,
+                   note="未识别到语音（可能无人声）")
         return {"empty_asr": True, "duration_seconds": duration_s or 0.0,
                 "warning": "ASR 未识别到任何语音（可能无人声）"}
     if duration_s is None:
         duration_s = segments[-1]["end"]
-    progress_cb("asr", 25.0, f"ASR 完成：{len(segments)} 句")
+    progress_cb("asr", 20.0, f"ASR 完成：{len(segments)} 句")
+    _stage_end(_tracker, "asr", backend=asr_backend)
 
-    # ── 3) OCR 定位原字幕区（ocr 25→40；RapidOCR 为 CPU，不占 GPU 槽）──
+    # ── 3) 说话人分离（diarize 20→32；CAM++ 默认 CPU，不占 GPU 槽）──
+    # 后端语义（对齐仓库 local/cloud/auto 惯例）：
+    #   local：栈不可用 → 抛 DiarizeError(category=environment)
+    #   auto ：不可用/失败 → 跳过，整片单音色克隆，并在 report 显式记录原因
+    #   off  ：直接跳过
+    _cancel_boundary("diarize", cancel_check)
+    if _on("diarize"):
+        _stage_begin(args, _tracker, "diarize")
+    eff_diarize = (args.diarize_backend or cfg.diarize_backend).lower()
+    want_diarize = eff_diarize != "off" and _on("diarize")
+    if not _on("diarize"):
+        diarize_note = "调用方未选择说话人分离"
+    # 人声轨/伴奏轨一次算好：diarize 用净人声（多人混响会污染声纹），
+    # 背景音直接复用伴奏轨——避免 demucs 在 diarize 与 tts 两阶段各跑一遍
+    diarize_input = audio_path
+    bg_source: str | None = None
+    need_stems = bool(cfg.bgm_vocal_sep) and _music_sep.available() and (
+        args.keep_background_audio or (want_diarize and _diarize.available()))
+    if need_stems:
+        progress_cb("diarize", 21.0, "人声分离（htdemucs）")
+        vocals, instr = _music_sep.separate_stems(audio_path, str(workdir))
+        diarize_input = vocals
+        if args.keep_background_audio:
+            bg_source = instr
+    diarize_backend = "none"
+    diarize_note: str | None = None
+    refs: dict[str, dict] = {}
+    if not want_diarize:
+        diarize_note = "diarize_backend=off：跳过说话人分离"
+    elif not _diarize.available():
+        if eff_diarize == "local":
+            raise _diarize.DiarizeError(
+                "diarize_backend=local：funasr 不可用"
+                "（conda env update -n flowmind -f environment.yml）",
+                category="environment",
+            )
+        diarize_note = "本地说话人分离不可用，已回落整片单音色克隆"
+    else:
+        progress_cb("diarize", 23.0, f"说话人分离（{cfg.local_diarize_model}）")
+        try:
+            turns = _diarize.diarize(
+                diarize_input,
+                device=cfg.local_diarize_device,
+                model=cfg.local_diarize_model,
+                merge_thr=cfg.diarize_merge_thr,
+                min_cluster_seconds=cfg.diarize_min_cluster_seconds,
+            )
+            if turns:
+                assigned = _diarize.assign_speakers(segments, turns)
+                new_refs = _diarize.build_speaker_refs(
+                    assigned, diarize_input, str(workdir / "speaker_refs"),
+                    min_seconds=cfg.speaker_ref_min_seconds,
+                    target_seconds=cfg.speaker_ref_target_seconds,
+                    max_seconds=cfg.speaker_ref_max_seconds,
+                )
+            else:
+                assigned, new_refs = segments, {}
+        except Exception as exc:  # noqa: BLE001  auto 降级；local 模式照常抛出
+            if eff_diarize == "local":
+                raise
+            logger.warning("说话人分离失败（auto 降级为整片单音色克隆）: %s: %s",
+                           type(exc).__name__, exc)
+            diarize_note = (f"本地说话人分离失败（{type(exc).__name__}），"
+                            "已回落整片单音色克隆")
+        else:
+            if turns:
+                segments, refs = assigned, new_refs
+                diarize_backend = "cam++"
+            else:
+                diarize_note = "说话人分离未检出语音，回落整片单音色克隆"
+    progress_cb("diarize", 32.0,
+                f"说话人分离完成（{diarize_backend}，{len(refs)} 位说话人）"
+                if refs else f"说话人分离跳过：{diarize_note or '无可用轮次'}")
+    _stage_end(_tracker, "diarize",
+               backend=diarize_backend,
+               skipped=(None if refs else (diarize_note or "无可用轮次")))
+
+    # ── 4) OCR 定位原字幕区（ocr 32→44；RapidOCR 为 CPU，不占 GPU 槽）──
     _cancel_boundary("ocr", cancel_check)
-    ocr_backend, ocr_fn = _select_ocr(cfg, speech_key)
-    progress_cb("ocr", 27.0, f"OCR 定位字幕区（{ocr_backend}）")
-    region = _locate_region(src, duration_s, workdir, ocr_fn, cfg,
-                            width=width, height=height)
-    progress_cb("ocr", 40.0, f"OCR 完成：{len(region or [])} 个候选区")
+    _stage_begin(args, _tracker, "ocr")
+    if _on("ocr"):
+        ocr_backend, ocr_fn = _select_ocr(cfg, speech_key)
+        progress_cb("ocr", 33.0, f"OCR 定位字幕区（{ocr_backend}）")
+        region = _locate_region(src, duration_s, workdir, ocr_fn, cfg,
+                                width=width, height=height)
+    else:
+        # 未选择 OCR：无原字幕区域 → 不擦除（erase 硬依赖 ocr，已在注册表校验）
+        ocr_backend, region = "none", None
+        progress_cb("ocr", 33.0, "跳过 OCR（调用方未选择）")
+        progress_cb("ocr", 44.0, "OCR 已跳过")
+    progress_cb("ocr", 44.0, f"OCR 完成：{len(region or [])} 个候选区")
+    _stage_end(_tracker, "ocr", backend=ocr_backend,
+               skipped=("调用方未选择 OCR" if not _on("ocr") else None))
 
-    # ── 4) LLM 翻译（translate 40→55；长句先拆分，翻译更稳定）──
+    # ── 5) LLM 翻译（translate 44→57；长句先拆分，翻译更稳定）──
     _cancel_boundary("translate", cancel_check)
+    _stage_begin(args, _tracker, "translate")
     display_segments = _split_long_segments(segments)
-    progress_cb("translate", 42.0,
-                f"翻译 {len(display_segments)} 句（{len(segments)} 句 ASR 拆分）")
-    # 协议/base/model 从 .env 读（AI_LLM_*），未设置回落 LongCat Anthropic 默认
-    translated = _llm_translate.translate_segments(
-        display_segments,
-        target_lang=args.target_lang or cfg.target_lang_default,
-        source_lang=args.source_lang or cfg.source_lang_default,
-        api_key=llm_key,
-        api_base=os.environ.get("AI_LLM_BASE_URL") or _llm_translate.DEFAULT_BASE,
-        model=os.environ.get("AI_LLM_MODEL") or cfg.localize_llm_model,
-        protocol=(os.environ.get("AI_LLM_PROTOCOL") or "anthropic").lower(),
-    )
-    progress_cb("translate", 55.0, f"翻译完成：{len(translated)} 句")
+    if not _on("translate"):
+        # 未选择翻译：译文 = 原文（同语言场景），下游 TTS/字幕照常可用
+        progress_cb("translate", 45.0, "跳过翻译（调用方未选择）")
+        progress_cb("translate", 57.0, "翻译已跳过（沿用原文）")
+        translated = display_segments
+        target_lang = args.target_lang or cfg.target_lang_default
+        _stage_end(_tracker, "translate", skipped="调用方未选择翻译")
+    else:
+        target_lang = args.target_lang or cfg.target_lang_default
+        progress_cb("translate", 45.0,
+                    f"翻译 {len(display_segments)} 句（{len(segments)} 句 ASR 拆分）")
+        # 术语表 / 文化替换 / 长度预算（术语表路径为空则不启用；三者均注入系统提示，
+        # 不新增 LLM 调用轮次）；load_glossary 的异常由入口 except 链统一兜底
+        glossary = culture_rules = None
+        if cfg.glossary_path:
+            glossary, culture_rules = _llm_translate.load_glossary(cfg.glossary_path)
+        length_budget = _llm_translate.estimate_length_budget(
+            display_segments, target_lang,
+            speed_factor=cfg.dub_speed_factors or None)
+        # 协议/base/model 从 .env 读（AI_LLM_*），未设置回落 LongCat Anthropic 默认
+        translated = _llm_translate.translate_segments(
+            display_segments,
+            target_lang=target_lang,
+            source_lang=args.source_lang or cfg.source_lang_default,
+            api_key=llm_key,
+            api_base=os.environ.get("AI_LLM_BASE_URL") or _llm_translate.DEFAULT_BASE,
+            model=os.environ.get("AI_LLM_MODEL") or cfg.localize_llm_model,
+            protocol=(os.environ.get("AI_LLM_PROTOCOL") or "anthropic").lower(),
+            glossary=glossary, culture_rules=culture_rules, length_budget=length_budget,
+        )
+        progress_cb("translate", 57.0, f"翻译完成：{len(translated)} 句")
+        _stage_end(_tracker, "translate", backend="llm")
 
-    # ── 5) 擦除原字幕区 + 烧译文字幕（erase 55→75；LaMa 推理占 GPU 槽）──
+    # ── 6) 擦除原字幕区 + 烧译文字幕（erase 57→75；LaMa 推理占 GPU 槽）──
     _cancel_boundary("erase", cancel_check)
+    _stage_begin(args, _tracker, "erase")
     regions = region or []
     # 字号/位置匹配原字幕：把 OCR 原始行框传给 _write_ass
     ass_path = _write_ass(translated, workdir, cfg,
@@ -431,7 +704,11 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         "erase", 57.0,
         f"擦除字幕/水印（{eff_erase}，{len(erase_regs)} 框）",
     )
-    if erase_regs and eff_erase in ("auto", "local", "lama"):
+    if not _on("erase"):
+        # 未选择擦除：源片直通（不擦、不烧字幕），mix 直接以此为输入
+        erased_video = src_local
+        progress_cb("erase", 57.0, "跳过擦除（调用方未选择）")
+    elif erase_regs and eff_erase in ("auto", "local", "lama"):
         if _inpaint.available():
             with gpu_lane():
                 _inpaint.erase_regions(
@@ -450,40 +727,72 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
                 category="environment",
             )
         # auto 且 LaMa 缺失：回落 delogo（auto 语义允许）
-    if erase_used == "delogo":
+    if _on("erase") and erase_used == "delogo":
         erased_video = _media.burn_subtitles(
             src_local, str(workdir / "subbed.mp4"), ass_path,
             erase_regions=erase_regs or None,
         )
-    progress_cb("erase", 75.0, f"擦除完成（{erase_used}）")
+    progress_cb("erase", 75.0,
+                "擦除已跳过（调用方未选择）" if not _on("erase")
+                else f"擦除完成（{erase_used}）")
+    _stage_end(_tracker, "erase", backend=erase_used,
+               skipped=("调用方未选择擦除" if not _on("erase") else None))
 
-    # ── 6) TTS 逐句配音（tts 75→90；本地 TTS 推理占 GPU 槽）──
+    # ── 7) TTS 逐句配音（tts 75→90；本地 TTS 推理占 GPU 槽）──
     _cancel_boundary("tts", cancel_check)
+    _stage_begin(args, _tracker, "tts")
+    want_tts = _on("tts")
+    progress_cb("tts", 76.0,
+                "配音（TTS）" if want_tts else "跳过配音（调用方未选择）")
     voice_used = None
     eff_voice = args.voice_id or cfg.localize_voice or ""
-    eff_tts = (args.tts_backend or getattr(cfg, "tts_backend", "auto")).lower()
+    if not eff_voice and args.speaker_voices:
+        # 只传了「说话人→音色」映射时，用首个音色兜底整片 voice_id，
+        # 避免"有映射却因 voice_id 为空而整段跳过 TTS"的静默空转
+        eff_voice = next(iter(args.speaker_voices.values()))
+    eff_tts = (args.tts_backend or cfg.tts_backend).lower()
     # 后端选择：local=强制本地；cloud=强制云；
     # auto=未显式指定云端克隆音色且本地栈可用时优先本地（本地优先原则）
-    use_local_tts = eff_tts == "local" or (
-        eff_tts == "auto" and not args.voice_id and _local_tts.available()
-    )
-    if use_local_tts and not _local_tts.available():
+    if not want_tts:
+        # 调用方显式跳过配音：直接产出"无配音"路径（mix 会做 strip/mix 兜底）
+        dub_track, dubs, dub_stats = None, [], {}
+        use_local_tts = False
+        progress_cb("tts", 90.0, "配音已跳过（调用方未选择）")
+        _stage_end(_tracker, "tts", skipped="调用方未选择配音")
+    else:
+        progress_cb("tts", 78.0, "配音准备")
+    use_local_tts = use_local_tts if not want_tts else (
+        eff_tts == "local" or (
+            eff_tts == "auto" and not args.voice_id and _local_tts.available()))
+    if want_tts and use_local_tts and not _local_tts.available():
         raise _local_tts.LocalTTSError(
             "tts_backend=local：qwen-tts 不可用（conda env update -f environment.yml）",
             category="environment",
         )
-    # 背景音源：默认原声（人声+BGM）；开启人声分离时净化为纯伴奏
-    bg_source = str(workdir / "audio.wav")
-    if args.keep_background_audio and getattr(cfg, "bgm_vocal_sep", True) \
-            and _music_sep.available():
-        progress_cb("tts", 77.0, "人声分离（htdemucs）")
-        bg_source = _music_sep.separate_vocals(bg_source, str(workdir))
+    if use_local_tts and cfg.tts_engine != "qwen3-tts":
+        # IndexTTS2 spike 未通过（上游硬钉 torch==2.8.*，与 Pascal 6.1 的 torch 钉版
+        # 冲突，见 CLAUDE.md）：配置切到未接入的引擎时显式报错，不静默回落
+        raise _local_tts.LocalTTSError(
+            f"tts_engine={cfg.tts_engine} 尚未接入（仅支持 qwen3-tts；"
+            "IndexTTS2 因 torch 钉版冲突未通过可行性验证）",
+            category="environment",
+        )
+    # 背景音源：diarize 阶段若已分离出伴奏轨则直接复用（不重复跑 demucs）；
+    # 否则默认原声（人声+BGM），开启人声分离时按需惰性净化为纯伴奏
+    if bg_source is None:
+        bg_source = str(workdir / "audio.wav")
+        if args.keep_background_audio and cfg.bgm_vocal_sep \
+                and _music_sep.available():
+            progress_cb("tts", 77.0, "人声分离（htdemucs）")
+            bg_source = _music_sep.separate_vocals(bg_source, str(workdir))
     tts_segs = _filter_tts_segments(translated)
     dub_track: str | None = None
+    dub_stats: dict = {}
     if use_local_tts:
         # 本地 Qwen3-TTS 零样本克隆：优先显式样本；缺省克隆原片人声
         # （参考音频=已抽出的原声 wav，参考转写=本次 ASR 原文拼接）
         if args.voice_ref_audio:
+            # 显式参考样本优先级最高：不做逐说话人路由
             ref_audio = _ensure_local(args.voice_ref_audio, workdir)
             ref_text = args.voice_ref_text or _ref_transcript(ref_audio)
             voice_used = f"clone:{Path(ref_audio).stem}"
@@ -491,18 +800,28 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
             ref_audio = str(workdir / "audio.wav")
             ref_text = "".join(str(s.get("text", "")) for s in segments)
             voice_used = "clone:source_speaker"
+            if len(refs) >= 2:
+                # 逐说话人音色克隆：按 seg["speaker"] 路由各自聚合的参考音频；
+                # 未命中 refs 的句段不写 ref 键，回落上面的整片单参考
+                for seg in tts_segs:
+                    ref = refs.get(str(seg.get("speaker") or ""))
+                    if ref:
+                        seg["ref_audio"] = ref["ref_audio"]
+                        seg["ref_text"] = ref["ref_text"]
+                voice_used = f"clone:multi_speaker(n={len(refs)})"
         progress_cb("tts", 80.0, f"本地 TTS 克隆配音 {len(tts_segs)} 句")
         with gpu_lane():
             dubs = _local_tts.synthesize_segments(
                 tts_segs, out_dir=str(workdir / "dubs"),
                 ref_audio=ref_audio, ref_text=ref_text,
-                target_lang=args.target_lang or cfg.target_lang_default,
+                target_lang=target_lang,
             )
         # 按原始时间戳合成配音（带静音间隔，保证音画同步）。
         # 消费 tts_segs（过滤+拆分后的同一份分段）：translated 与 dubs
         # 长度不等（≤1 字句被滤），zip(translated) 会错位前移+丢尾句
-        dub_track = _build_timed_audio(tts_segs, dubs, duration_s,
-                                       str(workdir / "dub.wav"))
+        dub_track, dub_stats = _mix_timed_audio(
+            tts_segs, dubs, duration_s, str(workdir / "dub.wav"),
+            max_tempo=cfg.dub_max_tempo)
         progress_cb("tts", 90.0, f"配音完成（{voice_used}，{len(dubs)} 段）")
     elif eff_voice:
         progress_cb("tts", 80.0, f"云端 TTS 配音 {len(tts_segs)} 句")
@@ -511,20 +830,26 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
                 tts_segs, voice_id=eff_voice,
                 out_dir=str(workdir / "dubs"), api_key=speech_key,
                 target_model=cfg.localize_tts_model,
+                speaker_voices=args.speaker_voices,
             )
         except Exception as exc:
             logger.error("云 TTS 失败: %s: %s", type(exc).__name__, exc)
             raise
         # 同上：消费 tts_segs（与 synthesize_segments 同一份分段）防错位
-        dub_track = _build_timed_audio(tts_segs, dubs, duration_s,
-                                       str(workdir / "dub.wav"))
-        voice_used = eff_voice
+        dub_track, dub_stats = _mix_timed_audio(
+            tts_segs, dubs, duration_s, str(workdir / "dub.wav"),
+            max_tempo=cfg.dub_max_tempo)
+        voice_used = (f"cloud:multi_speaker(n={len(args.speaker_voices)})"
+                      if args.speaker_voices else eff_voice)
         progress_cb("tts", 90.0, f"配音完成（{voice_used}，{len(dubs)} 段）")
+        _stage_end(_tracker, "tts", backend=(voice_used or "unknown"))
     else:
         progress_cb("tts", 90.0, "未配置配音，跳过 TTS")
+        _stage_end(_tracker, "tts", skipped="未配置配音（无 voice_id）")
 
-    # ── 7) 混音合成（mix 90→97）──
+    # ── 8) 混音合成（mix 90→97）──
     _cancel_boundary("mix", cancel_check)
+    _stage_begin(args, _tracker, "mix")
     progress_cb("mix", 92.0, "混音合成")
     if dub_track is not None:
         if args.keep_background_audio:
@@ -537,14 +862,43 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         # 不配音：移除原声，仅保留擦除+字幕
         _strip_audio(erased_video, out_path)
     progress_cb("mix", 97.0, "混音完成")
+    _stage_end(_tracker, "mix")
     print(f"[LV] final out_path={out_path}")
 
-    # ── 8) 字幕向量化（vectorize 97→100；增值步骤，失败降级）──
+    # ── 9) 字幕向量化（vectorize 97→100；增值步骤，失败降级）──
     _cancel_boundary("vectorize", cancel_check)
+    _stage_begin(args, _tracker, "vectorize")
     progress_cb("vectorize", 98.0, "字幕向量化")
-    vectorized, vectorize_note = _vectorize_segments(_pipeline_task_id(), segments, src)
+    if _on("vectorize"):
+        vectorized, vectorize_note = _vectorize_segments(
+            _pipeline_task_id(), segments, src)
+    else:
+        vectorized, vectorize_note = False, "调用方未选择向量化"
+        progress_cb("vectorize", 98.0, "跳过向量化（调用方未选择）")
     progress_cb("vectorize", 100.0, vectorize_note)
+    _stage_end(_tracker, "vectorize", note=vectorize_note,
+               skipped=("调用方未选择向量化" if not _on("vectorize") else None))
 
+    # 质量自检报告（增量）：说话人参考音频 / 分离后端 / 配音溢出统计 /
+    # 译文超预算句段 / 擦除覆盖框数
+    quality = {
+        "speakers": [
+            {
+                "id": sid,
+                "segments": sum(
+                    1 for s in segments if str(s.get("speaker") or "") == sid),
+                "ref_seconds": refs[sid]["seconds"],
+                "low_confidence": refs[sid]["low_confidence"],
+            }
+            for sid in sorted(refs)
+        ],
+        "diarize_backend": diarize_backend,
+        "dub": dub_stats,
+        "translate_over_budget": [
+            s["index"] for s in tts_segs if s.get("over_budget")
+        ],
+        "erase_coverage": len(erase_regs),
+    }
     return {
         "output_path": out_path,
         "duration_seconds": round(duration_s, 3),
@@ -557,6 +911,9 @@ def run_localization_pipeline(args: LocalizeVideoInput, workdir: Path,
         "erase_backend": erase_used,
         "watermark_removed": bool(watermark_regions),
         "vectorized": vectorized,
+        "diarize_backend": diarize_backend,
+        "diarize_note": diarize_note,
+        "quality": quality,
     }
 
 
@@ -575,8 +932,8 @@ def _resolve_out_path(args: LocalizeVideoInput, src: str, workdir: Path) -> str:
         return args.output_path
     if src.startswith(("http://", "https://")):
         ctx = current_task_context()
-        base = Path(ctx.data_dir) if ctx is not None and ctx.data_dir \
-            else Path(load_config().localizer.data_dir)
+        base = (Path(ctx.data_dir) if ctx is not None and ctx.data_dir
+                else Path(load_config().localizer.data_dir)).expanduser()
         out_dir = base / "outputs" / _pipeline_task_id()
         out_dir.mkdir(parents=True, exist_ok=True)
         return str(out_dir / "output.mp4")
@@ -670,12 +1027,17 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
     拆分策略：在标点（。，！？；,.!?;）处切分，每段不超过 max_chars 字；
     时间按字数比例分配。输出条目统一携带 index（display 顺序），
     下游 translate（index 原样透传）与 TTS 段命名（seg_XXXX）依赖它。
+    源句段的非时间/非文本键（如 ``speaker``）原样带到拆分后的每个子句段，
+    保证逐说话人音色路由在拆分后仍能命中。
     """
     import re
     result: list[dict] = []
     for seg in segments:
         text = str(seg["text"]).strip()
         duration = seg["end"] - seg["begin"]
+        # 非时间/非文本键（speaker 等）原样携带，拆分后不丢
+        extra = {k: v for k, v in seg.items()
+                 if k not in ("begin", "end", "text", "index")}
         if len(text) <= max_chars or duration < 0.5:
             result.append(seg)
             continue
@@ -691,6 +1053,7 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
             ratio = len(p) / total_chars if total_chars else 1.0 / len(parts)
             seg_duration = duration * ratio
             result.append({
+                **extra,
                 "begin": round(t, 3),
                 "end": round(t + seg_duration, 3),
                 "text": p,
@@ -700,9 +1063,17 @@ def _split_long_segments(segments: list[dict], max_chars: int = 20) -> list[dict
 
 
 def _est_text_width(text: str, font_size: int) -> float:
-    """估算 ASS 渲染宽度（PlayRes 单位）：CJK≈1.0×字号，拉丁/半角≈0.55×。"""
+    """估算 ASS 渲染宽度（像素）：CJK≈0.70×字号，拉丁/半角≈0.45×。
+
+    系数为 libass 实测值（PlayRes=画幅、DejaVu/Noto Sans CJK），不是字形
+    理论 em 值——libass 渲染出的 advance 明显小于标称字号：实测 66 字符
+    英文句 0.417 em/字符、CJK 0.686 em/字符。原先假设 1.0/0.55 会把宽度
+    高估 1.4~1.5 倍，导致 _fit_subtitle 过度缩号（字幕明显偏小）。
+    取略高于实测下限的值（拉丁 0.45 / CJK 0.70）：低估时 libass 会自动
+    折行（观感可接受），高估时只会让字幕继续变小（更糟）。
+    """
     return sum(
-        font_size * (1.0 if ord(ch) > 0x2E7F else 0.55) for ch in text
+        font_size * (0.70 if ord(ch) > 0x2E7F else 0.45) for ch in text
     )
 
 
@@ -764,51 +1135,84 @@ def _pick_font() -> str:
     return "DejaVu Sans"
 
 
-def _match_original_style(regions: list[dict], width: int | None,
-                          height: int | None) -> tuple[int, int]:
-    """从 OCR 原字幕行框推导新字幕的字号与下边距（ASS PlayRes 1280×720 空间）。
+# OCR 行框高 → ASS Fontsize 的实测标定系数（见 _match_original_style 说明）：
+# 原字幕行框 103px ↔ 字形墨迹 74px；libass 墨迹 ≈ 0.62 × Fontsize
+# → 74 / 103 / 0.62 ≈ 1.16
+_FONT_PER_LINE = 1.16
 
-    - 字号：行高中位数 × 分辨率比 × 0.95（CJK 字形约占 em 高 0.9-1.0），
-      钳制 [14, 48]——新字幕视觉上"接管"原字幕，而不是固定 22 号
-    - 下边距：最低行的行底换算到 720 空间，新字幕贴原字幕位置
-    - regions 空 / 尺寸缺失 → 回退默认 (22, 40)
+
+def _match_original_style(regions: list[dict],
+                          height: int | None) -> tuple[int, int] | None:
+    """从 OCR 原字幕行框推导新字幕的字号与下边距（单位 = 视频像素）。
+
+    PlayRes 与视频一一对应（见 _write_ass），故此处得到的就是真实像素值。
+
+    - 锚定区：**面积最大**的候选框 = 原字幕主体。不能取"最靠下的框"：
+      角标/水印框（如「@某某精选」，窄且贴画面最底部）位置比字幕更低，
+      取它会把新字幕顶到画面最底边被 App UI 遮挡
+    - 字号：锚定行框高 × ``_FONT_PER_LINE``（≈1.16）。该系数是实测标定：
+      参考片原字幕 OCR 行框 103px 对应字形墨迹高 74px，而 libass 渲染出的
+      字形墨迹高 ≈ 0.62 × Fontsize（CJK 0.61 / 拉丁大写 0.63）
+      → Fontsize ≈ 行框高 × (74/103) / 0.62。钳制 [14, 画面高 9%]；
+      超宽长句仍由 _fit_subtitle 缩号/折行收口
+    - 下边距：画面高 − 锚定行底 → 新字幕接管原字幕的垂直位置
+
+    无法推导（无框 / 行高为 0 / 画面高缺失）返回 None，由调用方走回退口径。
     """
-    if not regions or not width or not height:
-        return 22, 40
-    scale = 720.0 / float(height)
-    heights = sorted(float(r["h"]) for r in regions if r.get("h"))
-    if not heights:
-        return 22, 40
-    mid = heights[len(heights) // 2] if len(heights) % 2 else (
-        (heights[len(heights) // 2 - 1] + heights[len(heights) // 2]) / 2
-    )
-    base_fs = max(14, min(48, int(mid * scale * 0.95)))
-    bottom = max(float(r["y"]) + float(r["h"]) for r in regions)
-    margin_v = max(8, min(120, int(720 - bottom * scale)))
-    return base_fs, margin_v
+    if not regions or not height:
+        return None
+    rows = [r for r in regions if float(r.get("h") or 0) > 0]
+    if not rows:
+        return None
+    anchor = max(rows, key=lambda r: float(r["w"]) * float(r["h"]))
+    line_h = float(anchor["h"])
+    font_size = max(14, min(int(round(height * 0.09)),
+                            int(round(line_h * _FONT_PER_LINE))))
+    bottom = float(anchor["y"]) + line_h
+    # 上界 40% 画高：OCR 先验已保证候选框底边落在画面下部 40%（见
+    # _cloud_ocr.locate_subtitle_region），故此处只是防御性钳制，
+    # 不能收紧——竖屏字幕常在 72% 处，需 28% 画高的下边距才能对齐
+    margin_v = max(8, min(int(round(height * 0.4)), int(round(height - bottom))))
+    return font_size, margin_v
 
 
 def _write_ass(segments: list[dict], workdir: Path, cfg,
                regions: list[dict] | None = None,
                width: int | None = None, height: int | None = None) -> str:
-    """把译文句段写成 ASS 字幕（底部居中，带半透明底条）。
+    """把译文句段写成 ASS 字幕（底部居中，白字 + 深色描边）。
 
-    字号/下边距动态匹配原字幕（regions=OCR 原始行框时按行高与行底推导）；
-    长句经 _fit_subtitle 按固定字号折行，避免逐句字号跳变。
-    regions 缺省回退 cfg.subtitle_font_size / 固定 MarginV=40。
+    PlayRes 取**视频实际像素尺寸**：libass 把 PlayRes 空间映射到画幅，两者
+    宽高比不一致时会对文字做非等比拉伸（曾硬编码 1280×720 → 竖屏 1080×1920
+    上字幕被横向压扁、位置/边距全部失真）。PlayRes = 画幅后 1 单位 = 1 像素，
+    坐标与字号所见即所得。
+
+    字号/下边距动态匹配原字幕（regions=OCR 原始行框时按锚定行高与行底推导）；
+    长句仍经 _fit_subtitle 缩号/折行防溢出（匹配字号为上限）。
+    regions 缺省回退 cfg.subtitle_font_size / MarginV=40，并按画幅等比换算
+    （保持 720 基准下的既有观感）。
     """
-    base_fs, margin_v = _match_original_style(regions or [], width, height)
-    font_size = base_fs if regions else getattr(cfg, "subtitle_font_size", 22)
+    play_res_x = int(width) if width else 1280
+    play_res_y = int(height) if height else 720
+    scale = play_res_y / 720.0  # 回退口径的等比换算系数（1 单位 = 1 像素）
+    fallback = (
+        max(14, int(round(getattr(cfg, "subtitle_font_size", 22) * scale))),
+        max(8, int(round(40 * scale))),
+    )
+    font_size, margin_v = _match_original_style(regions or [], play_res_y) or fallback
     font_name = _pick_font()
+    # 描边随字号缩放：PlayRes=画幅后 Outline 单位即像素，固定 1 在 1080p 竖屏上
+    # 太细（原 720 空间被放大 2.67× 才显得够粗），按字号 4% 取整
+    outline = max(1, int(round(font_size * 0.04)))
+    margin_lr = max(20, int(round(play_res_x * 0.094)))  # ≈ 原 120/1280 的比例
     lines = [
-        "[Script Info]", "PlayResX: 1280", "PlayResY: 720",
+        "[Script Info]", f"PlayResX: {play_res_x}", f"PlayResY: {play_res_y}",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, "
         "BorderStyle, Outline, Shadow, Alignment, MarginV, MarginL, MarginR",
         # Alignment=2: 底部居中；MarginV 由原字幕行底位置推导
         # 字体由 _pick_font 运行时探测（CJK 缺失时显式回落，避免豆腐乱码）
         f"Style: Sub,{font_name},{font_size},&H00FFFFFF,&H00000000,"
-        f"1,1,0,2,{margin_v},120,120",
+        f"1,{outline},0,2,{margin_v},{margin_lr},{margin_lr}",
         "[Events]",
         "Format: Layer, Start, End, Style, Text",
     ]
@@ -819,8 +1223,10 @@ def _write_ass(segments: list[dict], workdir: Path, cfg,
         return f"{int(h):01d}:{int(m):02d}:{s:05.2f}"
 
     for seg in segments:
-        _, text = _fit_subtitle(str(seg["text"]).replace("\n", " "), font_size)
-        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{text}")
+        fs, text = _fit_subtitle(str(seg["text"]).replace("\n", " "), font_size,
+                                 play_res_x, margin_lr)
+        styled = text if fs == font_size else f"{{\\fs{fs}}}{text}"
+        lines.append(f"Dialogue: 0,{ts(seg['begin'])},{ts(seg['end'])},Sub,{styled}")
     path = workdir / "subs.ass"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
@@ -856,16 +1262,17 @@ def _prep_erase_regions(regions: list[dict], width: int | None,
     """把 OCR 文本行框整理成擦除区：逐框适度外扩 + 裁边，保持紧贴文字。
 
     不再合成大横带——LaMa/delogo 只处理真实文字覆盖范围，避免
-    "超级大横带"误伤前景主体。外扩量覆盖字形边缘/描边/阴影。
+    "超级大横带"误伤前景主体。外扩量覆盖字形边缘/描边/阴影/底块
+    （黑底块常在白字外侧超出 OCR 框十余像素，垂直外扩需足够）。
     """
     if not regions:
         return []
     out: list[dict] = []
     for r in regions:
         x0 = int(r["x"]) - 14
-        y0 = int(r["y"]) - 8
+        y0 = int(r["y"]) - 16
         x1 = int(r["x"] + r["w"]) + 14
-        y1 = int(r["y"] + r["h"]) + 8
+        y1 = int(r["y"] + r["h"]) + 16
         if width:
             x0, x1 = max(0, x0), min(int(width), x1)
         if height:
@@ -910,28 +1317,52 @@ def _replace_audio(video_path: str, audio_wav: str, out_path: str) -> str:
     return out_path
 
 
-def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
-                       out_path: str) -> str:
-    """把逐句 TTS 按原始时间戳拼回完整音轨（带静音间隔，保证音画同步）。
+def _mix_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
+                     out_path: str, *,
+                     max_tempo: float | None = None) -> tuple[str, dict]:
+    """把逐句 TTS 按原始时间戳拼回完整音轨，并产出时长对齐质量统计。
 
     segments: [{"begin": float, "end": float, "text": str, "index": int}, ...]
-    dubs: 对应的 TTS mp3 路径列表（与 segments 等长同序）
+    dubs: 对应的 TTS 音频路径列表（与 segments 等长同序）
+    max_tempo: 无损感变速上限；None 时取 config.localizer.dub_max_tempo
+
+    分级变速（tempo = 配音时长 / 原句时长）：
+    - tempo ≤ 1.02：原速（2% 以内不压，避免徒增变速伪影）；
+    - 1.02 < tempo ≤ max_tempo：atempo 压缩到句时长内（计入 compressed）；
+    - tempo > max_tempo：不强行 2 倍速（变调刺耳），自然语速播放（接受与
+      下句轻微重叠），计入 overflow 并跟踪最差溢出比与句段 index。
+    返回 ``(out_path, stats)``，stats 含 segments/compressed/overflow/
+    max_overflow_ratio/worst_index（无溢出时 ratio=0.0、worst_index=None）。
     """
+    if max_tempo is None:
+        max_tempo = load_config().localizer.dub_max_tempo
     # 统一转为 wav + 静音间隔，再用 amix 合成
     tmp_dir = Path(out_path).parent
     wavs: list[tuple[float, str]] = []  # (delay_ms, wav_path)
+    compressed = 0
+    overflow = 0
+    max_overflow_ratio = 0.0
+    worst_index = None
     # wav 命名按 zip 位置（而非 seg['index']）：调用方传入的 segments
     # 已是过滤后的 tts_segs（index 可能非连续/缺失），位置必唯一防覆盖
     for pos, (seg, dub) in enumerate(zip(segments, dubs)):
-        # mp3 → wav；限制加速幅度，过长时保留轻微时间溢出而不赶词
         wav_p = str(tmp_dir / f"dub_{pos:04d}.wav")
         cmd = ["ffmpeg", "-y", "-i", dub]
         seg_dur = seg["end"] - seg["begin"]
         filters = []
         if seg_dur > 0.3:
             tempo = _media.probe_media(dub)[0] / seg_dur
-            if tempo > 1.02:  # 2% 以内不压，避免徒增变速伪影
-                filters.append(f"atempo={min(tempo, 1.25):.4f}")
+            if 1.02 < tempo <= max_tempo:
+                # 无损感域内压缩（已 ≤ max_tempo，无需再钳 2.0）
+                filters.append(f"atempo={min(tempo, 2.0):.4f}")
+                compressed += 1
+            elif tempo > max_tempo:
+                # 超上限：不硬压（保自然语速），接受溢出并统计最差句
+                overflow += 1
+                if tempo > max_overflow_ratio:
+                    max_overflow_ratio = tempo
+                    worst_index = seg.get("index", pos)
+        # 响度归一（上游 f1709f7）：逐句拉平到 -18 LUFS，混音后音量稳定
         filters.append("loudnorm=I=-18:TP=-2:LRA=7")
         cmd += ["-filter:a", ",".join(filters)]
         cmd += ["-ac", "1", "-ar", "16000", wav_p]
@@ -965,7 +1396,20 @@ def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
     rc, _, err = _media.run_ffmpeg(cmd)
     if rc != 0:
         raise _media.MediaError(f"配音合成失败: {err[-200:]}")
-    return out_path
+    stats = {
+        "segments": len(wavs),
+        "compressed": compressed,
+        "overflow": overflow,
+        "max_overflow_ratio": round(max_overflow_ratio, 3),
+        "worst_index": worst_index,
+    }
+    return out_path, stats
+
+
+def _build_timed_audio(segments: list[dict], dubs: list[str], duration_s: float,
+                       out_path: str) -> str:
+    """_mix_timed_audio 的薄封装：仅取路径，返回值仍为 str（旧调用方/demo 依赖）。"""
+    return _mix_timed_audio(segments, dubs, duration_s, out_path)[0]
 
 
 def _strip_audio(video_path: str, out_path: str) -> str:

@@ -125,6 +125,9 @@ class LocalizerConfig(BaseModel):
     #    导致 TaskManager 初始化必 AttributeError、任务引擎整体不可用）──
     data_dir: str = "~/flowmind-data"   # 任务工作目录基准（~ 由 manager 展开为绝对路径）
     max_pending_tasks: int = 100        # 待处理任务上限（超出拒绝受理，背压）
+    # 单租户 pending 上限（SaaS 公平性，2026-10-31）：防一个租户的批量提交
+    # 塞满全队列把其他租户全部挤成 429；未启用鉴权（tenant 为空）时不生效
+    max_pending_per_tenant: int = 20
     task_ttl_seconds: int = 3600        # 终态任务保留时长（秒），超时回收
 
     # ── 语言默认值 ──
@@ -164,6 +167,84 @@ class LocalizerConfig(BaseModel):
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
     localize_tts_model: str = "qwen-audio-3.0-tts-flash"  # 配音 TTS 模型
     localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
+
+    # ── 本地/云后端开关（GPU 化升级：本地优先，云为回落；2026-09-09 从 5e9911d 恢复
+    #    ——config 重构丢失，导致 _select_asr/_select_ocr 必 AttributeError）──
+    # auto = 本地库可导入即用本地，否则回落云；两端都不可用显式报错（不静默降级）
+    # local = 强制本地（库缺失显式报错）；cloud = 强制云
+    asr_backend: str = "auto"           # ASR：local(faster-whisper) / cloud(dashscope) / auto
+    local_asr_model: str = "small"      # faster-whisper 模型名（small/medium；8GB 显存够 medium）
+    local_asr_device: str = "cuda"      # cuda / cpu
+    ocr_backend: str = "auto"           # OCR：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto
+
+    # ── 后端开关补声明（历史 config 重构丢失，localize_video 曾靠 getattr 兜底）──
+    erase_backend: str = "auto"         # 字幕擦除：local(LaMa) / delogo / auto
+    tts_backend: str = "auto"           # 配音：local(Qwen3-TTS 克隆) / cloud / auto
+    bgm_vocal_sep: bool = True          # 配音前是否用 demucs 净化背景音（避免原声人声残留）
+
+    # ── 多人对话出海本地化（说话人分离 / 参考音频 / 术语表 / 配音时长控制）──
+    diarize_backend: str = "auto"            # 说话人分离：local(CAM++) / off / auto
+    local_diarize_model: str = "cam++"       # funasr 说话人分离模型
+    local_diarize_device: str = "cpu"        # cpu（不占 8GB 显存预算）/ cuda
+    diarize_merge_thr: float = 0.78          # 声纹簇心余弦合并阈值（funasr ClusterBackend 默认）
+    diarize_min_cluster_seconds: float = 3.0 # 累计时长低于此的说话人簇按时间折叠进最近大簇
+                                             # （去除噪声离群窗被误判的「说话人」；
+                                             #  None 类数固定时不折叠）
+    speaker_ref_min_seconds: float = 3.0     # 说话人参考音频下限（低于则标记低置信）
+    speaker_ref_target_seconds: float = 10.0 # 说话人参考音频目标长度
+    speaker_ref_max_seconds: float = 15.0    # 说话人参考音频上限
+    glossary_path: str = ""                  # 本地化术语表文件路径；空 = 不启用
+    dub_max_tempo: float = 1.3               # 配音压缩的无损感变速上限（超过则接受溢出）
+    dub_speed_factors: dict[str, float] = Field(default_factory=dict)
+                                             # 每秒可念字符数覆盖表（按目标语，如 {"en": 12.5}），
+                                             # 用于按真实成片校准配音长度预算；
+                                             # 空 = 沿用 _llm_translate.LANG_SPEED_FACTOR 经验表
+    tts_engine: str = "qwen3-tts"            # 本地 TTS 引擎：qwen3-tts / indextts2
+
+
+class DecideConfig(BaseModel):
+    """System One 决策模型（Jev 云 / Laya 本地 sidecar）配置。
+
+    用途：给「用大 LLM 做小判定」的场景换成专门的非自回归决策模型——
+    单次前向直接返回带校准概率的结构化答案，不生成文本、无解析失败。
+
+    ⚠ **本地后端默认走独立 venv 的 HTTP sidecar**：仓库根 ``laya_sidecar.py``，
+    主环境只走 HTTP、不 import laya，保持模型依赖与主流水线进程隔离。
+    （实测 ``laya`` 0.3.20 依赖仅 ``torch>=2.0`` / ``transformers>=4.48``，
+    与本仓库 torch 2.6.0+cu126 / transformers 4.57.3 相容——sidecar 是隔离
+    选择，不再是版本冲突的硬要求。）
+
+    配置源顺序（全仓库统一）：env → 本字段 → 内置默认。env 名：
+    ``FLOWMIND_DECIDE_BACKEND`` / ``FLOWMIND_DECIDE_BASE_URL``。
+    TypeSafe key 只从环境变量 ``TYPESAFE_API_KEY`` 读，绝不进 toml / commit。
+    """
+
+    backend: str = "auto"            # local（Laya sidecar）| cloud（Jev）| auto
+    local_base_url: str = ""         # Laya sidecar 基址；空 = 本地后端未配置
+    local_model: str = "auto"        # auto = 由 Laya Router 按语种自动选 checkpoint
+                                     # （laya / laya-multilingual / laya-typed-decisions）
+    cloud_model: str = "jev-latest"  # TypeSafe 模型别名
+    cloud_base_url: str = ""         # 云端点基址；空 = 官方 https://api.typesafe.ai
+                                     # （env TYPESAFE_BASE_URL；接中转/聚合网关时填）
+    timeout_s: float = 15.0          # 单次决策 HTTP 超时（秒）
+
+    # ── 试点接入开关（默认关：不影响现有 demo 与默认行为）──
+    # localize_search 检索结果重排：召回后由决策模型对 query-片段相关性
+    # 重排。仅改 hits 顺序与 risk_note，不改 SearchHit / SearchReport 字段。
+    search_rerank: bool = Field(default=False, validate_default=True)
+    # env FLOWMIND_DECIDE_SEARCH_RERANK（"1"/"true" 开）
+    search_rerank_top_n: int = 20    # 参与重排的候选上限（超出的保持原序追加尾部）
+
+    @field_validator("search_rerank", mode="before")
+    @classmethod
+    def _env_search_rerank(cls, v: bool) -> bool:
+        """env FLOWMIND_DECIDE_SEARCH_RERANK 覆盖（1/true 开，0/false 关）。"""
+        raw = os.environ.get("FLOWMIND_DECIDE_SEARCH_RERANK", "").strip().lower()
+        if raw in ("1", "true", "yes"):
+            return True
+        if raw in ("0", "false", "no"):
+            return False
+        return v
 
 
 class ContentConfig(BaseModel):
@@ -855,6 +936,7 @@ class FlowmindConfig(BaseModel):
     marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
     editing: EditingConfig = Field(default_factory=EditingConfig)
+    decide: DecideConfig = Field(default_factory=DecideConfig)
     content: ContentConfig = Field(default_factory=ContentConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     keyword_trend: KeywordTrendConfig = Field(default_factory=KeywordTrendConfig)

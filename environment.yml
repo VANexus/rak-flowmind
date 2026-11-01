@@ -10,10 +10,20 @@
 #   conda run -n flowmind pip install -e . --no-deps  # 包本体 + entry points
 #
 # GPU 说明（NVIDIA P104-100，8GB，Compute Capability 6.1 / Pascal）：
-#   - torch 锁 2.5.1+cu121：cu121 构建含 sm_61（Pascal），且携带
-#     nvidia-*-cu12 pip 依赖（含 cuDNN 9），与 ctranslate2(faster-whisper)
-#     的 GPU 运行时需求对齐。cu124+ 构建已剔除 Pascal，勿升级改源。
+#   - torch 锁 2.6.0+cu126：cu126 是**唯一仍带 Pascal 的 CUDA 构建**——
+#     PyTorch 各版本的 .ci/manywheel 构建表里只有 12.6 保留 "5.0;6.0"，
+#     cu128/12.9/13.x 均已剔除 sm_50~sm_70。它同时携带 nvidia-*-cu12 pip
+#     依赖（含 cuDNN 9），与 ctranslate2(faster-whisper) 的 GPU 运行时需求对齐。
+#     注意 wheel 里是 sm_60 cubin（无 sm_61），靠同 major 内前向兼容跑在 sm_61
+#     的 P104 上——cu121 的 2.5.1 同理（其 arch_list 同样只有 sm_60）。
+#     ⚠️ 勿升到 cu128+：那会直接丢失 Pascal 支持。
 #   - 模型缓存/下载已配在 ~/.bashrc：HF_HOME=/srv/data/models + 代理 127.0.0.1:7890
+#     国内网络下 download.pytorch.org 走代理极慢（实测 ~64KB/s），可临时改用
+#     阿里云镜像加速（已验证 22MB/s，内容与官方 cu126 索引一致）：
+#       pip install --index-url https://mirrors.aliyun.com/pypi/simple/ \
+#         --find-links https://mirrors.aliyun.com/pytorch-wheels/cu126/ \
+#         "torch==2.6.0+cu126" "torchaudio==2.6.0+cu126" \
+#         "nvidia-cublas-cu12==12.6.4.1" "nvidia-cudnn-cu12==9.5.1.17"
 # ──────────────────────────────────────────────────────────────
 name: flowmind
 channels:
@@ -25,13 +35,13 @@ dependencies:
       - scenedetect
       - opencv-python-headless
       # ── GPU 运行时（Pascal 6.1 约束见文件头注释）──
-      - --extra-index-url https://download.pytorch.org/whl/cu121
-      - torch==2.5.1+cu121
-      #   CUDA 伴生库必须钉到 torch 2.5.1+cu121 metadata 所需的精确版本：
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - torch==2.6.0+cu126
+      #   CUDA 伴生库必须钉到 torch 2.6.0+cu126 metadata 所需的精确版本：
       #   conda env update 的 pip 子进程带 -U，裸名称会被解析到最新版
-      #   （cublas 12.9 / cudnn 9.25），与 torch 的 CUDA 12.1 运行时不兼容。
-      - nvidia-cublas-cu12==12.1.3.1
-      - nvidia-cudnn-cu12==9.1.0.70
+      #   （cublas 12.9 / cudnn 9.25），与 torch 的 CUDA 12.6 运行时不兼容。
+      - nvidia-cublas-cu12==12.6.4.1
+      - nvidia-cudnn-cu12==9.5.1.17
       # ── 本地模型栈（进程内库，lazy import）──
       - faster-whisper>=1.0        # 本地 ASR（CTranslate2，支持 CC≥6.0）
       # 本地 OCR（CPU）。**新包名** `rapidocr` v3（2026-10-16 修漂移：此前钉旧包
@@ -54,9 +64,14 @@ dependencies:
       #   （字幕擦除 erase_backend=local/lama 用，big-lama 首次用时代理下载模型）。
       - qwen-tts>=0.1.1            # 本地声音克隆（Qwen3-TTS 0.6B Base，零样本；
                                    #   首次用时代理下载模型到 HF 缓存）
-      # ⚠️ qwen-tts 会把 torchaudio 升到不匹配 torch 2.5.1 的版本
-      #    （libcudart.so.13 加载失败），必须在其后重新钉回 cu121 配套版
-      - torchaudio==2.5.1+cu121
+      - funasr>=1.4                # 本地说话人分离（CAM++ 192 维声纹嵌入 + 谱聚类；
+                                   #   多人对话逐角色配音用，默认 CPU 不占 8GB 显存）
+                                   #   ⚠️ 会带入 modelscope / onnxruntime / torch_complex 等；
+                                   #   首次用时代理从 modelscope 下载 CAM++ 与 VAD 模型
+      # ⚠️ qwen-tts 与 funasr 都可能把 torch/torchaudio 升到不匹配 torch 2.6.0
+      #    的版本（libcudart.so.13 加载失败），必须在其后重新钉回 cu126 配套版
+      - torch==2.6.0+cu126
+      - torchaudio==2.6.0+cu126
       - demucs>=4.0                # 本地人声分离（htdemucs，MIT）；BGM 净化用
                                    #   ⚠️ 模型 ~160MB 首次经代理下载到 TORCH_HOME
                                    #   （/srv/data/models/torch，见 CLAUDE.md 缓存约定）
@@ -74,6 +89,10 @@ dependencies:
       - httpx>=0.27
       - dashscope>=1.27.1          # 云回落（qwen-audio ASR/TTS / qwen3.5-ocr / 声音复刻）
       - numpy>=1.26
+      # ── 包装刀板族（packaging_dieline）──
+      - shapely>=2.0               # 几何独立复核：并集/外扩/线长，与前端 clipper-lib 对账（硬前置）
+      - ezdxf>=1.3                 # DXF 刀模文件（模切厂直接可用）；懒加载——缺它少产一件并如实写进 missing
+      - reportlab>=4.2             # 1:1 毫米 PDF 刀线；同上（懒加载，不装不影响其它族）
       # ── 任务引擎基础设施（PG 存储 / MQTT 事件 / Milvus 向量库）──
       - psycopg2-binary>=2.9       # TaskStore（经 PgBouncer 事务模式，短连接）
       - paho-mqtt>=2.0             # 任务进度事件（EMQX，终态 retain）
