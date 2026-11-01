@@ -9,10 +9,10 @@
 - 简化不得牺牲：信任边界校验、防数据丢失的错误处理、安全、可访问性、用户明确要求的功能。
 - 绿地目标、迁移阶段与待办见 [docs/architecture/greenfield/design.md](docs/architecture/greenfield/design.md)；开工前先读，目标态不等于已实施。
 
-> 🚀 **功能迭代期（2026-09-10，用户裁决解冻）**：本仓库核心是 GPU 视频本地化，
-> 当前围绕本主线快速功能迭代（含 AIGC 增值能力）。生态定位见
-> [../.rak-docs/ECOSYSTEM.md](../.rak-docs/ECOSYSTEM.md)；破坏性重构与
-> 对外契约变更仍需用户确认，常规功能开发按本文工作流直接推进。
+> **冻结状态（以 ECOSYSTEM 与工作区 AGENTS 为准，ECO-ADR-0024）**：本仓维护冻结。
+> 2026-09-10 的“功能迭代期解冻”是历史例外，不构成持续授权。任何代码、依赖、
+> 契约、数据或部署变更仍需用户逐项明确批准。生态定位见
+> [../.rak-docs/ECOSYSTEM.md](../.rak-docs/ECOSYSTEM.md)。
 
 > 给**使用 Claude Code（或类似 AI 编程助手）参与本仓库开发**的协作者看。
 > 这份文档假设你熟悉 Claude Code 但不熟悉本项目代码结构。
