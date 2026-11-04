@@ -308,6 +308,75 @@ class ContentConfig(BaseModel):
     audit_llm_enabled: bool = True  # 审计是否启用 LLM 复核（规则扫描始终执行）
 
 
+class OpenFilmConfig(BaseModel):
+    """可选 OpenFilm 后端配置（``editing.backend = "openfilm"``）。
+
+    OpenFilm 是**可选能力**：不安装、不配置时，CyberCut（默认）与旧
+    FlowMind 流水线完全不受影响。FlowMind 只通过 OpenFilm CLI 创建/打开
+    项目并渲染成片；电影内容由外部编程 Agent 在工作区内创作（FlowMind
+    不内置编程 Agent 运行时）。
+
+    CLI 解析顺序：``cli`` 配置（env ``FLOWMIND_OPENFILM_CLI``）→ PATH 上的
+    ``openfilm``。``cli`` 指向 ``.mjs``/``.js`` 时用 ``node`` 执行（需 Node
+    >= 22.2，可用 ``node`` 字段/env ``FLOWMIND_OPENFILM_NODE`` 指定）；
+    指向原生可执行文件时直接执行；Windows npm 的 ``.cmd``/``.bat`` shim 会
+    静态解析出 ``.mjs`` 入口后以 ``node <mjs>`` 启动（不经 cmd.exe/shell）。
+    子进程始终使用参数数组 + ``shell=False``，且只接受本模块构造的参数。
+    """
+
+    cli: str = Field(default="", validate_default=True)   # env FLOWMIND_OPENFILM_CLI
+    node: str = Field(default="", validate_default=True)  # env FLOWMIND_OPENFILM_NODE
+    # OpenFilm 需要 PATH 上的 ffmpeg/ffprobe；这里配置的 bin 目录**只注入
+    # 本适配器启动的子进程**，不改进程全局 PATH。空 = 沿用
+    # FLOWMIND_MEDIA_BIN_DIR（FlowMind 既有媒体工具目录）或系统 PATH。
+    ffmpeg_bin_dir: str = Field(default="", validate_default=True)  # env FLOWMIND_OPENFILM_FFMPEG_BIN_DIR
+    open_timeout_s: float = Field(default=300.0, gt=0)   # `openfilm open` 超时（首跑含 Chromium 下载）
+    render_timeout_s: float = Field(default=3600.0, gt=0)  # 整片渲染超时
+    render_fps: int = Field(default=30, ge=1, le=240)
+    # True=子进程带 OPENFILM_NO_BROWSER=1：Studio 服务照常启动并返回地址，
+    # 但不擅自拉起系统浏览器（由调用方在外部窗口打开返回的 studio_url）。
+    no_browser: bool = Field(default=True, validate_default=True)
+    # OpenFilm 智能剪辑默认审批闸：外部 Agent 完成项目后先审片再渲染。
+    # 显式传 review_stages=[] 可全自动渲染。
+    default_review_stages: list[str] = Field(
+        default_factory=lambda: ["pre_render"])
+
+    @field_validator("cli", "node", "ffmpeg_bin_dir", mode="before")
+    @classmethod
+    def _env_strings(cls, v: str, info: ValidationInfo) -> str:
+        """env 覆盖（空值不生效，回落 toml / 内置默认）。"""
+        ensure_env_loaded()
+        env_names = {
+            "cli": "FLOWMIND_OPENFILM_CLI",
+            "node": "FLOWMIND_OPENFILM_NODE",
+            "ffmpeg_bin_dir": "FLOWMIND_OPENFILM_FFMPEG_BIN_DIR",
+        }
+        env = os.environ.get(env_names[info.field_name], "").strip()
+        return env or v
+
+    @field_validator("no_browser", mode="before")
+    @classmethod
+    def _env_no_browser(cls, v: bool) -> bool:
+        """env FLOWMIND_OPENFILM_NO_BROWSER 覆盖（1/true 开，0/false 关）。"""
+        ensure_env_loaded()
+        raw = os.environ.get("FLOWMIND_OPENFILM_NO_BROWSER", "").strip().lower()
+        if raw in ("1", "true", "yes"):
+            return True
+        if raw in ("0", "false", "no"):
+            return False
+        return v
+
+    @field_validator("default_review_stages")
+    @classmethod
+    def _only_pre_render_gate(cls, v: list[str]) -> list[str]:
+        """OpenFilm 只有 pre_render 审片闸；配置错时启动即报错而非静默失效。"""
+        bad = [stage for stage in v if stage != "pre_render"]
+        if bad:
+            raise ValueError(
+                f"OpenFilm 仅支持 pre_render 审批闸，不支持：{bad}")
+        return v
+
+
 class EditingConfig(BaseModel):
     """Agent 智能视频剪辑（edit_* 技能 + editing 流水线）的可配置参数。
 
@@ -326,8 +395,10 @@ class EditingConfig(BaseModel):
     llm_max_tokens: int = 16384
 
     # ── 流水线治理 ──
-    # CyberCut 是 edit_* 的 DAG 执行后端；旧版 FlowMind 流水线可显式切回。
-    backend: Literal["cybercut", "flowmind"] = "cybercut"
+    # CyberCut 是 edit_* 的默认 DAG 执行后端；旧版 FlowMind 流水线可显式
+    # 切回；OpenFilm 是**可选**外部创作/Studio/渲染后端（默认关闭）。
+    backend: Literal["cybercut", "flowmind", "openfilm"] = "cybercut"
+    openfilm: OpenFilmConfig = Field(default_factory=OpenFilmConfig)
     # 默认审批阶段：分镜是审批主战场（用户决策：全自动为主，可逐阶段开审批）
     default_review_stages: list[str] = Field(
         default_factory=lambda: ["storyboard"])

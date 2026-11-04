@@ -17,14 +17,18 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from flowmind.config import load_config
 from flowmind.contracts import Evidence, ReasoningChain, SkillOutput
-from flowmind.editing.models import ProjectRecord
+from flowmind.editing.models import (
+    PSTATE_AWAITING_AGENT,
+    STAGE_AUTHORING,
+    ProjectRecord,
+)
 from flowmind.editing.store import ProjectStoreError, get_project_store
 from flowmind.skill import skill
 from flowmind.skills.localize_submit import _split_paths
 from flowmind.tasks import TaskQueueFull
 from flowmind.tasks.manager import get_task_manager
 
-_VERSION = "0.1.0"
+_VERSION = "0.2.0"
 
 PIPELINE_SKILL_ID = "edit_pipeline"   # 项目任务的执行技能（内部）
 
@@ -33,8 +37,9 @@ class EditProjectInput(BaseModel):
     """创建剪辑项目入参。"""
 
     assets: list[str] = Field(
-        ..., min_length=1,
-        description="素材路径列表（视频/图片/音频；本地路径须位于上传沙箱内）")
+        default_factory=list,
+        description="素材路径列表（视频/图片/音频；本地路径须位于上传沙箱内）；"
+                    "OpenFilm 后端可为空（内容由外部编程 Agent 创作）")
     theme: str = Field(min_length=1, description="创作主题/要求")
     style: str | None = Field(default=None, description="风格关键词")
     target_duration_s: float | None = Field(
@@ -57,8 +62,10 @@ class EditProjectInput(BaseModel):
     @field_validator("assets")
     @classmethod
     def _no_empty(cls, v: list[str]) -> list[str]:
+        # 空列表合法：OpenFilm 后端的内容由外部 Agent 创作，可以没有初始
+        # 素材；非 OpenFilm 后端在 model_validator 里仍要求至少一条。
         cleaned = [p for p in v if isinstance(p, str) and p.strip()]
-        if not cleaned:
+        if v and not cleaned:
             raise ValueError("assets 不能全为空字符串")
         return cleaned
 
@@ -84,7 +91,7 @@ class EditProjectInput(BaseModel):
                 f"v1 暂不支持 URL 素材（下载能力留 v2），请先上传到服务器"
                 f"（data_dir/uploads/）：{urls}")
         accepted, rejected = _split_paths(self.assets, cfg.allowed_asset_exts)
-        if not accepted:
+        if not accepted and (cfg.backend != "openfilm" or self.assets):
             raise ValueError(
                 f"全部素材被拒（允许扩展名：{cfg.allowed_asset_exts}；本地路径"
                 f"必须位于 data_dir/uploads/ 内；FLOWMIND_ALLOW_ANY_PATH=1 "
@@ -107,6 +114,16 @@ class EditProjectInput(BaseModel):
             raise ValueError("watermark_bbox 仅支持视频素材；请移除该项目中的图片素材")
         if cfg.backend == "flowmind" and self.watermark_bbox is not None:
             raise ValueError("watermark_bbox 仅在 CyberCut 后端支持")
+        if cfg.backend == "openfilm" and self.watermark_bbox is not None:
+            raise ValueError(
+                "watermark_bbox 仅由 CyberCut 后端做 LaMa 预处理；"
+                "OpenFilm 项目请由外部 Agent 在 film.html/CSS 中处理画面")
+        if cfg.backend == "openfilm" and self.review_stages:
+            bad = [s for s in self.review_stages if s != "pre_render"]
+            if bad:
+                raise ValueError(
+                    f"OpenFilm 仅支持 pre_render 审批闸（外部 Agent 完成项目后"
+                    f"审片再渲染），不支持：{bad}")
         if len(accepted) > cfg.max_assets:
             raise ValueError(
                 f"素材数 {len(accepted)} 超过上限 {cfg.max_assets}")
@@ -129,14 +146,26 @@ class EditProjectInput(BaseModel):
 
 
 class EditProjectReport(BaseModel):
-    """创建项目业务载荷。"""
+    """创建项目业务载荷。
+
+    ``backend=openfilm`` 时不提交流水线任务（task_id 为空）：内容由外部
+    编程 Agent 在 ``workspace`` 内创作；后续用 edit_openfilm_studio /
+    edit_openfilm_render 操作，用 edit_status 查询。
+    """
     project_id: str
-    task_id: str
+    task_id: str = ""
     skill_id: str = PIPELINE_SKILL_ID
+    backend: str = "flowmind"
     assets_accepted: int
     assets_rejected: list[str] = Field(default_factory=list)
     review_stages: list[str] = Field(default_factory=list)
     state: str = "running"
+    workspace: str | None = Field(
+        default=None, description="OpenFilm 项目工作区（绝对路径）")
+    entry_file: str | None = Field(
+        default=None, description="OpenFilm 入口文件（film.html）")
+    agent_brief: str | None = Field(
+        default=None, description="外部编程 Agent 的下一步创作说明")
     next: str = ("轮询 edit_status 获取进度；审批闸打开时经 edit_review "
                  "approve/revise/reject 驱动；进度事件走任务事件通道")
 
@@ -144,12 +173,17 @@ class EditProjectReport(BaseModel):
 @skill(id="edit_project", name="智能剪辑项目创建（全链路）",
        version=_VERSION)
 def edit_project(inp: EditProjectInput) -> SkillOutput[EditProjectReport]:
-    """创建剪辑项目：落项目记录 + 提交 edit_pipeline 异步任务。"""
+    """创建剪辑项目：CyberCut/旧流水线提交任务；OpenFilm 建工作区待外部 Agent。"""
     cfg = load_config().editing
     accepted, rejected = _split_paths(inp.assets, cfg.allowed_asset_exts)
-    review_stages = (list(inp.review_stages)
-                     if inp.review_stages is not None
-                     else list(cfg.default_review_stages))
+    if cfg.backend == "openfilm":
+        review_stages = (list(inp.review_stages)
+                         if inp.review_stages is not None
+                         else list(cfg.openfilm.default_review_stages))
+    else:
+        review_stages = (list(inp.review_stages)
+                         if inp.review_stages is not None
+                         else list(cfg.default_review_stages))
 
     from flowmind.editing.pipeline import new_project_id
     project_id = new_project_id()
@@ -160,17 +194,24 @@ def edit_project(inp: EditProjectInput) -> SkillOutput[EditProjectReport]:
 
     from flowmind import auth
     required, tenant = auth.tenant_scope()
+    store = get_project_store()
+
+    if cfg.backend == "openfilm":
+        return _create_openfilm_project(
+            inp, project_id, review_stages, accepted, rejected,
+            input_dump, tenant, store)
+
     project = ProjectRecord(
-        project_id=project_id, review_stages=review_stages,
+        project_id=project_id, backend=cfg.backend,
+        review_stages=review_stages,
         input=input_dump, tenant_id=tenant,
     )
-    store = get_project_store()
     try:
         store.save_project(project)
     except ProjectStoreError as exc:
         return SkillOutput(
             data=EditProjectReport(
-                project_id=project_id, task_id="",
+                project_id=project_id, task_id="", backend=cfg.backend,
                 assets_accepted=len(accepted), assets_rejected=rejected,
                 review_stages=review_stages, state="failed"),
             reasoning=[ReasoningChain(
@@ -200,7 +241,7 @@ def edit_project(inp: EditProjectInput) -> SkillOutput[EditProjectReport]:
 
     return SkillOutput(
         data=EditProjectReport(
-            project_id=project_id, task_id=task_id,
+            project_id=project_id, task_id=task_id, backend=cfg.backend,
             assets_accepted=len(accepted), assets_rejected=rejected,
             review_stages=review_stages),
         reasoning=[ReasoningChain(
@@ -216,6 +257,140 @@ def edit_project(inp: EditProjectInput) -> SkillOutput[EditProjectReport]:
             risk_note=("分镜阶段将暂停等待人工审批（approve/revise/reject）"
                        if review_stages else
                        "全自动模式：全程无人工介入，产物见 edit_status"),
+            confidence=1.0)],
+        confidence=1.0,
+        sample_size=len(accepted),
+    )
+
+
+def _create_openfilm_project(
+    inp: EditProjectInput, project_id: str, review_stages: list[str],
+    accepted: list[str], rejected: list[str], input_dump: dict,
+    tenant: str | None, store,
+) -> SkillOutput[EditProjectReport]:
+    """OpenFilm 项目：只建工作区 + 记录，不提交任务（无内置编程 Agent）。"""
+    from flowmind.editing.openfilm_backend import (
+        OPENFILM_EXTRA_HINT,
+        OpenFilmError,
+        create_workspace,
+    )
+
+    input_dump["review_stages"] = review_stages
+    project = ProjectRecord(
+        project_id=project_id, backend="openfilm",
+        state=PSTATE_AWAITING_AGENT, stage=STAGE_AUTHORING,
+        stages={"authoring": "pending", "pre_render": "pending",
+                "render": "pending"},
+        review_stages=review_stages, input=input_dump, tenant_id=tenant,
+    )
+    try:
+        store.save_project(project)
+    except ProjectStoreError as exc:
+        return SkillOutput(
+            data=EditProjectReport(
+                project_id=project_id, task_id="", skill_id="",
+                backend="openfilm",
+                assets_accepted=len(accepted), assets_rejected=rejected,
+                review_stages=review_stages, state="failed"),
+            reasoning=[ReasoningChain(
+                conclusion="项目存储不可用，未受理",
+                causal_analysis=str(exc)[:500],
+                risk_note="检查 PG 配置或文件回落开关后重试", confidence=1.0)],
+            confidence=1.0, degraded=True, degradation_reason="environment")
+
+    try:
+        created = create_workspace(
+            project_id, theme=inp.theme, style=inp.style,
+            target_duration_s=inp.target_duration_s,
+            aspect_ratio=inp.aspect_ratio, extra_brief=inp.extra_brief,
+            review_stages=review_stages, asset_sources=accepted,
+        )
+    except OpenFilmError as exc:
+        project.state = "failed"
+        project.error = f"OpenFilm 工作区创建失败：{exc}"
+        store.save_project(project)
+        return SkillOutput(
+            data=EditProjectReport(
+                project_id=project_id, task_id="", skill_id="",
+                backend="openfilm",
+                assets_accepted=len(accepted), assets_rejected=rejected,
+                review_stages=review_stages, state="failed"),
+            reasoning=[ReasoningChain(
+                conclusion="OpenFilm 项目工作区创建失败",
+                causal_analysis=str(exc)[:500],
+                risk_note="检查 data_dir 写权限与素材文件后重试",
+                confidence=1.0)],
+            confidence=1.0, degraded=True, degradation_reason=exc.category)
+    except OSError as exc:
+        project.state = "failed"
+        project.error = f"OpenFilm 工作区创建失败：{exc}"
+        store.save_project(project)
+        return SkillOutput(
+            data=EditProjectReport(
+                project_id=project_id, task_id="", skill_id="",
+                backend="openfilm",
+                assets_accepted=len(accepted), assets_rejected=rejected,
+                review_stages=review_stages, state="failed"),
+            reasoning=[ReasoningChain(
+                conclusion="OpenFilm 项目工作区创建失败",
+                causal_analysis=str(exc)[:500],
+                risk_note="检查 data_dir 写权限与素材文件后重试",
+                confidence=1.0)],
+            confidence=1.0, degraded=True, degradation_reason="environment")
+
+    meta = {
+        "workspace": created["workspace"],
+        "entry_file": "film.html",
+        "assets": created["assets"],
+        "review_stages": review_stages,
+        "created_at": created.get("created_at"),
+        "studio_url": None,
+        "render": {"status": "authored_pending"},
+    }
+    project.input["openfilm"] = meta
+    project.state = PSTATE_AWAITING_AGENT
+    project.stage = STAGE_AUTHORING
+    store.save_project(project)
+
+    workspace = created["workspace"]
+    entry = created["entry_file"]
+    brief = (
+        f"OpenFilm 工作区已就绪：{workspace}\n"
+        f"入口文件：{entry}（空白片，外部 Agent 直接改写/扩展）\n"
+        f"素材目录：{workspace}\\assets（已复制 {len(accepted)} 个素材）\n"
+        "外部 Agent 只在该工作区创作 film.html / 页面 / assets；"
+        f"详见 {workspace}\\AGENTS.md。\n"
+        "创作完成后：1) 可选 edit_openfilm_studio 获取 Studio 地址并在外部"
+        "浏览器打开；2) edit_openfilm_render（只传 project_id）开始渲染；"
+        "3) edit_status 查询渲染进度与 output.mp4。"
+        + ("\n审批：pre_render 闸已开启，edit_openfilm_render 会先进入 "
+           "awaiting_review，由 edit_review approve/revise/reject。"
+           if review_stages else "\n审批：未开启（review_stages=[]），"
+           "edit_openfilm_render 直接开始渲染。")
+        + f"\n{OPENFILM_EXTRA_HINT}"
+    )
+    return SkillOutput(
+        data=EditProjectReport(
+            project_id=project_id, task_id="", skill_id="",
+            backend="openfilm",
+            assets_accepted=len(accepted), assets_rejected=rejected,
+            review_stages=review_stages, state=PSTATE_AWAITING_AGENT,
+            workspace=workspace, entry_file=entry, agent_brief=brief,
+            next="等待外部编程 Agent 在工作区创作 OpenFilm 项目；随后调用 "
+                 "edit_openfilm_render（或先 edit_openfilm_studio）"),
+        reasoning=[ReasoningChain(
+            conclusion=f"OpenFilm 项目工作区已创建：{project_id}",
+            evidence=[Evidence(metric="assets_copied",
+                               value=str(len(accepted)), comparison="=="),
+                      Evidence(metric="review_gates",
+                               value=",".join(review_stages) or "全自动",
+                               comparison="==")],
+            causal_analysis=(
+                "edit_project(openfilm) → 项目记录落库（awaiting_agent）→ "
+                "创建 data_dir/editing/<id>/openfilm 工作区 → 复制素材 → "
+                "返回外部 Agent 创作入口；不提交任何内置创作任务"),
+            risk_note=("FlowMind 不内置编程 Agent：需由外部 Agent 写入 "
+                       "film.html 后才能渲染"),
             confidence=1.0)],
         confidence=1.0,
         sample_size=len(accepted),
