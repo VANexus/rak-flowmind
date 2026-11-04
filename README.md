@@ -133,6 +133,30 @@ FLOWMIND_FEDERATION_PREFIX=dsp \
 `DSP_VIDEOGEN_API_KEY`），**绝不落 toml / commit**；未配置即如实降级或抛结构化错误，
 **绝不返回假产物**。
 
+## OpenFilm 可选后端（默认关闭）
+
+在保留 CyberCut（默认）与旧 FlowMind 流水线的前提下，可将 `editing.backend`
+切到 `"openfilm"`：FlowMind 仍是项目入口/状态/成片管理方，负责创建
+`data_dir/editing/<project_id>/openfilm` 工作区、打开 OpenFilm Studio（外部
+浏览器窗口）、提交渲染任务并把进度/失败/`output.mp4` 纳入 `edit_status`。
+OpenFilm 项目内容由**外部编程 Agent** 在工作区创作（FlowMind 不内置编程
+Agent 运行时）；`pre_render` 审批复用既有 `edit_review`。
+
+```bash
+# 可选依赖：Node >= 22.2 + openfilm CLI + ffmpeg/ffprobe（不装不影响现有功能）
+npm i -g openfilm
+
+# 配置（.env 或 flowmind.config.toml）后，新建项目走 OpenFilm
+# FLOWMIND_OPENFILM_CLI=/path/to/openfilm.mjs
+# FLOWMIND_OPENFILM_FFMPEG_BIN_DIR=D:/App/ffmpeg/bin
+# [editing] backend = "openfilm"
+```
+
+技能：`edit_project`（建 OpenFilm 工作区，不提交创作任务）→ 外部 Agent 写
+`film.html` →（可选）`edit_openfilm_studio` → `edit_openfilm_render` →
+`edit_review`（若开 `pre_render` 闸）→ `edit_status` 查成片。
+完整步骤、字段、错误/取消语义见 [docs/openfilm-integration.md](docs/openfilm-integration.md)。
+
 ## 两条通道的分工
 
 - **MCP tools/call**：轻技能同步调用（状态查询 / 检索 / 重试 / 取消），
