@@ -6,12 +6,13 @@ TaskContext.progress_cb、取消经 TaskContext.cancel_check 协作生效。
 阶段顺序与审批闸门（设计文档 §4）：
 
     understand → copy →[copy 闸]→ script →[script 闸]→ storyboard
-                →[storyboard/pre_render 闸]→ render → succeeded
+                →[storyboard 闸]→ [pre_render 闸]→ render → succeeded
 
-闸门语义：阶段产物落库后，若该闸在 project.review_stages 且未 approve，
+闸门语义：阶段产物落库后，若该阶段闸在 project.review_stages 且未 approve，
 项目置 awaiting_review 并**正常结束本次任务**（不占 GPU worker）；
-edit_review 的 approve/revise 驱动新的续跑任务。revise 把该阶段打回
-pending 并把反馈注入该阶段 LLM payload 的 _feedback 键。
+pre_render 闸在进入渲染前停靠（前置检查，续跑也能命中）。edit_review 的
+approve/revise 驱动新的续跑任务；失败/取消的项目经 edit_retry 断点续跑。
+revise 把该阶段打回 pending 并把反馈注入该阶段 LLM payload 的 _feedback 键。
 
 错误语义：阶段失败 → 项目 state=failed + error 落库 → 抛
 EditingStageError（category 与 errors.py 一致），由技能层转 degraded 信封。
@@ -50,6 +51,7 @@ from flowmind.editing.models import (
     TimelineDoc,
     TimelineShot,
     UnderstandReport,
+    clamp_transition,
 )
 from flowmind.editing.store import get_project_store
 from flowmind.tasks import CancelledError, current_task_context
@@ -114,6 +116,17 @@ def run_pipeline(project_id: str) -> ProjectRecord:
             if project.stages.get(stage) == STAGE_DONE:
                 continue
             _ctx_cancel(stage)
+            # pre_render 闸前置检查：进入渲染前停靠（续跑时前置阶段已 done
+            # 被跳过，只有前置检查才能让 pre_render 闸在续跑路径上命中）
+            if stage == STAGE_RENDER and _pending_gate(project, "pre_render"):
+                gate = "pre_render"
+                project.state = PSTATE_AWAITING_REVIEW
+                project.stage = gate
+                store.save_project(project)
+                _ctx_progress(STAGE_RENDER, _STAGE_PROGRESS[STAGE_RENDER][0],
+                              "awaiting_review", gate)
+                logger.info("项目 %s 进入审批等待：%s", project_id, gate)
+                return project
             project.state = PSTATE_RUNNING
             project.stage = stage
             store.save_project(project)
@@ -173,13 +186,14 @@ def _fail(project: ProjectRecord, store, message: str, *, stage: str) -> None:
     store.save_project(project)
 
 
-def _pending_gate(project: ProjectRecord, completed_stage: str) -> str | None:
-    """阶段完成后的审批闸：storyboard/pre_render 两道共用一个停靠点。"""
-    if completed_stage != STAGE_STORYBOARD:
-        return None
-    for gate in ("storyboard", "pre_render"):
-        if gate in project.review_stages and gate not in project.approved:
-            return gate
+def _pending_gate(project: ProjectRecord, gate: str) -> str | None:
+    """审批闸：该闸在 project.review_stages 且未 approve → 返回闸名（停靠）。
+
+    copy/script/storyboard 闸在对应阶段完成后检查；pre_render 闸由
+    run_pipeline 在进入渲染前前置检查（保证续跑路径也能命中）。
+    """
+    if gate in project.review_stages and gate not in project.approved:
+        return gate
     return None
 
 
@@ -225,7 +239,9 @@ def _stage_understand(project: ProjectRecord, store) -> None:
                     f"{'shots=' + str(len(shots)) if shots else ''}".strip(),
         )
         # v1.1 视觉理解：抽帧 → MiniMax vision 看图 + 读画面字幕。
-        # 失败=显式盲剪降级（vision_degraded 记原因，绝不静默）
+        # transient 失败=显式盲剪降级（vision_degraded 记原因，绝不静默）；
+        # environment/配额类失败=快速失败——同一 key 的 copy/script/storyboard
+        # 必然同样失败，盲剪只会白白烧完整个流水线（10-28 实测教训）
         cfg = _cfg().editing
         if kind == "video" and cfg.vision_enabled and info["duration_s"] > 1:
             n = min(cfg.understand_frame_samples, cfg.vision_max_frames)
@@ -240,16 +256,37 @@ def _stage_understand(project: ProjectRecord, store) -> None:
                     [(t, str(p)) for t, p in frames],
                     api_base=cfg.llm_api_base,
                     api_key=_api_key(cfg.llm_api_key_env) or "",
-                    model=cfg.llm_model, timeout_s=cfg.llm_timeout_s,
-                    max_tokens=cfg.llm_max_tokens, mock=cfg.mock)
-                asset.content_notes = [
-                    ContentNote(
-                        t_s=round(float(n0.get("t_s", times[j])), 2),
-                        scene=str(n0.get("scene", ""))[:200],
-                        subtitle=str(n0.get("subtitle", ""))[:200],
-                        importance=int(n0.get("importance", 3)))
-                    for j, n0 in enumerate(notes)]
-            except (edit_llm.EditingLLMError, media.MediaError) as exc:
+                    model=cfg.llm_vision_model or cfg.llm_model,
+                    timeout_s=cfg.llm_timeout_s,
+                    max_tokens=cfg.llm_max_tokens, mock=cfg.mock,
+                    max_attempts=cfg.llm_max_attempts,
+                    protocol=cfg.llm_protocol)
+                try:
+                    asset.content_notes = [
+                        ContentNote(
+                            t_s=round(float(n0.get("t_s", times[j])), 2),
+                            scene=str(n0.get("scene", ""))[:200],
+                            subtitle=str(n0.get("subtitle", ""))[:200],
+                            importance=int(n0.get("importance", 3)))
+                        for j, n0 in enumerate(notes)]
+                except (TypeError, ValueError) as exc:
+                    # 笔记字段脏数据：降级盲剪而非整项目失败（describe_frames
+                    # 已做数值清洗，这里是最后一道防线）
+                    raise edit_llm.EditingLLMError(
+                        f"vision 笔记字段不可解析：{exc}",
+                        category="transient") from exc
+            except edit_llm.EditingLLMError as exc:
+                if exc.category == "environment":
+                    raise EditingStageError(
+                        f"视觉理解环境/配额失败（快速失败，不做盲剪）：{exc}",
+                        category="environment",
+                        stage=STAGE_UNDERSTAND) from exc
+                asset.vision_degraded = f"{type(exc).__name__}: {exc}"
+                logger.warning("素材 %s 视觉理解降级（盲剪模式）：%s",
+                               asset.id, exc)
+                _ctx_progress(STAGE_UNDERSTAND, 8.0, "vision_degraded",
+                              str(exc)[:200])
+            except media.MediaError as exc:
                 asset.vision_degraded = f"{type(exc).__name__}: {exc}"
                 logger.warning("素材 %s 视觉理解降级（盲剪模式）：%s",
                                asset.id, exc)
@@ -298,6 +335,21 @@ def _feedback_payload(project: ProjectRecord, stage: str) -> dict:
     return {"_feedback": project.review_feedback.get(stage, [])}
 
 
+def _content_points(report: UnderstandReport, cap: int = 40) -> list[dict]:
+    """视觉内容点清单（喂给 copy/script 的事实弹药库）。
+
+    此前 copy/script 只看 asset_summary 一行摘要=闭眼写文案，实测产出
+    "第一点直击要害"式空洞排比（用户反馈"字幕文案很怪"）。cap 防多素材
+    载荷膨胀（storyboard 目录另有 _cap_catalog 预算守卫）。
+    """
+    points: list[dict] = []
+    for a in report.assets:
+        for c in a.content_notes:
+            points.append({"asset": a.id, "t_s": c.t_s,
+                           "scene": c.scene, "subtitle": c.subtitle})
+    return points[:cap]
+
+
 def _stage_copy(project: ProjectRecord, store) -> None:
     cfg = _cfg().editing
     report = _load_understand(project)
@@ -306,6 +358,7 @@ def _stage_copy(project: ProjectRecord, store) -> None:
         "style": project.input.get("style") or "",
         "target_duration_s": project.input.get("target_duration_s") or 0,
         "asset_summary": report.summary,
+        "content_points": _content_points(report),
         "extra_brief": project.input.get("extra_brief") or "",
         **_feedback_payload(project, STAGE_COPY),
     }
@@ -315,7 +368,8 @@ def _stage_copy(project: ProjectRecord, store) -> None:
         api_base=cfg.llm_api_base,
         api_key=_api_key(cfg.llm_api_key_env) or "",
         model=cfg.llm_model, timeout_s=cfg.llm_timeout_s,
-        max_tokens=cfg.llm_max_tokens, mock=cfg.mock)
+        max_tokens=cfg.llm_max_tokens, mock=cfg.mock,
+        max_attempts=cfg.llm_max_attempts, protocol=cfg.llm_protocol)
     _write_artifact(project.project_id, "copy.json", doc)
     _ctx_progress(STAGE_COPY, 35.0, "stage_done", f"标题：{doc.title}")
 
@@ -334,6 +388,7 @@ def _stage_script(project: ProjectRecord, store) -> None:
         "theme": project.input.get("theme", ""),
         "copy": copy_doc.model_dump(),
         "duration_budget_s": round(budget, 1),
+        "content_points": _content_points(report),
         "extra_brief": project.input.get("extra_brief") or "",
         **_feedback_payload(project, STAGE_SCRIPT),
     }
@@ -343,7 +398,8 @@ def _stage_script(project: ProjectRecord, store) -> None:
         api_base=cfg.llm_api_base,
         api_key=_api_key(cfg.llm_api_key_env) or "",
         model=cfg.llm_model, timeout_s=cfg.llm_timeout_s,
-        max_tokens=cfg.llm_max_tokens, mock=cfg.mock)
+        max_tokens=cfg.llm_max_tokens, mock=cfg.mock,
+        max_attempts=cfg.llm_max_attempts, protocol=cfg.llm_protocol)
     if not doc.sections:
         raise EditingStageError("脚本为空（LLM 产出 0 段）", category="unknown",
                                 stage=STAGE_SCRIPT)
@@ -360,13 +416,13 @@ def _stage_storyboard(project: ProjectRecord, store) -> None:
     if script_raw is None:
         raise EditingStageError("缺少 script.json", stage=STAGE_STORYBOARD)
     script = ScriptDoc.model_validate(script_raw)
-    catalog = [{
+    catalog = _cap_catalog([{
         "id": a.id, "kind": a.kind, "duration_s": a.duration_s,
         "width": a.width, "height": a.height,
         "shots": [s.model_dump() for s in a.shots] if a.kind == "video" else [],
         "content_notes": [c.model_dump() for c in a.content_notes],
         "summary": a.summary,
-    } for a in report.assets]
+    } for a in report.assets])
     payload = {
         "sections": [s.model_dump() for s in script.sections],
         "duration_budget_s": script.total_duration_s,
@@ -380,12 +436,61 @@ def _stage_storyboard(project: ProjectRecord, store) -> None:
         api_base=cfg.llm_api_base,
         api_key=_api_key(cfg.llm_api_key_env) or "",
         model=cfg.llm_model, timeout_s=cfg.llm_timeout_s,
-        max_tokens=cfg.llm_max_tokens, mock=cfg.mock)
+        max_tokens=cfg.llm_max_tokens, mock=cfg.mock,
+        max_attempts=cfg.llm_max_attempts, protocol=cfg.llm_protocol)
     _validate_storyboard(doc, report.assets)
+    # section_id 漂移（模型编了脚本里不存在的段落）置空 + 告警，不整段打回；
+    # 总时长显著偏离预算也只告警（渲染层会按素材实际时长钳制）
+    valid_sections = {s.id for s in script.sections}
+    for shot in doc.shots:
+        if shot.section_id and shot.section_id not in valid_sections:
+            logger.warning("镜头 %s 的 section_id=%s 不在脚本段落中，置空",
+                           shot.id, shot.section_id)
+            shot.section_id = ""
     doc.total_duration_s = round(sum(s.duration_s for s in doc.shots), 3)
+    budget = script.total_duration_s or float(
+        project.input.get("target_duration_s") or 0)
+    if budget > 0 and doc.total_duration_s > 0:
+        deviation = abs(doc.total_duration_s - budget) / budget
+        if deviation > 0.3:
+            _ctx_progress(
+                STAGE_STORYBOARD, 75.0, "budget_drift",
+                f"分镜总时长 {doc.total_duration_s}s 偏离预算 {budget}s "
+                f"超过 30%（{deviation:.0%}）")
     _write_artifact(project.project_id, "storyboard.json", doc)
     _ctx_progress(STAGE_STORYBOARD, 75.0, "stage_done",
                   f"{len(doc.shots)} 镜头 / {doc.total_duration_s}s")
+
+
+def _cap_catalog(catalog: list[dict], *,
+                 budget_chars: int = 150_000) -> list[dict]:
+    """storyboard 载荷预算守卫：素材目录超限时逐档裁剪（不静默丢素材）。
+
+    上限 20 素材 × 12 镜头 × 8 笔记全量内联可能打爆模型上下文。裁剪梯度：
+    先截文本 + 笔记按重要度留 top5 + 镜头留前 10；仍超限再压到 top3/前 8。
+    素材条目本身不删（分镜仍可引用全部素材，只是"看"得粗一点）。
+    """
+    if len(json.dumps(catalog, ensure_ascii=False)) <= budget_chars:
+        return catalog
+    for cap_notes, text_len, cap_shots in ((5, 120, 10), (3, 80, 8)):
+        catalog = [{
+            **a,
+            "content_notes": [
+                {**c, "scene": str(c.get("scene", ""))[:text_len],
+                 "subtitle": str(c.get("subtitle", ""))[:text_len]}
+                for c in sorted(a.get("content_notes") or [],
+                                key=lambda c: c.get("importance", 0),
+                                reverse=True)[:cap_notes]],
+            "shots": (a.get("shots") or [])[:cap_shots],
+            "summary": str(a.get("summary", ""))[:160],
+        } for a in catalog]
+        size = len(json.dumps(catalog, ensure_ascii=False))
+        if size <= budget_chars:
+            logger.info("素材目录裁剪后 %d 字符（预算 %d）", size, budget_chars)
+            return catalog
+    logger.warning("素材目录按最小档裁剪后仍 %d 字符（预算 %d），原样传入",
+                   size, budget_chars)
+    return catalog
 
 
 def _validate_storyboard(doc: StoryboardDoc, assets: list[AssetMeta]) -> None:
@@ -395,6 +500,10 @@ def _validate_storyboard(doc: StoryboardDoc, assets: list[AssetMeta]) -> None:
                                 stage=STAGE_STORYBOARD)
     by_id = {a.id: a for a in assets}
     for shot in doc.shots:
+        if shot.mode == "card":
+            raise EditingStageError(
+                f"镜头 {shot.id} 使用了保留模式 card（设计卡只能由"
+                f" title_card/end_card 字段产生）", stage=STAGE_STORYBOARD)
         asset = by_id.get(shot.source_asset)
         if asset is None:
             raise EditingStageError(
@@ -441,11 +550,20 @@ def _stage_render(project: ProjectRecord, store) -> None:
     # 的段 → xfade offset 越界报错），时间线以素材实际可取时长为准
     width, height, fps = _resolve_format(project, report)
     shots: list[TimelineShot] = []
+    # v1.3 设计卡 → 合成时间线镜头（深色底由 media 渲染，文字走 ASS 动画）
+    if storyboard.title_card is not None:
+        shots.append(TimelineShot(
+            id="card_title", section_id="", source_asset="", source_in=0.0,
+            duration_s=storyboard.title_card.duration_s, mode="card",
+            pan="none", transition="none", subtitle_text="",
+            note="开场设计卡"))
     for shot in storyboard.shots:
         asset = by_id[shot.source_asset]
         duration = shot.duration_s
         speed = shot.speed or 1.0
         freeze = shot.freeze_s or 0.0
+        # freeze 先对齐帧网格（tpad 按整帧补），保证内容段/定格段都落整帧
+        freeze = round(freeze * fps) / fps
         if asset.duration_s > 0:
             remain = asset.duration_s - shot.source_in
             if remain <= 0:
@@ -455,10 +573,21 @@ def _stage_render(project: ProjectRecord, store) -> None:
                     stage=STAGE_RENDER)
             # v1.1 变速源窗口 = (duration − freeze) × speed ≤ remain
             duration = max(0.3, min(duration, freeze + remain / speed))
+        # 时长量化到帧网格：段长按整帧落地（fps=30 时 1 帧 = 33ms），时间线
+        # /转场折算/实际段长必须同一网格，否则 offset 恒等式失效截掉尾镜
+        # （离线渲染回归实测）。量化值保留 6 位小数避免浮点表示噪声
+        duration = round(duration * fps) / fps
         shot_data = shot.model_dump()
-        shot_data.update(duration_s=round(duration, 3),
+        shot_data.update(duration_s=round(duration, 6), freeze_s=freeze,
+                         transition=clamp_transition(shot.transition),
                          source_path=asset.path)
         shots.append(TimelineShot(**shot_data))
+    if storyboard.end_card is not None:
+        shots.append(TimelineShot(
+            id="card_end", section_id="", source_asset="", source_in=0.0,
+            duration_s=storyboard.end_card.duration_s, mode="card",
+            pan="none", transition="fade", subtitle_text="",
+            note="片尾设计卡"))
     # 全局时间折算 xfade 重叠（转场是重叠耗时：成片总时长 = Σd − Σstep，
     # SRT/timeline 必须按折算后的时间轴对齐成片，否则字幕逐镜漂移）
     starts = media.effective_global_starts(
@@ -469,13 +598,29 @@ def _stage_render(project: ProjectRecord, store) -> None:
     total = starts[-1] + shots[-1].duration_s if shots else 0.0
     timeline = TimelineDoc(
         width=width, height=height, fps=fps,
-        duration_s=round(total, 3), shots=shots)
+        duration_s=round(total, 3), shots=shots,
+        title_card=storyboard.title_card, end_card=storyboard.end_card)
 
-    # ── 字幕 ──
-    srt_path = pdir / "output.srt"
-    srt_text = media.build_srt(shots)
-    srt_path.write_text(srt_text, encoding="utf-8")
-    timeline.srt_path = str(srt_path)
+    # ── BGM 底乐（v1.3：input.bgm_path 本地音频；缺失告警不阻断）──
+    bgm_raw = project.input.get("bgm_path")
+    if bgm_raw:
+        bgm_file = Path(bgm_raw)
+        if bgm_file.exists():
+            timeline.bgm_path = str(bgm_file)
+        else:
+            logger.warning("BGM 文件不存在，成片将无底乐：%s", bgm_raw)
+            _ctx_progress(STAGE_RENDER, 80.0, "bgm_missing", str(bgm_raw))
+
+    # ── 字幕（subtitle=False 跳过生成与烧录；timeline.srt_path=None 可查）──
+    # v1.3：ASS 动态字幕（关键词高亮/弹入/角标/设计卡文字）+ SRT 外挂兼容
+    ass_path: Path | None = None
+    srt_path: Path | None = None
+    if project.input.get("subtitle", True):
+        ass_path = pdir / "output.ass"
+        ass_path.write_text(media.build_ass(timeline), encoding="utf-8")
+        srt_path = pdir / "output.srt"
+        srt_path.write_text(media.build_srt(shots), encoding="utf-8")
+        timeline.srt_path = str(srt_path)
 
     # ── 口播（可选；mock 桩直接跳过合成）──
     if project.input.get("voiceover"):
@@ -487,7 +632,7 @@ def _stage_render(project: ProjectRecord, store) -> None:
                   f"{timeline.width}x{timeline.height}@{timeline.fps} "
                   f"{timeline.duration_s}s")
     out = media.render(
-        timeline, workdir=work, subtitle_srt=srt_path, mock=cfg.mock,
+        timeline, workdir=work, subtitle_file=ass_path, mock=cfg.mock,
         transition_duration_s=cfg.transition_duration_s,
         subtitle_font=cfg.subtitle_font,
         subtitle_font_size=cfg.subtitle_font_size,
@@ -542,13 +687,27 @@ def _synthesize_voiceover(project: ProjectRecord, work: Path) -> str:
 
 def _resolve_format(project: ProjectRecord,
                     report: UnderstandReport) -> tuple[int, int, int]:
-    """输出画幅：入参 aspect_ratio → 首个视频素材 → config 默认 16:9。"""
+    """输出画幅：入参 aspect_ratio → 首个视频素材画幅就近映射 → config 默认。"""
     cfg = _cfg().editing
-    ratio = project.input.get("aspect_ratio") or cfg.default_aspect_ratio
+    ratio = project.input.get("aspect_ratio")
+    if not ratio:
+        video = next((a for a in report.assets
+                      if a.kind == "video" and a.width > 0 and a.height > 0),
+                     None)
+        if video is not None:
+            ratio = _nearest_aspect(video.width / video.height)
+    ratio = ratio or cfg.default_aspect_ratio
     presets = {
         "16:9": (1920, 1080), "9:16": (1080, 1920), "1:1": (1080, 1080),
     }
     return presets.get(ratio, (1920, 1080)) + (30,)
+
+
+def _nearest_aspect(ratio: float) -> str:
+    """宽高比就近映射到支持的画幅（log 距离对横竖屏对称）。"""
+    import math
+    targets = {"16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1.0}
+    return min(targets, key=lambda k: abs(math.log(ratio / targets[k])))
 
 
 # ── 产物 IO / 小工具 ──

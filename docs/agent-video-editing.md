@@ -1,10 +1,13 @@
-# Agent 智能视频剪辑（edit_*）— 架构设计 V1
+# Agent 智能视频剪辑（edit_*）— 架构设计 V1.2
 
-> 状态：**设计已定稿，随实现同步维护**。
+> 状态：**设计已定稿，随实现同步维护**（v1.2 = 2026-10-30 韧性/流程完善，
+> 变更见文末 §12）。
 > 范围：仅 FlowMind（:8002 侧）。go-kernel / rak-auth 只预留接口，不实装、不改动；
 > 端口约定以生态架构图为准但本文不绑定（用户指示：端口问题搁置）。
 > 基座：mcp-base-gpu（flowmind）。全部能力 `@skill` 化，注册即自动进 manifest，
 > 经联邦网关聚合后前端/Agent 可直接消费。
+> 执行后端：`editing.backend = "cybercut"`（默认，PR#23 桥接）或 `"flowmind"`
+> （内置流水线，本文主体；真实 LLM 创意层目前仅在 flowmind 后端生效）。
 
 ## 1. 定位
 
@@ -34,7 +37,7 @@ done         成片       mp4 + SRT + timeline.json + 全部中间产物 JSON
 
 每个阶段产物落盘 + 落库；审批开关开的阶段在产出后暂停（`awaiting_review`）。
 
-## 3. 技能面（对外接口，v1 共 4 个）
+## 3. 技能面（对外接口，v1.2 共 5 个）
 
 全部走统一 `SkillResult` 信封；长任务走 TaskManager（202 受理 → 进度事件 → 终态）。
 
@@ -51,7 +54,7 @@ done         成片       mp4 + SRT + timeline.json + 全部中间产物 JSON
 | aspect_ratio | str\|None | 输出画幅 `16:9`/`9:16`/`1:1`；None=按首个视频素材 |
 | voiceover | bool | 是否 TTS 口播（默认 False；True 需配置 TTS key，走 dashscope） |
 | subtitle | bool | 是否烧录字幕（默认 True） |
-| review_stages | list[str]\|None | 需人工审批的阶段；None=config 默认 `["storyboard"]`；`[]`=全自动 |
+| review_stages | list[str]\|None | 需人工审批的阶段；None=config 默认 `["storyboard"]`；`[]`=全自动。copy/script/storyboard 闸在对应阶段产出后停靠，pre_render 闸在进入渲染前停靠（v1.2 起全部生效） |
 | extra_brief | str\|None | 追加提示词（进所有 LLM 阶段） |
 
 出参 `EditProjectReport`：`project_id`（=task_id）、`assets_accepted/rejected`、
@@ -88,7 +91,17 @@ revise 语义：该阶段产物作废 → 带 feedback 重跑 → 若其后还�
 ### 3.4 `edit_assets` — 素材库（v1 轻量）
 
 入参 `action: list|register`：登记素材元数据/标签（understand 阶段自动登记），
-按 `type/tags/text` 过滤列出。语义向量检索预留（Milvus，v2 接 BGE）。
+按 `type/tags` 过滤列出。语义向量检索预留（Milvus，v2 接 BGE）。
+
+### 3.5 `edit_retry` — 失败/取消项目断点续跑（v1.2）
+
+入参：`project_id`。语义对齐 `localize_retry`：
+
+- `failed` / `cancelled`（终态）→ 定位第一个未 done 阶段置 pending、清 error、
+  提交新 `edit_pipeline` 任务续跑——done 阶段与中间产物**全复用**；
+- `succeeded` / `running` / `awaiting_review` → 拒绝（degraded）；
+  审批等待请走 `edit_review`；
+- 仅 flowmind 后端支持；cybercut 后端的节点重试由其执行器内部处理。
 
 ## 4. 审批状态机
 
@@ -109,6 +122,8 @@ created → running(stage_i) → [stage_i 有审批?] ─no→ running(stage_i+1
   `data_dir/editing/*.json` 文件存储，demo/独立部署可用）；
 - 审批等待**不占用 GPU worker**（任务在阶段边界安全退出并落 awaiting 态，
   resume 由 edit_review 重新驱动）；
+- 失败/取消（引擎终态）→ `edit_retry` 断点续跑（v1.2）：done 阶段与产物全复用，
+  从第一个未完成阶段继续；
 - 租户隔离：读写经 `auth.tenant_scope()`，跨租户同形不可见（复用引擎语义）。
 
 ## 5. 中间产物 Schema（前端二次编辑的数据面）
@@ -135,23 +150,40 @@ created → running(stage_i) → [stage_i 有审批?] ─no→ running(stage_i+1
 
 ## 7. 渲染执行（render 阶段 v1 能力）
 
-- 视频素材：按 storyboard 区间裁剪 → concat（统一分辨率/帧率 pad+fps filter）
-- 图片素材：序列成片，Ken Burns（zoompan）简版
-- 转场：xfade（fade/slide 两档，v1）
-- 字幕：SRT → `subtitles` filter 烧录（Windows 字体名走 config，防中文豆腐块）
-- 口播：`voiceover=True` 时 dashscope TTS（复用 `_cloud_tts`），amix 混音保 BGM
-- 产物编码 libx264 + aac；失败显式走 degraded/failed，绝不静默
+- 视频素材：按 storyboard 区间裁剪 → 三段式渲染（逐镜归一 → xfade 链/concat
+  → 字幕烧录+音轨）；镜头时长量化到帧网格，时间线/转场折算/实际段长同网格
+  （offset 恒等式，防尾镜截断——离线渲染回归 `examples/edit_render_check.py` 兜底）
+- 图片素材：Ken Burns（zoompan，单帧输入 d=N + `-frames:v` 封底；下游不重复过
+  fps 滤镜——实测会丢帧）
+- 转场：xfade（fade / none=1 帧 epsilon 硬切，逐镜声明；全 none 走 concat）
+- 字幕：SRT → `subtitles` filter 烧录（`subtitle=False` 跳过生成与烧录）；
+  Windows 盘符冒号转义 + `-vf` 必须在输入之后
+- 口播：`voiceover=True` 时 dashscope TTS；音轨 `apad` 垫底 + `-shortest`，
+  口播短于成片不再截断视频
+- 产物编码 libx264 + aac；渲染后抽 preview/ 自检帧；失败显式走 degraded/failed，
+  绝不静默
 
-**不在 v1 渲染范围（预留后端适配器）**：去字幕水印（ProPainter 链路，独立任务线）、
-超分、声音克隆（RVC）、扩散重绘。timeline.json 设计上可插入这些处理节点。
+**不在 v1 渲染范围（预留后端适配器）**：BGM 自动选段混音（storyboard.bgm_note
+只记意向）、超分、声音克隆（RVC）、扩散重绘。timeline.json 设计上可插入这些
+处理节点。
 
 ## 8. LLM 接入（创意层）
 
-- 协议：Anthropic 兼容 `/v1/messages`（LongCat，模式同 `_llm_translate`）；
-  key 经 `_secrets.get_api_key("AI_LLM_API_KEY")`，**无 key 显式报错不降级**；
+- 协议：Anthropic 兼容 `/v1/messages`（httpx 直调；LongCat / MiniMax 兼容端点，
+  模式同 `_llm_translate`）；key 经 `_secrets.get_api_key("AI_LLM_API_KEY")`，
+  **无 key 显式报错不降级**；
 - 每阶段独立系统提示词 + 结构化 JSON 输出（pydantic 校验，解析失败带原文入 error）；
-- `extra_brief`/`feedback` 注入对应阶段提示词；
-- Vision（抽帧打标）预留 image block，v1 默认文本标签（ASR+元数据）。
+- **两层韧性（v1.2，实测 MiniMax 教训）**：
+  - 瞬时失败（网络/408/429/5xx/空 content/`stop_reason=max_tokens`）指数退避
+    重试（`llm_max_attempts`，默认 5），尊重 `Retry-After`；配额型 429 重试耗尽
+    升级 environment——understand 的 vision 随之**快速失败**（同一 key 的
+    copy/script 必然也失败，盲剪只会浪费整条流水线），transient 类仍降级盲剪；
+  - 解析/schema 失败再做一轮多轮对话**自纠**（报错+原输出喂回，要求只输出修正
+    JSON）；storyboard 归一化兜住同义词转场/顶层 list/超限值（钳制与模型一致）；
+- `extra_brief`/`feedback` 注入对应阶段提示词；storyboard 素材目录超预算
+  （>150k 字符）按重要度逐档裁剪 content_notes；
+- Vision（v1.1 已实装）：抽帧 → image block → 每帧 {t_s, scene, subtitle,
+  importance} 内容笔记，分镜靠它"看见"素材；失败显式记 `vision_degraded`。
 
 ## 9. 配置（`config.editing`，全走通用默认）
 
@@ -168,8 +200,25 @@ created → running(stage_i) → [stage_i 有审批?] ─no→ running(stage_i+1
 
 ## 11. v1 交付清单
 
-1. `src/flowmind/editing/` 包：models / store / pipeline / llm / media / analyze
-2. 技能：`edit_project` / `edit_status` / `edit_review` / `edit_assets`（注册进 skills/__init__.py）
+1. `src/flowmind/editing/` 包：models / store / pipeline / llm / media（analyze 并入 llm.describe_frames）
+2. 技能：`edit_project` / `edit_status` / `edit_review` / `edit_assets` / `edit_pipeline`（引擎入口）/ `edit_retry`（v1.2）
 3. `config.py`：`EditingConfig` 纳入 `FlowmindConfig`
-4. demo：`examples/edit_pipeline_demo.py`（mock 流水线：全自动 + 审批回路 + revise 三段式）
-5. ruff 全绿 + demo PASS + 真实 invoke 冒烟
+4. demo：`examples/edit_pipeline_demo.py`（mock 流水线：全自动 + 审批 revise→approve + copy 闸 + edit_retry + 错误路径）
+5. 渲染回归：`examples/edit_render_check.py`（零 LLM，真实 ffmpeg 断言成片时长/自检帧）
+6. ruff 全绿 + demo PASS + 真实 invoke 冒烟
+
+## 12. v1.1 → v1.2 变更记录（2026-10-30）
+
+- **LLM 调用层**：429/408 退避重试 + Retry-After + 配额墙快速失败；max_tokens
+  截断显式报错；schema 自纠一轮；storyboard 归一化防御（顶层 list/非 dict）；
+  speed/freeze 钳制与模型上限统一（0.25~4 / 0~3）；素材目录载荷预算守卫。
+- **流程**：copy/script 审批闸生效 + pre_render 闸改渲染前停靠（续跑可命中）；
+  新增 `edit_retry` 断点续跑；`subtitle=False` 生效；移除死旋钮
+  `config.editing.transition`；storyboard section_id 漂移置空告警 + 预算偏离告警；
+  understand 阶段 vision 配额类失败快速失败。
+- **渲染**：修复 kenburns 双重 fps 滤镜丢帧（60→59）与 xfade offset 舍入越界
+  两大截断根因（镜头时长量化到帧网格 + Pass2 去冗余归一 + offset 向下取整）；
+  口播 `apad` 垫底不再截断视频；`scene_shots` 超时归类 MediaError；
+  `_resolve_format` 兑现"None=按首个视频素材画幅就近映射"。
+- **存储/工具**：`list_projects` 租户过滤下推（PG WHERE / 文件先滤后截）；
+  `examples/edit_render_check.py` 离线渲染回归；demo 扩至 5 场景。
