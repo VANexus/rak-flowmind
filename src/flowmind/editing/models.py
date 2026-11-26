@@ -17,6 +17,9 @@ STAGE_COPY = "copy"
 STAGE_SCRIPT = "script"
 STAGE_STORYBOARD = "storyboard"
 STAGE_RENDER = "render"
+# OpenFilm 后端：FlowMind 只做工作区/Studio/渲染，内容由外部编程 Agent
+# 创作。authoring 表示工作区已就绪、等待外部 Agent 写入 film.html。
+STAGE_AUTHORING = "authoring"
 STAGE_ORDER: list[str] = [
     STAGE_UNDERSTAND, STAGE_COPY, STAGE_SCRIPT, STAGE_STORYBOARD, STAGE_RENDER,
 ]
@@ -25,6 +28,7 @@ STAGE_ORDER: list[str] = [
 
 PSTATE_RUNNING = "running"
 PSTATE_AWAITING_REVIEW = "awaiting_review"
+PSTATE_AWAITING_AGENT = "awaiting_agent"   # OpenFilm：等待外部编程 Agent 创作
 PSTATE_SUCCEEDED = "succeeded"
 PSTATE_FAILED = "failed"
 PSTATE_CANCELLED = "cancelled"
@@ -178,6 +182,9 @@ class ProjectRecord(BaseModel):
     （每次审批续跑/revise 都是一次新的引擎任务）。
     """
     project_id: str
+    # 创建项目的执行后端：cybercut | flowmind | openfilm。旧记录为空串，
+    # 读取方应结合 input 里的桥接字段推断，不能把空串当 OpenFilm。
+    backend: str = ""
     state: str = PSTATE_RUNNING
     stage: str = STAGE_UNDERSTAND
     # 各阶段状态：pending / done（approve 后 done）——awaiting 由 state 表达
@@ -198,6 +205,29 @@ class ProjectRecord(BaseModel):
 
     def touch(self) -> None:
         self.updated_at = _now()
+
+
+def resolve_backend(project: ProjectRecord) -> str:
+    """项目实际执行后端：优先项目记录，旧记录按桥接字段，最后保守回落 FlowMind。
+
+    兼容规则（升级前的记录没有 ``backend``）：
+
+    - 有 ``input.cybercut`` 桥接字段 → **cybercut**；
+    - 有 ``input.openfilm`` 桥接字段 → **openfilm**；
+    - 两者都没有 → **flowmind**（旧版 FlowMind 流水线的保守默认）。
+
+    绝不回退到当前全局 ``editing.backend``：否则全局切到 OpenFilm 后，升级前
+    创建的待处理/运行中项目会被误路由到 OpenFilm。极少数“CyberCut 项目已
+    落库但 worker 尚未写入桥接字段”的记录会按旧 FlowMind 处理（保守但不
+    会误入 OpenFilm）；这是有意的兼容取舍。
+    """
+    if project.backend in {"cybercut", "flowmind", "openfilm"}:
+        return project.backend
+    if "cybercut" in project.input:
+        return "cybercut"
+    if "openfilm" in project.input:
+        return "openfilm"
+    return "flowmind"
 
 
 # ── 素材库条目（edit_assets）──

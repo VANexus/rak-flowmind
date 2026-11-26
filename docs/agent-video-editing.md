@@ -34,7 +34,7 @@ done         成片       mp4 + SRT + timeline.json + 全部中间产物 JSON
 
 每个阶段产物落盘 + 落库；审批开关开的阶段在产出后暂停（`awaiting_review`）。
 
-## 3. 技能面（对外接口，v1 共 4 个）
+## 3. 技能面（对外接口：基础 4 个 + OpenFilm 可选 2 个）
 
 全部走统一 `SkillResult` 信封；长任务走 TaskManager（202 受理 → 进度事件 → 终态）。
 
@@ -89,6 +89,31 @@ revise 语义：该阶段产物作废 → 带 feedback 重跑 → 若其后还�
 
 入参 `action: list|register`：登记素材元数据/标签（understand 阶段自动登记），
 按 `type/tags/text` 过滤列出。语义向量检索预留（Milvus，v2 接 BGE）。
+
+### 3.5 OpenFilm 可选后端（`editing.backend="openfilm"`）
+
+OpenFilm 是**可选**的创作/Studio/渲染后端，默认关闭；CyberCut 与旧 FlowMind
+流水线保持不变。产品边界与完整操作步骤见
+[openfilm-integration.md](openfilm-integration.md)。
+
+- `edit_project`：创建 `data_dir/editing/<id>/openfilm` 工作区（空白
+  `film.html` + `AGENTS.md` + 复制到 `assets/` 的初始素材），项目落
+  `awaiting_agent`，**不提交**任何创作任务（FlowMind 无内置编程 Agent）。
+- 外部编程 Agent 在工作区写 `film.html` / 页面 / `assets/`（非 FlowMind 运行时）。
+- `edit_openfilm_studio`（新）：只收 `project_id`，启动/复用 Studio，返回本机
+  `studio_url` 供外部浏览器打开；不传路径/命令。
+- `edit_openfilm_render`（新）：只收 `project_id`；有 `pre_render` 闸时先落
+  `awaiting_review`，否则预检 Node/OpenFilm/FFmpeg 后提交 `edit_pipeline` 任务；
+  渲染进度/取消/终态复用任务引擎，成片固定 `<project_dir>/output.mp4`。
+- `edit_status`：OpenFilm 项目额外返回 `backend/workspace/studio_url/progress/
+  render/feedback/outputs/stages/next`；`edit_review` 的 approve/revise/reject
+  对 `pre_render` 闸复用（revise 退回 `awaiting_agent`，不渲染）。
+- 依赖可选：普通 CyberCut/旧流水线用户无需安装 Node/OpenFilm/FFmpeg；OpenFilm
+  项目在缺依赖时得到显式环境错误，不静默回落。
+- 旧记录路由：优先 `ProjectRecord.backend`；无该字段时按 `input.cybercut` /
+  `input.openfilm` 桥接字段判断；**两者都没有的升级前记录保守回落 `flowmind`**，
+  不跟随全局 `editing.backend`，避免全局切 OpenFilm 后误路由旧项目。详见
+  [openfilm-integration.md §6.1](openfilm-integration.md#61-旧项目的后端路由兼容规则)。
 
 ## 4. 审批状态机
 

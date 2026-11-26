@@ -23,6 +23,7 @@ from flowmind.editing.models import (
     PSTATE_AWAITING_REVIEW,
     PSTATE_RUNNING,
     STAGE_RENDER,
+    resolve_backend,
 )
 from flowmind.editing.store import get_project_store
 from flowmind.skill import skill
@@ -80,7 +81,12 @@ def edit_review(inp: ReviewInput) -> SkillOutput[ReviewReport]:
 
     feedback = (inp.feedback or "").strip()
 
-    cybercut_backend = load_config().editing.backend == "cybercut"
+    openfilm_backend = (
+        project.backend == "openfilm" or "openfilm" in project.input)
+    if openfilm_backend:
+        return _review_openfilm(inp, project, feedback)
+
+    cybercut_backend = resolve_backend(project) == "cybercut"
 
     if inp.action == "reject":
         if cybercut_backend:
@@ -150,6 +156,87 @@ def edit_review(inp: ReviewInput) -> SkillOutput[ReviewReport]:
             causal_analysis=(f"人工审批 {inp.action} → 项目状态更新 → "
                              "提交 edit_pipeline 续跑任务"),
             risk_note="续跑任务复用引擎进度事件；再次到闸仍会暂停等待审批",
+            confidence=1.0)],
+        confidence=1.0, sample_size=1,
+    )
+
+
+def _review_openfilm(inp: ReviewInput, project, feedback: str):
+    """OpenFilm 审批：approve 触发渲染；revise 退回外部 Agent；reject 终止。"""
+    from flowmind.editing.openfilm_backend import (
+        OpenFilmError,
+        mark_render_submit_failed,
+        prepare_render,
+        record_render_task,
+    )
+    from flowmind.editing.openfilm_backend import (
+        apply_review as apply_openfilm_review,
+    )
+
+    try:
+        outcome = apply_openfilm_review(
+            inp.project_id, inp.stage, inp.action, feedback)
+        prepared = (prepare_render(inp.project_id)
+                    if outcome.get("submit_render") else None)
+    except OpenFilmError as exc:
+        # 并发请求可能已先领取/完成：不要把本请求早先的快照写回去覆盖
+        # 对方状态（claim 冲突时尤其如此）。
+        raise ValueError(str(exc)) from exc
+
+    if not outcome.get("submit_render"):
+        return SkillOutput(
+            data=ReviewReport(
+                project_id=inp.project_id, action=inp.action,
+                state=outcome.get("state", project.state), task_id=None,
+                message=outcome.get("message", "")),
+            reasoning=[ReasoningChain(
+                conclusion=outcome.get("message", "OpenFilm 审批已记录"),
+                evidence=[Evidence(metric="feedback_len",
+                                   value=str(len(feedback)), comparison=">=",
+                                   window="本次动作")],
+                causal_analysis=(
+                    f"edit_review {inp.action} → OpenFilm 项目状态 "
+                    f"{outcome.get('state')} → 反馈写入工作区 "
+                    "FLOWMIND_REVIEW.md"),
+                risk_note=("revise 不渲染：外部 Agent 修改 film.html 后需"
+                           "重新调用 edit_openfilm_render"
+                           if inp.action == "revise" else
+                           "reject 为终态，可基于原素材重新建项目"),
+                confidence=1.0)],
+            confidence=1.0, sample_size=1)
+
+    # approve：复用任务引擎执行渲染。提交失败则释放领取并落 failed。
+    if not prepared or not prepared.get("submit"):
+        raise ValueError("OpenFilm 渲染领取失败，未提交任务")
+    claim_token = prepared.get("claim_token")
+    manager = get_task_manager()
+    try:
+        task_id = manager.submit("edit_pipeline", {"project_id": inp.project_id})
+    except Exception as exc:
+        mark_render_submit_failed(
+            inp.project_id, f"提交渲染任务失败：{exc}", claim_token)
+        raise
+    if not record_render_task(inp.project_id, task_id, claim_token):
+        manager.cancel(task_id)
+        mark_render_submit_failed(
+            inp.project_id, "渲染领取已失效，任务已取消", claim_token)
+        raise ValueError("OpenFilm 渲染领取已失效，任务已取消")
+    latest = get_project_store().get_project(inp.project_id) or project
+    message = outcome.get("message", "pre_render 已放行，开始渲染")
+    return SkillOutput(
+        data=ReviewReport(
+            project_id=inp.project_id, action="approve",
+            state=latest.state, task_id=task_id,
+            message=message),
+        reasoning=[ReasoningChain(
+            conclusion=message,
+            evidence=[Evidence(metric="feedback_len",
+                               value=str(len(feedback)), comparison=">=",
+                               window="本次动作")],
+            causal_analysis=(
+                "edit_review approve → pre_render 记入 approved → 提交 "
+                "edit_pipeline → OpenFilm 渲染任务执行"),
+            risk_note="渲染进度/取消复用任务引擎；成片固定落 output.mp4",
             confidence=1.0)],
         confidence=1.0, sample_size=1,
     )

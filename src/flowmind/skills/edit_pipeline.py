@@ -19,12 +19,14 @@ from pydantic import BaseModel, Field
 
 from flowmind.config import load_config
 from flowmind.contracts import Evidence, ReasoningChain, SkillOutput
+from flowmind.editing.models import resolve_backend
+from flowmind.editing.openfilm_backend import OpenFilmError
 from flowmind.editing.pipeline import (
     EditingStageError,
     project_dir,
     run_pipeline,
 )
-from flowmind.editing.store import ProjectStoreError
+from flowmind.editing.store import ProjectStoreError, get_project_store
 from flowmind.skill import skill
 from flowmind.tasks import CancelledError
 
@@ -53,7 +55,10 @@ def edit_pipeline(inp: PipelineInput) -> SkillOutput[PipelineReport]:
     """驱动剪辑项目执行/续跑：阶段推进、审批闸、产物落盘。"""
     pid = inp.project_id
     try:
-        backend = load_config().editing.backend
+        record = get_project_store().get_project(pid)
+        backend = (resolve_backend(record)
+                   if record is not None
+                   else load_config().editing.backend)
         if backend == "cybercut":
             from flowmind.editing.cybercut_backend import (
                 apply_review,
@@ -67,6 +72,11 @@ def edit_pipeline(inp: PipelineInput) -> SkillOutput[PipelineReport]:
             project = run_cybercut(pid)
         elif backend == "flowmind":
             project = run_pipeline(pid)
+        elif backend == "openfilm":
+            # OpenFilm 的“流水线”只有渲染：内容由外部编程 Agent 在工作区
+            # 创作；审批续跑/首次渲染都经 edit_openfilm_render 提交本任务。
+            from flowmind.editing.openfilm_backend import run_render
+            project = run_render(pid)
         else:
             raise ProjectStoreError(f"未知 editing.backend：{backend!r}")
     except CancelledError as exc:
@@ -89,6 +99,20 @@ def edit_pipeline(inp: PipelineInput) -> SkillOutput[PipelineReport]:
                 conclusion=f"阶段 {exc.stage or '?'} 执行失败",
                 causal_analysis=str(exc)[:500],
                 risk_note="可对失败阶段单独重跑或修改提示词后重试",
+                confidence=1.0)],
+            confidence=1.0,
+            degraded=True, degradation_reason=exc.category,
+        )
+    except OpenFilmError as exc:
+        return SkillOutput(
+            data=PipelineReport(
+                project_id=pid, state="failed", stage="render",
+                message=str(exc)),
+            reasoning=[ReasoningChain(
+                conclusion="OpenFilm 渲染失败",
+                causal_analysis=str(exc)[:500],
+                risk_note=("修复错误后可用 edit_openfilm_render 重新渲染；"
+                           "失败/取消不会留下半截成片"),
                 confidence=1.0)],
             confidence=1.0,
             degraded=True, degradation_reason=exc.category,
