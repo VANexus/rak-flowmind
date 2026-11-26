@@ -86,8 +86,13 @@ def _write_image(dest_path: str, url: str) -> None:
 
 
 def _install_fakes() -> None:
-    def submit(cfg, *, prompt: str, image_url: str, seconds: str,
-               tail_image_url: str = "", motion_params: dict | None = None) -> str:
+    # 假件替换的是**技能实际调用**的入口 `submit_with_meta` / `wait_with_meta`
+    # （返回 (结果, 厂商 request id)）。历史 demo 替换的是旧薄包装 `submit` / `wait`；
+    # 技能改调 *_with_meta 之后假件失效 → 真发 HTTP、用占位密钥吃 401，demo 当场崩
+    # （P0 冒烟基线发现，2026-11-03）。签名与 `_dsp_video_gen` 源码逐参对齐。
+    def submit_with_meta(cfg, *, prompt: str, image_url: str, seconds: str,
+                         tail_image_url: str = "", motion_params: dict | None = None,
+                         context: dict | None = None) -> tuple[str, str]:
         _SUBMITTED.append({"prompt": prompt, "image_url": image_url, "seconds": seconds,
                            "tail_image_url": tail_image_url,
                            "motion_params": dict(motion_params or {})})
@@ -95,13 +100,16 @@ def _install_fakes() -> None:
         if _TRANSIENT_FAILS["n"] > 0:
             _TRANSIENT_FAILS["n"] -= 1
             raise videogen.DspVideoGenError("网关抖动（瞬时）", category="transient", retriable=True)
-        return f"task_{len(_SUBMITTED)}"
+        task_id = f"task_{len(_SUBMITTED)}"
+        return task_id, f"req-{task_id}"
 
-    def wait(cfg, task_id: str, *, api_key: str = "") -> dict:
+    def wait_with_meta(cfg, task_id: str, *, api_key: str = "",
+                       context: dict | None = None) -> tuple[dict, str]:
         if task_id in _FAIL_SHOTS:
             raise videogen.DspVideoGenError(f"任务 {task_id} 生成失败", category="video")
-        return {"id": task_id, "status": "completed",
-                "metadata": {"url": f"https://ivd.example/video_cache/{task_id}.mp4"}}
+        return ({"id": task_id, "status": "completed",
+                 "metadata": {"url": f"https://ivd.example/video_cache/{task_id}.mp4"}},
+                f"req-{task_id}")
 
     def fetch_to_file(url: str, dest_path: str, timeout_s: float | None = None) -> str:
         _FETCHED.append(url)
@@ -114,6 +122,14 @@ def _install_fakes() -> None:
     def put_file(path: str, key: str, content_type: str | None = None) -> str:
         _PUTS.append(key)
         return key
+
+    def fetch_result(cfg, task_id: str, url: str, dest_path: str, *,
+                     context: dict | None = None) -> tuple[str, str]:
+        # 成片下载（技能实际调用 videogen.fetch_result，不是 storage.fetch_to_file）：
+        # 真实现会先试厂商直链、再回退带 Bearer 的鉴权代理——本 demo 离线，故直接落占位字节。
+        _FETCHED.append(url)
+        Path(dest_path).write_bytes(b"\x00\x00\x00\x18ftypmp42")
+        return dest_path, "direct"
 
     def presign_get_public(key: str, ttl_s: int | None = None) -> str:
         return f"https://assets.example/{key}"
@@ -139,8 +155,9 @@ def _install_fakes() -> None:
         Path(cmd[-1]).write_bytes(b"\x00\x00\x00\x18ftypmp42")
         return 0, "", ""
 
-    videogen.submit = submit
-    videogen.wait = wait
+    videogen.submit_with_meta = submit_with_meta
+    videogen.wait_with_meta = wait_with_meta
+    videogen.fetch_result = fetch_result
     storage.fetch_to_file = fetch_to_file
     storage.put_file = put_file
     storage.presign_get_public = presign_get_public
@@ -208,6 +225,11 @@ def main() -> None:
     r = invoke("image_to_video", _ctx())
     check(r.ok, "happy path 应 ok")
     print(f"  提交参数  : seconds={[s['seconds'] for s in _SUBMITTED]}（镜头建议时长原样下发）")
+    # 假件未生效会一路真发 HTTP（历史故障：替换错入口 → 401 → 这里 IndexError 裸崩）。
+    # 显式断言 + 清晰报错：失败也要说清是「假件没挂上」，不是「技能错了」。
+    check(bool(_SUBMITTED),
+          "happy path 未捕获到任何提交：假件可能未生效"
+          "（检查 _dsp_video_gen.submit_with_meta / wait_with_meta 是否被替换）")
     print(f"  首镜 prompt: {_SUBMITTED[0]['prompt']}")
     print(f"  首帧      : {_SUBMITTED[0]['image_url']}")
     print(f"  尾帧      : {_SUBMITTED[0]['tail_image_url']}")
@@ -266,10 +288,20 @@ def main() -> None:
     without = videogen.build_payload(cfg, prompt="p", image_url="A", seconds="3")
     print(f"  有尾帧    : {with_tail}")
     print(f"  无尾帧    : {without}")
-    check(with_tail["images"] == ["A", "B"] and with_tail["image"] == "A",
-          "有尾帧 ⇒ images = [首帧, 尾帧]（第 2 位 = 尾帧）")
-    check("images" not in without and without["image"] == "A",
-          "无尾帧 ⇒ 只发 image（不再塞单元素 images）")
+    # 提交体形状（ADR-126）：图片进 metadata.content[]，按 role 标首帧/尾帧；
+    # 旧断言查的是已退役的顶层 image / images 字段（P0 冒烟基线发现，2026-11-03）。
+    def _img_roles(payload: dict) -> list[str]:
+        return [c["role"] for c in payload["metadata"]["content"]
+                if c["type"] == "image_url"]
+
+    check(_img_roles(with_tail) == ["first_frame", "last_frame"],
+          "有尾帧 ⇒ content 里两张图按 [首帧, 尾帧] 顺序带 role")
+    check(_img_roles(without) == ["first_frame"],
+          "无尾帧 ⇒ 只发首帧（不塞尾帧位）")
+    check([c["image_url"]["url"] for c in with_tail["metadata"]["content"]
+           if c["type"] == "image_url"] == ["A", "B"],
+          "首帧 / 尾帧 URL 顺序与入参一致")
+
     check(with_tail["duration"] == 3 and isinstance(with_tail["duration"], int),
           "时长字段必须是 duration（整数秒）")
     check(not ({"aspect_ratio", "quality", "seconds"} & set(with_tail)),

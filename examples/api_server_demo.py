@@ -99,8 +99,14 @@ class _FakeManager:
             output_paths=[out],
         )
 
-    def get_task(self, task_id: str) -> dict | None:
-        return self.tasks.get(task_id)
+    def get_task(self, task_id: str, *, include_args: bool = True) -> dict | None:
+        # include_args 是 2026-10-31 轮询瘦身引入的形参（GET 默认不回传 args，
+        # 需要时用 ?include=args）。真实 manager 已有，替身曾漏（P0 冒烟基线发现，
+        # 2026-11-03）：签名必须跟着真实实现走，否则 TypeError 直接打穿 REST 查询。
+        rec = self.tasks.get(task_id)
+        if rec is None:
+            return None
+        return rec if include_args else {k: v for k, v in rec.items() if k != "args"}
 
 
 def _install_fake_task_manager(output_dir: str, fail_after: int | None = None) -> _FakeManager:
@@ -190,12 +196,15 @@ def main() -> None:
         check(health["components"]["pg"] == "ok", "health 缺 components.pg=ok")
         check(health["components"]["mqtt"] == "disabled", "未配置 MQTT 应 disabled")
         check(health["components"]["milvus"] == "unverified", "未用过的 Milvus 应 unverified")
-        check(health["skill_count"] == 7 and health["version"], f"health 元数据异常: {health}")
+        # 缺省注册**全部族**：localize 7 + edit 5 + dsp 8 + packaging 1 = 21（族表见
+        # src/flowmind/skills/__init__.py#FAMILIES）。此断言曾写死 localize-only 时代的 7，
+        # 族表扩容后必然失败（P0 冒烟基线发现，2026-11-03）。
+        check(health["skill_count"] == 21 and health["version"], f"health 元数据异常: {health}")
         print(f"   status=ok  version={health['version']}  components={health['components']}")
 
         r = c.get(f"{base}/manifest", timeout=10)
         manifest = r.json()
-        check(r.status_code == 200 and len(manifest["skills"]) == 7, "manifest 应为 7 技能")
+        check(r.status_code == 200 and len(manifest["skills"]) == 21, "manifest 应为 21 技能（缺省全族）")
         check(all("input_schema" in s for s in manifest["skills"]), "manifest 缺 input_schema")
         print(f"   manifest 技能数: {len(manifest['skills'])}")
 
