@@ -43,6 +43,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
         "edit_openfilm_studio",
         "edit_pipeline",
         "edit_project",
+        "edit_retry",
         "edit_review",
         "edit_status",
     ),

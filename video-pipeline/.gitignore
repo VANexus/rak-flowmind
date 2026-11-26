@@ -1,0 +1,20 @@
+# 权重/模型/视频产物一律不进 git
+weights/
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.onnx
+*.mp4
+*.mov
+*.mkv
+*.wav
+*.png
+*.zip
+*.7z
+
+# 工程临时目录
+work/
+__pycache__/
+*.pyc
+.vscode/

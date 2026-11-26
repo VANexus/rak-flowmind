@@ -210,23 +210,37 @@ class ProjectStore:
             try:
                 conn.autocommit = True
                 with conn.cursor() as cur:
-                    cur.execute(
-                        f"SELECT payload FROM {_SCHEMA}.{_TABLE_PROJECTS} "
-                        "ORDER BY created_at DESC LIMIT %s", (limit,))
+                    # 租户过滤必须进 WHERE：先 LIMIT 后过滤会让整页被其他
+                    # 租户占满，自己的项目被挤出结果
+                    if tenant_id is not None:
+                        cur.execute(
+                            f"SELECT payload FROM {_SCHEMA}.{_TABLE_PROJECTS} "
+                            "WHERE tenant_id = %s "
+                            "ORDER BY created_at DESC LIMIT %s",
+                            (tenant_id, limit))
+                    else:
+                        cur.execute(
+                            f"SELECT payload FROM {_SCHEMA}.{_TABLE_PROJECTS} "
+                            "ORDER BY created_at DESC LIMIT %s", (limit,))
                     rows = [ProjectRecord.model_validate_json(r[0])
                             for r in cur.fetchall()]
             finally:
                 conn.close()
         elif self._file_root.exists():
-            for p in sorted(self._file_root.glob("*/project.json"),
-                            key=lambda x: x.stat().st_mtime, reverse=True)[:limit]:
+            paths = sorted(self._file_root.glob("*/project.json"),
+                           key=lambda x: x.stat().st_mtime, reverse=True)
+            for p in paths:
+                if len(rows) >= limit:
+                    break
                 try:
-                    rows.append(ProjectRecord.model_validate_json(
-                        p.read_text(encoding="utf-8")))
+                    rec = ProjectRecord.model_validate_json(
+                        p.read_text(encoding="utf-8"))
                 except Exception:  # noqa: BLE001 坏文件跳过并告警（列表路径）
                     logger.warning("跳过损坏项目文件 %s", p, exc_info=True)
-        if tenant_id is not None:
-            rows = [r for r in rows if r.tenant_id == tenant_id]
+                    continue
+                if tenant_id is not None and rec.tenant_id != tenant_id:
+                    continue
+                rows.append(rec)
         return rows
 
     def _file_project_path(self, project_id: str) -> Path:
