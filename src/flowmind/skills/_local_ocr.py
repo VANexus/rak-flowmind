@@ -6,16 +6,25 @@
 
 接口与 _cloud_ocr.locate_subtitle_region 对齐（去 api_key）：
     输入抽样帧路径列表 → 输出 [{x,y,w,h}, ...] 擦除区列表。
-多帧聚合（尺寸/底部先验 + 水平/垂直聚类 + padding）复用 _cloud_ocr
-的 _aggregate_regions，保证两条后端行为一致。
+多帧聚合（尺寸先验 + 位置先验 + 垂直聚类 + padding）复用 _cloud_ocr
+的 _passes_region_prior / _aggregate_regions，保证两条后端行为一致。
 
 lazy import：rapidocr（新包 v3）与 rapidocr_onnxruntime（旧包 v1）都不在 → OCRError(category="environment")。
 模型实例进程内单例缓存。
 """
 from __future__ import annotations
 
-from flowmind.skills._cloud_ocr import OCRError, _aggregate_regions, _is_white_subtitle
+import logging
+
+from flowmind.skills._cloud_ocr import (
+    OCRError,
+    _aggregate_regions,
+    _is_white_subtitle,
+    _passes_region_prior,
+)
 from flowmind.tasks.gpu import model_cache_guard
+
+logger = logging.getLogger(__name__)
 
 
 def available() -> bool:
@@ -85,6 +94,8 @@ def _infer_items(engine, frame_path: str) -> list[tuple[object, str, float]]:
     try:
         out = engine(frame_path)
     except Exception as exc:
+        # 服务端日志带全栈（对外错误消息仍只露类型名，脱敏约定不变）
+        logger.warning("本地 OCR 单帧推理失败 path=%s", frame_path, exc_info=True)
         raise OCRError(
             f"本地 OCR 推理异常: {type(exc).__name__}", category="video",
         ) from exc
@@ -150,8 +161,9 @@ def locate_subtitle_region(
             # 0.04：容忍句尾短碎片（原 0.1 会漏掉边缘残字，擦除后留鬼影）
             if max(bw, bh) < frame_width * 0.04:
                 continue
-            # 底部区域先验：bbox 底边应进入画面下部 40%，与云路径一致。
-            if y2 < frame_height * 0.6:
+            # 位置先验：底部带 ∪ 顶部带 ∪ 贴左右边缘，与云路径共享同一实现
+            # （见 _cloud_ocr._passes_region_prior）。
+            if not _passes_region_prior((x1, y1, x2, y2), frame_width, frame_height):
                 continue
             candidates.append((path, (x1, y1, x2, y2)))
 

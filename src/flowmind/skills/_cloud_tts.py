@@ -85,12 +85,18 @@ def _call_ws_synth(text: str, *, out_path: str, voice_id: str, model: str,
 def synthesize_segments(
     segments: list[dict], *, voice_id: str, out_dir: str, api_key: str,
     synth_fn=None, target_model: str = TARGET_MODEL,
+    speaker_voices: dict[str, str] | None = None,
 ) -> list[str]:
-    """逐句合成，输出按 index 命名的音频列表（seg_0000.mp3 ...）。"""
+    """逐句合成，输出按 index 命名的音频列表（seg_0000.mp3 ...）。
+
+    逐说话人音色（可选）：``speaker_voices`` 为「说话人 → 预设音色 ID」映射，
+    句段带 ``speaker`` 键且命中映射时用该音色，否则回落整片 ``voice_id``。
+    不传 ``speaker_voices`` 时行为与改造前完全一致（完全向后兼容）。
+    """
     if not voice_id:
         raise ValueError("收到空音色。请传预设音色名（如 longanhuan_v3.6）。")
     fn = synth_fn or (
-        lambda text, out_path, **kw: synthesize_text(
+        lambda text, out_path, voice_id=voice_id, **kw: synthesize_text(
             text, out_path=out_path, voice_id=voice_id, api_key=api_key,
             target_model=target_model,
         )
@@ -99,7 +105,9 @@ def synthesize_segments(
     out_dir_p.mkdir(parents=True, exist_ok=True)
     outs: list[str] = []
     for seg in segments:
+        # 说话人 → 预设音色映射；未命中（含无 speaker 键）回落整片单音色
+        voice = (speaker_voices or {}).get(str(seg.get("speaker") or ""), voice_id)
         path = str(out_dir_p / f"seg_{seg['index']:04d}.mp3")
-        fn(seg["text"], path, voice_id=voice_id)
+        fn(seg["text"], path, voice_id=voice)
         outs.append(path)
     return outs

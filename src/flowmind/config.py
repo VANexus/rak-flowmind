@@ -125,6 +125,9 @@ class LocalizerConfig(BaseModel):
     #    导致 TaskManager 初始化必 AttributeError、任务引擎整体不可用）──
     data_dir: str = "~/flowmind-data"   # 任务工作目录基准（~ 由 manager 展开为绝对路径）
     max_pending_tasks: int = 100        # 待处理任务上限（超出拒绝受理，背压）
+    # 单租户 pending 上限（SaaS 公平性，2026-10-31）：防一个租户的批量提交
+    # 塞满全队列把其他租户全部挤成 429；未启用鉴权（tenant 为空）时不生效
+    max_pending_per_tenant: int = 20
     task_ttl_seconds: int = 3600        # 终态任务保留时长（秒），超时回收
 
     # ── 语言默认值 ──
@@ -164,6 +167,84 @@ class LocalizerConfig(BaseModel):
     localize_llm_model: str = "LongCat-2.0"  # 翻译模型（Anthropic 兼容协议）
     localize_tts_model: str = "qwen-audio-3.0-tts-flash"  # 配音 TTS 模型
     localize_voice: str = "longanhuan_v3.6"   # 配音音色（预设；空=不配音）
+
+    # ── 本地/云后端开关（GPU 化升级：本地优先，云为回落；2026-09-09 从 5e9911d 恢复
+    #    ——config 重构丢失，导致 _select_asr/_select_ocr 必 AttributeError）──
+    # auto = 本地库可导入即用本地，否则回落云；两端都不可用显式报错（不静默降级）
+    # local = 强制本地（库缺失显式报错）；cloud = 强制云
+    asr_backend: str = "auto"           # ASR：local(faster-whisper) / cloud(dashscope) / auto
+    local_asr_model: str = "small"      # faster-whisper 模型名（small/medium；8GB 显存够 medium）
+    local_asr_device: str = "cuda"      # cuda / cpu
+    ocr_backend: str = "auto"           # OCR：local(RapidOCR CPU) / cloud(qwen3.5-ocr) / auto
+
+    # ── 后端开关补声明（历史 config 重构丢失，localize_video 曾靠 getattr 兜底）──
+    erase_backend: str = "auto"         # 字幕擦除：local(LaMa) / delogo / auto
+    tts_backend: str = "auto"           # 配音：local(Qwen3-TTS 克隆) / cloud / auto
+    bgm_vocal_sep: bool = True          # 配音前是否用 demucs 净化背景音（避免原声人声残留）
+
+    # ── 多人对话出海本地化（说话人分离 / 参考音频 / 术语表 / 配音时长控制）──
+    diarize_backend: str = "auto"            # 说话人分离：local(CAM++) / off / auto
+    local_diarize_model: str = "cam++"       # funasr 说话人分离模型
+    local_diarize_device: str = "cpu"        # cpu（不占 8GB 显存预算）/ cuda
+    diarize_merge_thr: float = 0.78          # 声纹簇心余弦合并阈值（funasr ClusterBackend 默认）
+    diarize_min_cluster_seconds: float = 3.0 # 累计时长低于此的说话人簇按时间折叠进最近大簇
+                                             # （去除噪声离群窗被误判的「说话人」；
+                                             #  None 类数固定时不折叠）
+    speaker_ref_min_seconds: float = 3.0     # 说话人参考音频下限（低于则标记低置信）
+    speaker_ref_target_seconds: float = 10.0 # 说话人参考音频目标长度
+    speaker_ref_max_seconds: float = 15.0    # 说话人参考音频上限
+    glossary_path: str = ""                  # 本地化术语表文件路径；空 = 不启用
+    dub_max_tempo: float = 1.3               # 配音压缩的无损感变速上限（超过则接受溢出）
+    dub_speed_factors: dict[str, float] = Field(default_factory=dict)
+                                             # 每秒可念字符数覆盖表（按目标语，如 {"en": 12.5}），
+                                             # 用于按真实成片校准配音长度预算；
+                                             # 空 = 沿用 _llm_translate.LANG_SPEED_FACTOR 经验表
+    tts_engine: str = "qwen3-tts"            # 本地 TTS 引擎：qwen3-tts / indextts2
+
+
+class DecideConfig(BaseModel):
+    """System One 决策模型（Jev 云 / Laya 本地 sidecar）配置。
+
+    用途：给「用大 LLM 做小判定」的场景换成专门的非自回归决策模型——
+    单次前向直接返回带校准概率的结构化答案，不生成文本、无解析失败。
+
+    ⚠ **本地后端默认走独立 venv 的 HTTP sidecar**：仓库根 ``laya_sidecar.py``，
+    主环境只走 HTTP、不 import laya，保持模型依赖与主流水线进程隔离。
+    （实测 ``laya`` 0.3.20 依赖仅 ``torch>=2.0`` / ``transformers>=4.48``，
+    与本仓库 torch 2.6.0+cu126 / transformers 4.57.3 相容——sidecar 是隔离
+    选择，不再是版本冲突的硬要求。）
+
+    配置源顺序（全仓库统一）：env → 本字段 → 内置默认。env 名：
+    ``FLOWMIND_DECIDE_BACKEND`` / ``FLOWMIND_DECIDE_BASE_URL``。
+    TypeSafe key 只从环境变量 ``TYPESAFE_API_KEY`` 读，绝不进 toml / commit。
+    """
+
+    backend: str = "auto"            # local（Laya sidecar）| cloud（Jev）| auto
+    local_base_url: str = ""         # Laya sidecar 基址；空 = 本地后端未配置
+    local_model: str = "auto"        # auto = 由 Laya Router 按语种自动选 checkpoint
+                                     # （laya / laya-multilingual / laya-typed-decisions）
+    cloud_model: str = "jev-latest"  # TypeSafe 模型别名
+    cloud_base_url: str = ""         # 云端点基址；空 = 官方 https://api.typesafe.ai
+                                     # （env TYPESAFE_BASE_URL；接中转/聚合网关时填）
+    timeout_s: float = 15.0          # 单次决策 HTTP 超时（秒）
+
+    # ── 试点接入开关（默认关：不影响现有 demo 与默认行为）──
+    # localize_search 检索结果重排：召回后由决策模型对 query-片段相关性
+    # 重排。仅改 hits 顺序与 risk_note，不改 SearchHit / SearchReport 字段。
+    search_rerank: bool = Field(default=False, validate_default=True)
+    # env FLOWMIND_DECIDE_SEARCH_RERANK（"1"/"true" 开）
+    search_rerank_top_n: int = 20    # 参与重排的候选上限（超出的保持原序追加尾部）
+
+    @field_validator("search_rerank", mode="before")
+    @classmethod
+    def _env_search_rerank(cls, v: bool) -> bool:
+        """env FLOWMIND_DECIDE_SEARCH_RERANK 覆盖（1/true 开，0/false 关）。"""
+        raw = os.environ.get("FLOWMIND_DECIDE_SEARCH_RERANK", "").strip().lower()
+        if raw in ("1", "true", "yes"):
+            return True
+        if raw in ("0", "false", "no"):
+            return False
+        return v
 
 
 class ContentConfig(BaseModel):
@@ -227,6 +308,75 @@ class ContentConfig(BaseModel):
     audit_llm_enabled: bool = True  # 审计是否启用 LLM 复核（规则扫描始终执行）
 
 
+class OpenFilmConfig(BaseModel):
+    """可选 OpenFilm 后端配置（``editing.backend = "openfilm"``）。
+
+    OpenFilm 是**可选能力**：不安装、不配置时，CyberCut（默认）与旧
+    FlowMind 流水线完全不受影响。FlowMind 只通过 OpenFilm CLI 创建/打开
+    项目并渲染成片；电影内容由外部编程 Agent 在工作区内创作（FlowMind
+    不内置编程 Agent 运行时）。
+
+    CLI 解析顺序：``cli`` 配置（env ``FLOWMIND_OPENFILM_CLI``）→ PATH 上的
+    ``openfilm``。``cli`` 指向 ``.mjs``/``.js`` 时用 ``node`` 执行（需 Node
+    >= 22.2，可用 ``node`` 字段/env ``FLOWMIND_OPENFILM_NODE`` 指定）；
+    指向原生可执行文件时直接执行；Windows npm 的 ``.cmd``/``.bat`` shim 会
+    静态解析出 ``.mjs`` 入口后以 ``node <mjs>`` 启动（不经 cmd.exe/shell）。
+    子进程始终使用参数数组 + ``shell=False``，且只接受本模块构造的参数。
+    """
+
+    cli: str = Field(default="", validate_default=True)   # env FLOWMIND_OPENFILM_CLI
+    node: str = Field(default="", validate_default=True)  # env FLOWMIND_OPENFILM_NODE
+    # OpenFilm 需要 PATH 上的 ffmpeg/ffprobe；这里配置的 bin 目录**只注入
+    # 本适配器启动的子进程**，不改进程全局 PATH。空 = 沿用
+    # FLOWMIND_MEDIA_BIN_DIR（FlowMind 既有媒体工具目录）或系统 PATH。
+    ffmpeg_bin_dir: str = Field(default="", validate_default=True)  # env FLOWMIND_OPENFILM_FFMPEG_BIN_DIR
+    open_timeout_s: float = Field(default=300.0, gt=0)   # `openfilm open` 超时（首跑含 Chromium 下载）
+    render_timeout_s: float = Field(default=3600.0, gt=0)  # 整片渲染超时
+    render_fps: int = Field(default=30, ge=1, le=240)
+    # True=子进程带 OPENFILM_NO_BROWSER=1：Studio 服务照常启动并返回地址，
+    # 但不擅自拉起系统浏览器（由调用方在外部窗口打开返回的 studio_url）。
+    no_browser: bool = Field(default=True, validate_default=True)
+    # OpenFilm 智能剪辑默认审批闸：外部 Agent 完成项目后先审片再渲染。
+    # 显式传 review_stages=[] 可全自动渲染。
+    default_review_stages: list[str] = Field(
+        default_factory=lambda: ["pre_render"])
+
+    @field_validator("cli", "node", "ffmpeg_bin_dir", mode="before")
+    @classmethod
+    def _env_strings(cls, v: str, info: ValidationInfo) -> str:
+        """env 覆盖（空值不生效，回落 toml / 内置默认）。"""
+        ensure_env_loaded()
+        env_names = {
+            "cli": "FLOWMIND_OPENFILM_CLI",
+            "node": "FLOWMIND_OPENFILM_NODE",
+            "ffmpeg_bin_dir": "FLOWMIND_OPENFILM_FFMPEG_BIN_DIR",
+        }
+        env = os.environ.get(env_names[info.field_name], "").strip()
+        return env or v
+
+    @field_validator("no_browser", mode="before")
+    @classmethod
+    def _env_no_browser(cls, v: bool) -> bool:
+        """env FLOWMIND_OPENFILM_NO_BROWSER 覆盖（1/true 开，0/false 关）。"""
+        ensure_env_loaded()
+        raw = os.environ.get("FLOWMIND_OPENFILM_NO_BROWSER", "").strip().lower()
+        if raw in ("1", "true", "yes"):
+            return True
+        if raw in ("0", "false", "no"):
+            return False
+        return v
+
+    @field_validator("default_review_stages")
+    @classmethod
+    def _only_pre_render_gate(cls, v: list[str]) -> list[str]:
+        """OpenFilm 只有 pre_render 审片闸；配置错时启动即报错而非静默失效。"""
+        bad = [stage for stage in v if stage != "pre_render"]
+        if bad:
+            raise ValueError(
+                f"OpenFilm 仅支持 pre_render 审批闸，不支持：{bad}")
+        return v
+
+
 class EditingConfig(BaseModel):
     """Agent 智能视频剪辑（edit_* 技能 + editing 流水线）的可配置参数。
 
@@ -254,8 +404,10 @@ class EditingConfig(BaseModel):
     llm_max_attempts: int = 5
 
     # ── 流水线治理 ──
-    # CyberCut 是 edit_* 的 DAG 执行后端；旧版 FlowMind 流水线可显式切回。
-    backend: Literal["cybercut", "flowmind"] = "cybercut"
+    # CyberCut 是 edit_* 的默认 DAG 执行后端；旧版 FlowMind 流水线可显式
+    # 切回；OpenFilm 是**可选**外部创作/Studio/渲染后端（默认关闭）。
+    backend: Literal["cybercut", "flowmind", "openfilm"] = "cybercut"
+    openfilm: OpenFilmConfig = Field(default_factory=OpenFilmConfig)
     # 默认审批阶段：分镜是审批主战场（用户决策：全自动为主，可逐阶段开审批）
     default_review_stages: list[str] = Field(
         default_factory=lambda: ["storyboard"])
@@ -864,6 +1016,7 @@ class FlowmindConfig(BaseModel):
     marketing_image: MarketingImageConfig = Field(default_factory=MarketingImageConfig)
     localizer: LocalizerConfig = Field(default_factory=LocalizerConfig)
     editing: EditingConfig = Field(default_factory=EditingConfig)
+    decide: DecideConfig = Field(default_factory=DecideConfig)
     content: ContentConfig = Field(default_factory=ContentConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     keyword_trend: KeywordTrendConfig = Field(default_factory=KeywordTrendConfig)

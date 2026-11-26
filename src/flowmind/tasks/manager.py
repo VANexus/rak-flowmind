@@ -45,6 +45,7 @@ from pathlib import Path
 from flowmind import auth
 from flowmind.config import load_config
 from flowmind.contracts import new_trace
+from flowmind.pipeline_steps import resolve_selection
 from flowmind.skill import invoke
 from flowmind.tasks import (
     NON_TERMINAL_STATUSES,
@@ -59,12 +60,15 @@ from flowmind.tasks import (
     reset_task_context,
     set_task_context,
 )
-from flowmind.tasks.events import TaskEventPublisher
+from flowmind.tasks.events import TaskEventPublisher, get_event_publisher
 from flowmind.tasks.store import TaskStore
 
 logger = logging.getLogger(__name__)
 
 _ORPHAN_DIR_TTL_SECONDS = 7 * 86400  # 孤儿 workdir（无 DB 行）mtime 超过 7 天清理
+# 进度写合并最小间隔（秒）：stage 未变且距上次 PG 落库不足此值时跳过 UPDATE
+# （MQTT 照发；终态不受影响）。2s 对 2s 轮询的前端进度条无感知差异。
+_PROGRESS_MIN_INTERVAL = 2.0
 
 
 class TaskManager:
@@ -83,11 +87,15 @@ class TaskManager:
         cfg = load_config().localizer
         self._max_pending = max(1, max_pending if max_pending is not None
                                 else cfg.max_pending_tasks)
+        # SaaS 租户公平性（2026-10-31）：单租户 pending 上限，防一个租户的
+        # 批量提交塞满全队列把其他租户全部挤成 429
+        self._max_pending_per_tenant = max(
+            1, getattr(cfg, "max_pending_per_tenant", 20))
         self._ttl = max(1, ttl_seconds if ttl_seconds is not None
                         else cfg.task_ttl_seconds)
         self._data_dir = Path(data_dir or cfg.data_dir).expanduser().resolve()
         self.store = store or TaskStore()
-        self.events = events or TaskEventPublisher()
+        self.events = events or get_event_publisher()
         self.workers = max(1, workers)  # GPU 单卡：绝不放宽（防 OOM）
         self._pool = ThreadPoolExecutor(
             max_workers=self.workers, thread_name_prefix="flowmind-task")
@@ -95,12 +103,20 @@ class TaskManager:
         # 终态已写标志：终态落库（无论谁写）后置位，_on_progress 据此停发，
         # 防 cancel 后流水线残余进度把 MQTT retain 的终态事件洗回 running
         self._terminal_flags: dict[str, threading.Event] = {}
-        self._lock = threading.Lock()       # 保护 _cancel_events/_terminal_flags
-        self._submit_lock = threading.Lock()  # pending 检查 + 建行的原子性
+        # 进度写合并账本（task_id → (stage, ts)）：stage 未变且距上次落库
+        # 不足 _PROGRESS_MIN_INTERVAL 秒时跳过 PG UPDATE（进度条体验不变，
+        # worker 内 PG 往返 -80%）；MQTT 发布不受合并影响
+        self._last_progress: dict[str, tuple[str, float]] = {}
+        # 最新步骤快照（2026-10-31）：终态收尾时 PG 可能还没有快照（取消太快）
+        self._last_steps: dict[str, list[dict]] = {}
+        self._lock = threading.Lock()       # 保护 _cancel_events/_terminal_flags/_last_progress
         self._gc_stop = threading.Event()
 
-        # 启动恢复：服务重启后遗留 queued/running → interrupted（PG 快速失败）
+        # 启动恢复（队列持久化，2026-10-31）：running → interrupted（流水线
+        # 不可断点续跑）；queued **保留**并由下方重新入队——202 受理的任务
+        # 不再因重启静默丢失。
         self.store.recover_running()
+        self._requeue_orphans()
 
         self._gc_thread = threading.Thread(
             target=self._gc_loop, name="flowmind-task-gc", daemon=True)
@@ -111,6 +127,10 @@ class TaskManager:
     def submit(self, skill_id: str, args: dict,
                tenant_id: str | None = None) -> str:
         """提交任务，返回 task_id；pending 超限抛 TaskQueueFull（调用方回 429）。
+
+        原子化准入（2026-10-31）：单条 SQL 完成全局水位 + 租户水位检查 +
+        插入——取代旧的全局互斥锁 + 两次 PG 往返（提交全序列化的瓶颈）。
+        水位为软上限（READ COMMITTED 并发下 ±N 超越，见 store 模块 docstring）。
 
         租户归属（ECO-ADR-0011）：``tenant_id`` 不传时从当前调用方上下文
         （请求中间件绑定的凭证）取——这样 MCP 通道的技能（localize_submit /
@@ -125,12 +145,15 @@ class TaskManager:
                     "无调用方凭证，拒绝创建无租户归属的任务（fail-closed）")
             tenant_id = scope_tenant
         task_id = uuid.uuid4().hex
-        with self._submit_lock:
-            pending = self.store.count_pending()
-            if pending >= self._max_pending:
-                raise TaskQueueFull(
-                    f"待处理任务已达上限 {self._max_pending}（当前 {pending}），稍后重试")
-            self.store.create_task(task_id, skill_id, args, tenant_id=tenant_id)
+        admitted = self.store.create_task_admitted(
+            task_id, skill_id, args, tenant_id,
+            global_max=self._max_pending,
+            tenant_max=self._max_pending_per_tenant,
+        )
+        if not admitted:
+            raise TaskQueueFull(
+                f"待处理任务已达上限（全局 {self._max_pending}"
+                f"/租户 {self._max_pending_per_tenant}），稍后重试")
         with self._lock:
             self._cancel_events[task_id] = threading.Event()
             self._terminal_flags[task_id] = threading.Event()
@@ -144,8 +167,34 @@ class TaskManager:
             self._finish(task_id, STATUS_FAILED, error=f"executor rejected: {exc}",
                          from_statuses=NON_TERMINAL_STATUSES)
             raise
-        logger.info("任务已提交：%s skill=%s pending=%s", task_id, skill_id, pending + 1)
+        logger.info("任务已提交：%s skill=%s tenant=%s", task_id, skill_id, tenant_id)
         return task_id
+
+    def _requeue_orphans(self) -> None:
+        """重启后把遗留 queued 任务重新入队（队列持久化的后半段）。
+
+        行已在 PG（不用重新 INSERT），仅向线程池补投 worker；worker 的
+        CAS queued→running 天然幂等。上限按全局 pending 水位截断（再多
+        的留待 GC/人工，正常场景不会有——能 queued 必然当初过了水位）。
+        """
+        try:
+            orphans = self.store.list_queued(limit=self._max_pending)
+        except Exception as exc:  # noqa: BLE001  重入队失败不阻断启动
+            logger.warning("启动重入队失败（任务留在 queued，下轮重启再试）: %s", exc)
+            return
+        for rec in orphans:
+            task_id = rec["task_id"]
+            with self._lock:
+                self._cancel_events[task_id] = threading.Event()
+                self._terminal_flags[task_id] = threading.Event()
+            try:
+                self._pool.submit(self._worker, task_id, rec["skill_id"],
+                                  rec.get("args") or {})
+            except RuntimeError as exc:  # noqa: PERF203  执行器关闭
+                logger.warning("重入队投递失败 task=%s: %s", task_id, exc)
+                break
+        if orphans:
+            logger.warning("启动重入队：%s 个遗留 queued 任务已恢复执行", len(orphans))
 
     def cancel(self, task_id: str) -> bool:
         """取消任务：置协作取消 flag + CAS 落 cancelled 终态。
@@ -176,15 +225,17 @@ class TaskManager:
                         task_id, rec["status"])
         return ok
 
-    def get_task(self, task_id: str) -> dict | None:
+    def get_task(self, task_id: str, *, include_args: bool = True) -> dict | None:
         """按调用方租户范围读任务（跨租户与不存在**同形**返回 None）。
 
         故意不给 403而是回 404：“此 task_id 存在但不属于你”本身就是泄密
         （枚举探针可用它探测他人任务是否存在）。本方法是所有读/操作
         技能的唯一入口（localize_status / cancel / retry / download）。
         后台路径（worker / GC / recover）直接用 store.get_task，不受影响。
+        include_args=False 供轮询热路径跳过 args 解析（见 store.get_task）。
         """
-        return self._visible(self.store.get_task(task_id))
+        return self._visible(
+            self.store.get_task(task_id, include_args=include_args))
 
     def list_tasks(self, status: str | None = None, limit: int = 100) -> list[dict]:
         required, tenant = auth.tenant_scope()
@@ -234,12 +285,31 @@ class TaskManager:
                 self._publish(task_id, status=STATUS_RUNNING, pct=0.0,
                               message="任务开始执行")
 
+                # 步骤选择（2026-10-31）：调用方在 args 里带 steps/skip_steps 时
+                # 由注册表解析成启用集合（提交端点已做同样校验，此处是兜底：
+                # 解析失败 → 显式失败，绝不静默跑半截）
+                enabled_steps: tuple[str, ...] = ()
+                try:
+                    sel, _sk = resolve_selection(
+                        skill_id,
+                        steps=args.get("steps"),
+                        skip_steps=args.get("skip_steps"),
+                    )
+                    enabled_steps = tuple(s.id for s in sel)
+                except ValueError as exc:
+                    self._finish(task_id, STATUS_FAILED,
+                                 error=f"[VALIDATION] 步骤选择非法: {exc}",
+                                 from_statuses=NON_TERMINAL_STATUSES)
+                    return
+
                 ctx = TaskContext(
                     task_id=task_id,
                     workdir=self._data_dir / "tasks" / task_id / "work",
                     data_dir=self._data_dir,
                     progress_cb=lambda stage, pct, message="": self._on_progress(
                         task_id, stage, pct, message),
+                    step_cb=lambda payload: self._on_step(task_id, payload),
+                    enabled_steps=enabled_steps,
                     cancel_check=(lambda: False) if ev is None else ev.is_set,
                 )
                 token = set_task_context(ctx)
@@ -270,6 +340,41 @@ class TaskManager:
             with self._lock:
                 self._cancel_events.pop(task_id, None)
                 self._terminal_flags.pop(task_id, None)
+                self._last_progress.pop(task_id, None)
+                self._last_steps.pop(task_id, None)
+
+    def _finalize_steps(self, task_id: str, task_status: str,
+                        error: str | None) -> None:
+        """终态时把步骤快照收尾（幂等；无步骤快照的任务直接跳过）。"""
+        with self._lock:
+            steps = list(self._last_steps.get(task_id) or [])
+        if not steps:
+            rec = self.store.get_task(task_id, include_args=False)
+            steps = (rec or {}).get("steps") or []
+        if not steps:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        changed = False
+        for st in steps:
+            cur = st.get("status")
+            if cur in ("done", "skipped", "failed"):
+                continue
+            if task_status == STATUS_FAILED and cur == "running":
+                st["status"] = "failed"
+                st["skip_reason"] = None
+                st["note"] = (f"任务失败：{(error or '')[:200]}")
+                # 失败也记耗时（从 started_at 推算，前端可展示"跑了多久才失败"）
+                st["duration_ms"] = _duration_since(st.get("started_at"))
+            else:
+                st["status"] = "skipped"
+                st["skipped"] = True
+                st["skip_reason"] = (
+                    "任务已取消，该步未执行" if task_status == STATUS_CANCELLED
+                    else "任务已结束，该步未执行")
+            st["ended_at"] = now
+            changed = True
+        if changed:
+            self.store.update_steps(task_id, steps)
 
     def _classify_and_finish(self, task_id: str, result) -> None:
         """SkillResult 信封 → 任务终态（见模块 docstring 终态语义）。"""
@@ -299,23 +404,60 @@ class TaskManager:
                      from_statuses=NON_TERMINAL_STATUSES)
 
     def _on_progress(self, task_id: str, stage: str, pct: float, message: str) -> None:
-        """进度回调：落库 + 发 MQTT（各自降级，互不影响）。
+        """进度回调：落库（按间隔合并）+ 发 MQTT（各自降级，互不影响）。
 
         终态守卫：终态已落库（本 worker 落完或 cancel 线程抢先落）后停发——
         防止 cancel 后流水线在阶段边界间的残余进度把 retain 的终态事件
         洗回 running（实现选型：worker 侧 flag 停发，比逐次 update 走
         状态守卫少一次 DB 往返且覆盖 MQTT 发布路径）。
+
+        写合并（2026-10-31）：stage 未变且距上次 PG 落库不足
+        ``_PROGRESS_MIN_INTERVAL`` 秒时跳过 UPDATE（MQTT 照发，前端实时性
+        不依赖 DB 频率）——localize_video 单任务 ~25 次回调，合并后 worker
+        内 PG 往返 -80%。终态由 _finish/set_status 无条件落库，不受合并影响。
+        """
+        with self._lock:
+            flag = self._terminal_flags.get(task_id)
+            if flag is not None and flag.is_set():
+                return
+            last = self._last_progress.get(task_id)
+            now = time.monotonic()
+            if last is not None and last[0] == stage and (now - last[1]) < _PROGRESS_MIN_INTERVAL:
+                skip_write = True
+            else:
+                self._last_progress[task_id] = (stage, now)
+                skip_write = False
+        if not skip_write:
+            try:
+                self.store.update_progress(task_id, stage, pct)
+            except Exception as exc:  # noqa: BLE001  进度落库失败不阻断任务
+                logger.warning("进度落库失败 task=%s: %s", task_id, exc)
+        self._publish(task_id, status=STATUS_RUNNING, stage=stage,
+                      pct=pct, message=message)
+
+    def _on_step(self, task_id: str, payload: dict) -> None:
+        """步骤状态回调：落库（按步合并）+ 发 MQTT（终态守卫同 _on_progress）。
+
+        payload = StepTracker.build() 的全量快照 {skill_id,total,completed,steps[]}。
+        落库走 ``update_steps``（单行 JSON 更新，仅当快照有变化才写——
+        StepTracker 只在状态迁移/backend/note 变化时回调，天然稀疏）；
+        MQTT 载荷带全量 steps，前端一次拿到完整面板。
         """
         with self._lock:
             flag = self._terminal_flags.get(task_id)
         if flag is not None and flag.is_set():
             return
+        steps = payload.get("steps") or []
+        with self._lock:
+            self._last_steps[task_id] = steps   # 终态收尾用（PG 可能尚未写入）
         try:
-            self.store.update_progress(task_id, stage, pct)
-        except Exception as exc:  # noqa: BLE001  进度落库失败不阻断任务
-            logger.warning("进度落库失败 task=%s: %s", task_id, exc)
-        self._publish(task_id, status=STATUS_RUNNING, stage=stage,
-                      pct=pct, message=message)
+            self.store.update_steps(task_id, steps)
+        except Exception as exc:  # noqa: BLE001  步骤落库失败不阻断任务
+            logger.warning("步骤落库失败 task=%s: %s", task_id, exc)
+        self._publish(task_id, status=STATUS_RUNNING,
+                      stage=(next((s["id"] for s in steps
+                                   if s.get("status") == "running"), "")) or None,
+                      pct=None, message="", steps=steps)
 
     def _finish(self, task_id: str, status: str, *,
                 error: str | None = None,
@@ -334,6 +476,13 @@ class TaskManager:
                                    from_statuses=from_statuses)
         if not ok:
             return False
+        # 步骤收尾（2026-10-31）：任务终态时不应留下 running/pending 的步骤——
+        # 取消 → 中断步骤记 skipped；失败 → 当前 running 步骤记 failed，其余 pending
+        # 记 skipped（未执行）；成功 → 未执行的 pending 记 skipped。
+        try:
+            self._finalize_steps(task_id, status, error)
+        except Exception as exc:  # noqa: BLE001  收尾失败不影响终态
+            logger.warning("步骤收尾失败 task=%s: %s", task_id, exc)
         with self._lock:
             flag = self._terminal_flags.get(task_id)
         if flag is not None:
@@ -406,3 +555,14 @@ def get_task_manager() -> TaskManager:
         if _manager is None:
             _manager = TaskManager()
         return _manager
+
+
+def _duration_since(started_at: str | None) -> int | None:
+    """从 ISO8601 起始时间推算已运行毫秒（失败/取消步骤补耗时用）。"""
+    if not started_at:
+        return None
+    try:
+        t0 = datetime.fromisoformat(started_at)
+        return max(0, int((datetime.now(timezone.utc) - t0).total_seconds() * 1000))
+    except Exception:  # noqa: BLE001
+        return None

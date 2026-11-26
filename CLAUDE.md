@@ -1,18 +1,20 @@
 # CLAUDE.md
 
-> ⚠️ **维护冻结声明（2026-09-07，生态裁决）**：本仓库当前功能核心是 GPU
-> 视频本地化，保持主分支最新即可，不做非必要改动；非经用户明确授权，
-> 禁止重构、依赖升级或主线外功能开发。生态定位见 `../ECOSYSTEM.md`。
+> 🚀 **功能迭代期（2026-09-10，用户裁决解冻）**：本仓库核心是 GPU 视频本地化，
+> 当前围绕本主线快速功能迭代（含 AIGC 增值能力）；破坏性重构与对外契约
+> 变更仍需用户确认。生态定位见 `../.rak-docs/ECOSYSTEM.md`。
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 项目定位
 
-`mcp-base-gpu` 是**MCP over HTTP SaaS 服务端**，缺省加载两族技能：把「中文视频 →
-多语言配音/字幕版本」的 GPU 流水线（ASR → OCR → 翻译 → 字幕擦除 → TTS 配音 → 混音）
-包装成 **localize 族 7 个 `localize_*` 工具**；把抖音短视频成片（配音 → 时间线切镜 →
-图生视频 → 字幕/封面/贴片 → 合成渲染，算力全下沉云厂商）包装成 **dsp 族 8 个工具**。
-两条通道（`/mcp` 同步技能 + `/api/v1/tasks` 异步长任务）单端口 8002 对外（默认端口，前置 Go 网关占 8080）。
+`mcp-base-gpu` 是**MCP over HTTP SaaS 服务端**，缺省加载三族技能：把「中文视频 →
+多语言配音/字幕版本」的 GPU 流水线（抽音 → ASR → 说话人分离 → OCR → 翻译 → 字幕擦除 →
+TTS 配音 → 混音 → 向量化）包装成 **localize 族 7 个 `localize_*` 工具**；把「Agent 智能剪辑
+（理解 → 文案 → 脚本 → 分镜 → 渲染全流水线）」包装成 **edit 族 5 个工具**；把抖音短视频成片
+（配音 → 时间线切镜 → 图生视频 → 字幕/封面/贴片 → 合成渲染，算力全下沉云厂商）包装成
+**dsp 族 8 个工具**。两条通道（`/mcp` 同步技能 + `/api/v1/tasks` 异步长任务）单端口 8002
+对外（默认端口，前置 Go 网关占 8080）。
 
 **核心不变量**：**新增一个技能 = 写一个 `@skill` 函数**。注册 / JSON schema /
 MCP tool / manifest / discover() 全自动暴露。加技能**不改动** `server.py` /
@@ -51,15 +53,28 @@ LLM / 云 ASR/OCR/TTS 走云 API（dashscope / Anthropic 兼容协议）：
 | 字幕擦除 | simple-lama（big-lama） | delogo 滤镜 | `erase_backend` = auto/local/delogo |
 | 配音 | qwen-tts（Qwen3-TTS 0.6B 零样本克隆） | dashscope 声音复刻 | `tts_backend` = auto/local/cloud |
 | BGM 人声分离 | demucs（htdemucs） | — | `bgm_vocal_sep` |
+| 说话人分离 | funasr CAM++（CPU，不占显存） | — | `diarize_backend` = local/off/auto |
 | 字幕向量化 | —（远程 BGE HTTP 服务，见下） | — | `infra.vectorize` / FLOWMIND_VECTORIZE |
 
 关键约束与约定：
 
-- **Pascal 6.1 限制**：torch 锁 `2.5.1+cu121`（cu124+ 构建剔除 Pascal，勿升）；
-  `torchaudio==2.5.1+cu121` 必须在 `qwen-tts` 之后重新钉回（qwen-tts 会拉错版）。
+- **Pascal 6.1 限制**：torch 锁 `2.6.0+cu126`（cu126 是唯一仍带 Pascal 的 CUDA
+  构建——cu128/12.9/13.x 均已剔除 sm_50~sm_70，勿升到 cu128+）；
+  `torch==2.6.0+cu126` / `torchaudio==2.6.0+cu126` 必须在 `qwen-tts` / `funasr`
+  之后重新钉回（它们会把 torch 栈拉错版）。
 - **显存预算 ~7.5G**：whisper ~1.5G + Qwen3-TTS ~4G + LaMa ~1.5G。两道闸串行：
   TaskManager `workers=1`（任务间）+ `tasks/gpu.gpu_lane()` 信号量（sync invoke 与任务线程之间）。
   模型懒加载另有 `model_cache_guard()` 双检锁。
+- **多人对话本地化链路**：demucs 人声轨 → CAM++（funasr/modelscope）说话人分离 →
+  逐说话人参考音频 → Qwen3-TTS 零样本克隆（`_local_tts.synthesize_segments` 支持
+  句段自带 `ref_audio` / `ref_text`，优先于函数级参数）。分离走 **CPU**，不占显存预算；
+  参考音频不足 `speaker_ref_min_seconds` 时标 `low_confidence`，**不报错**。
+- **本地 TTS 引擎与时长对齐**：引擎为 **Qwen3-TTS 0.6B 零样本克隆**（`tts_engine`），
+  时长对齐用 atempo 分级变速（`dub_max_tempo`，超预算只记溢出统计、不再硬压）。
+  **IndexTTS2 已评估为不可用**（2026-09-24 spike）：上游 `indextts` 2.0.0 硬钉
+  `torch==2.8.*` / `torchaudio==2.8.*` 且 `requires-python<3.12`，与本仓库 Python 3.12 +
+  torch 2.6.0 钉版硬冲突；且 cu128 二进制已剔除 Maxwell/Pascal kernel（实测无 sm_61）。
+  若未来迁 `torch 2.8.0+cu126`（该构建仍保留 Pascal）可重估。
 - **auto 语义**：本地库可导入即用本地，否则回落云；两端都不可用显式报错，
   实际 backend 体现在 report 字段与 ReasoningChain 文本中，**不静默降级**。
 - **模型缓存与下载**：`HF_HOME=/srv/data/models`、`TORCH_HOME=/srv/data/models/torch`、
@@ -116,10 +131,13 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
   - `vectors.py` —— Milvus `localize_segments`（768 维 HNSW/COSINE，按 task_id 幂等
     upsert）+ `health_status()`。
   - `gpu.py` —— `gpu_lane()` / `model_cache_guard()` 双道闸。
-- **`skills/`** —— 15 个 `@skill`，分两族（族表 `FAMILIES` 唯一真源）：**localize 族 7 个**
-  （localize_submit/status/retry/cancel/download/search/video）**+ dsp 族 8 个**
+- **`skills/`** —— 20 个 `@skill`，分三族（族表 `FAMILIES` 唯一真源）：**localize 族 7 个**
+  （localize_submit/status/retry/cancel/download/search/video）**+ edit 族 5 个**
+  （edit_project/assets/pipeline/review/status）**+ dsp 族 8 个**
   （tts_generate/timeline_build/image_to_video/bgm_match/subtitle_build/cover_pick/cart_sticker/render_compose）
-  + 18 个 helper（`_cloud_asr` / `_local_asr` / `_dsp_align` / `_dsp_mediakit` / `_bge_embed` / `_media` / `_inpaint` 等）。
+  + 23 个 helper（`_decide` / `_diarize` / `_indextts` / `_llm_translate` / `_music_sep` /
+  `_local_tts` / `_cloud_tts` / `_cloud_asr` / `_local_asr` / `_dsp_align` / `_dsp_mediakit` /
+  `_bge_embed` / `_media` / `_inpaint` 等）。
   `content_hot_boards.py` 为**未入族的占位源码**（依赖的 helper 缺失，不随任何族导入）。
   **耦合注意**：`_local_asr` 用 `_cloud_asr` 的 `ASRError`；`_local_cr` 用 `_cloud_ocr`
   私有函数；`_inpaint` import `_media` —— 这几对必须同进退。
@@ -144,13 +162,17 @@ HTTP 客户端 ──/api/v1/tasks (REST)───┘        │
 - **本地优先 + 云回落**：ASR / OCR / 擦除 / 配音走本地模型（Pascal 6.1 域内），
   翻译 LLM / 云 ASR/OCR/TTS 回落走云 API。后端开关 local/cloud/auto。
   生产路径无任何可用后端时必须显式报错，**绝不静默降级出假结果**。
+- **多人对话行为契约（`diarize_backend` 三态）**：`local` 且 funasr 不可用 → **显式抛错**
+  （`category="environment"`，不产出成片）；`auto` 且不可用 → 跳过说话人分离、回落整片
+  单音色克隆，并在 `report["diarize_backend"]="none"` + `report["quality"]` /
+  ReasoningChain 中**显式记录原因（非静默降级）**；`off` → 跳过。
 - **语言**：注释 / 文档字符串 / 日志 / 提交信息用**中文**；标识符用**英文**。
 - **提交格式**：`<type>: <中文描述>`，type ∈ `feat/fix/docs/refactor/test/chore`。
 - **错误永不静默**：所有失败经 `SkillResult(ok=False, error=...)` 或 `degraded=True`
   返回结构化结果，绝不吞异常、不返回半成品。`invoke()` 是统一执行点。
 - **不留代码 TODO 给下游开发者**：可调项全部实现并带通用默认，走 config。
 - **`trace_id` 贯穿**每次调用（REST 任务通道以 task_id 即 trace_id 贯穿）。
-- **验证靠真实运行**：无单测，改完跑 `examples/*_demo.py`（9 个，全 PASS 为准）
+- **验证靠真实运行**：无单测，改完跑 `examples/*_demo.py`（13 个，全 PASS 为准）
   + 直接 `invoke("<id>", args)` 看 envelope。
 - **API key 永不进 toml / commit**：`AI_LLM_API_KEY` / `AI_SPEECH_API_KEY` 只从
   env / gitignored `.env` 读（经 `skills/_secrets.get_api_key`）。集群凭证
@@ -180,13 +202,14 @@ ok=False / INTERNAL + 「稍后重试」message，即 429 语义；REST 层按�
 for f in examples/*_demo.py; do PYTHONPATH=$PWD/src conda run -n flowmind python "$f"; done
 ```
 
-18 个 demo。**localize 族 9 个**（`localize_video / submit / status / retry / cancel /
-download / search / api_server / auth_token`）：前 7 个用 mock 流水线/内存 fake manager
-（不依赖 GPU / 集群），`api_server_demo` 起真实 uvicorn 测任务 REST 通道（400/422/429/
-部分受理/穿越防护），`auth_token_demo` 用 TestClient 测凭证校验（不需集群与 GPU）。
-**dsp 族 8 个**（`dsp_tts_generate / timeline_build / image_to_video / bgm_match /
-subtitle_build / cover_pick / cart_sticker / render_compose`）+ **`federation_register_demo`**
-（联邦自注册双通道）。
+22 个 demo：**localize 族 8 个**（`localize_video / localize_quality / submit / status /
+retry / cancel / download / search`）+ **edit 族 1 个**（`edit_pipeline`）+ **dsp 族 8 个**
+（`dsp_tts_generate / timeline_build / image_to_video / bgm_match / subtitle_build /
+cover_pick / cart_sticker / render_compose`）+ 说话人分离/决策 2 个（`diarize_demo /
+decide_demo`）+ 基础设施 3 个（`api_server / auth_token / federation_register`）。
+多数用 mock 流水线 / 内存 fake manager（不依赖 GPU / 集群），`api_server_demo`
+起真实 uvicorn 测任务 REST 通道（400/422/429/部分受理/穿越防护），`auth_token_demo`
+用 TestClient 测凭证校验（不需集群与 GPU）。
 真实 GPU / 集群链路的任务生命周期冒烟单独做（起服务 + MCP 探针 + REST 提交）。
 
 ## 贡献新技能

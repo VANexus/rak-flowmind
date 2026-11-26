@@ -123,7 +123,59 @@ def main() -> None:
           "空库应 ok=True + 空 hits（不是错误）")
     check("无命中" in r.reasoning[0].risk_note, "risk_note 应解释空态成因")
 
-    section("4) error：嵌入服务不可用 → ok=False（不打 degraded）")
+    section("4) 重排：config decide.search_rerank 开 → 决策模型按相关性重排")
+    _install(_fake_embed_ok, lambda qv, top_k=5, task_id=None: list(_RAW_HITS))
+
+    class _StubDecide:
+        search_rerank = True
+        search_rerank_top_n = 20
+
+    class _StubConfig:
+        decide = _StubDecide()
+
+    orig_get_config = lsearch.get_config
+    lsearch.get_config = lambda: _StubConfig()
+    seen_state = {}
+
+    def fake_decide(state, questions):
+        seen_state.update(state=state, questions=questions)
+        # hit_1（原余弦 0.87）判为高度相关；hit_0（原余弦 0.92）判为弱相关
+        return {"backend": "local", "model": "laya", "usage": {},
+                "answers": {"hit_0": {"type": "score", "score": 0.5, "confidence": 0.7},
+                            "hit_1": {"type": "score", "score": 2.8, "confidence": 0.9}}}
+
+    orig_decide = lsearch._decide.decide
+    lsearch._decide.decide = fake_decide
+    try:
+        r = invoke("localize_search", {"query": "配音语种支持"})
+        _print(r)
+        check(r.ok and r.data.count == 2, "重排不应改变命中数")
+        check(r.data.hits[0].task_id == "task-002",
+              "高相关性候选应排到首位（0.87 反超 0.92）")
+        check(len(seen_state["questions"]) == 2, "应为每个候选各问一个 score 问题")
+        check(seen_state["questions"]["hit_0"]["type"] == "score",
+              "重排应使用 score 原语")
+        check(seen_state["state"]["query"] == "配音语种支持",
+              "state 应携带原查询")
+        check("重排" in r.reasoning[0].risk_note, "risk_note 应说明已重排")
+
+        section("4b) error：重排已开启但决策模型不可用 → ok=False（不静默失效）")
+        def fake_decide_down(state, questions):
+            raise lsearch._decide.DecideError("决策模型未配置", category="environment")
+
+        lsearch._decide.decide = fake_decide_down
+        r = invoke("localize_search", {"query": "任意"})
+        print(f"  ok          : {r.ok}")
+        print(f"  error.code  : {r.error.code if r.error else None}")
+        print(f"  error.msg   : {r.error.message if r.error else None}")
+        check(r.ok is False, "重排开启且决策模型不可用应 ok=False")
+        check("决策模型未配置" in (r.error.message or ""),
+              "message 应透出决策模型失败原因")
+    finally:
+        lsearch._decide.decide = orig_decide
+        lsearch.get_config = orig_get_config
+
+    section("5) error：嵌入服务不可用 → ok=False（不打 degraded）")
     def fake_embed_down(texts):
         raise EmbedError("connection refused")
 
@@ -138,7 +190,7 @@ def main() -> None:
     check("向量嵌入服务不可用" in (r.error.message or ""),
           "message 应脱敏并说明嵌入服务不可用")
 
-    section("5) error：检索服务不可用 → ok=False（不打 degraded）")
+    section("6) error：检索服务不可用 → ok=False（不打 degraded）")
     def fake_search_down(query_vector, top_k=5, task_id=None):
         raise VectorStoreError("milvus unavailable")
 

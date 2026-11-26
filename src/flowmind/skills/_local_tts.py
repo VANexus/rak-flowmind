@@ -7,16 +7,21 @@
 - 模型：Qwen/Qwen3-TTS-12Hz-0.6B-Base（HF 缓存 /srv/data/models，2.5GB）
 - 克隆：ref_audio（wav 路径/数组）+ ref_text（参考音频转写）零样本克隆，
   支持跨语种（参考中文、输出英文）
-- 依赖系统 sox（sudo apt install sox）与 torchaudio==2.5.1+cu121
-  （qwen-tts 安装会把 torchaudio 升到不匹配版本，见 environment.yml 注释）
+- 依赖系统 sox（sudo apt install sox）与 torchaudio==2.6.0+cu126
+  （qwen-tts 安装会把 torch/torchaudio 升到不匹配版本，见 environment.yml 注释）
 """
 from __future__ import annotations
 
+import logging
 import threading
 from collections import OrderedDict
 from pathlib import Path
 
 from flowmind.tasks.gpu import model_cache_guard
+
+logger = logging.getLogger(__name__)
+
+_MODEL_ID = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 
 _LANG_MAP = {
     "zh": "Chinese", "en": "English", "de": "German", "it": "Italian",
@@ -56,6 +61,23 @@ def available() -> bool:
         return False
 
 
+def _resolve_model_ref() -> str:
+    """优先返回本地 HF 缓存快照路径，缓存缺失才回落 repo id。
+
+    传 repo id 时 transformers 加载 tokenizer 会无条件联网查 ``model_info``
+    （``tokenization_utils_base._patch_mistral_regex`` → ``is_base_mistral``），
+    离线模式（HF_HUB_OFFLINE=1）下直接抛 OfflineModeIsEnabled——即使模型
+    已完整缓存。传本地目录路径会短路该检查，同时避免任何联网。
+    """
+    try:
+        from huggingface_hub import snapshot_download
+
+        return snapshot_download(_MODEL_ID, local_files_only=True)
+    except Exception:  # noqa: BLE001  缓存缺失/不完整 → 回落 repo id（其自身错误照常抛出）
+        logger.warning("未命中 Qwen3-TTS 本地缓存，回落 repo id 加载", exc_info=True)
+        return _MODEL_ID
+
+
 def _get_model():
     """进程内单例 + 双检锁懒加载。加载失败显式报错（环境问题），绝不静默。"""
     if _SHARED["model"] is not None:
@@ -73,7 +95,7 @@ def _get_model():
             try:
                 device = "cuda:0" if torch.cuda.is_available() else "cpu"
                 _SHARED["model"] = Qwen3TTSModel.from_pretrained(
-                    "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+                    _resolve_model_ref(),
                     device_map=device,
                     dtype=torch.float32,            # Pascal 6.1 不支持 bf16
                     attn_implementation="sdpa",     # flash-attn 仅 fp16/bf16，不可用
@@ -184,12 +206,16 @@ def synthesize_segments(
     """逐句合成，输出按 index 命名的 wav 列表（seg_0000.wav ...）。
 
     与 _cloud_tts.synthesize_segments 返回结构对齐（流水线按顺序
-    与 translated 时间戳对齐），便于 _build_timed_audio 无差别消费。
+    与 translated 时间戳对齐），便于 _mix_timed_audio 无差别消费。
+
+    逐说话人音色：句段 MAY 自带 ``ref_audio`` / ``ref_text``，存在时优先于
+    函数级 ``ref_audio`` 参数（多人对话按说话人路由不同参考音频）；不携带时
+    回落函数级参数，行为与改造前完全一致（完全向后兼容）。
     """
     out_dir_p = Path(out_dir)
     out_dir_p.mkdir(parents=True, exist_ok=True)
     fn = synth_fn or (
-        lambda text, out_path, **kw: synthesize(
+        lambda text, out_path, ref_audio=ref_audio, ref_text=ref_text, **kw: synthesize(
             text, out_path=out_path, voice=voice,
             ref_audio=ref_audio, ref_text=ref_text,
             target_lang=target_lang,
@@ -197,7 +223,11 @@ def synthesize_segments(
     )
     outs: list[str] = []
     for seg in segments:
+        # 句段自带参考音频优先；ref_text 仅在该句段自带 ref_audio 时才跟随
+        # （避免"别人家的转写"配到本句段的参考音频上）
+        seg_ref_audio = seg.get("ref_audio") or ref_audio
+        seg_ref_text = seg.get("ref_text") if seg.get("ref_audio") else ref_text
         path = str(out_dir_p / f"seg_{seg['index']:04d}.wav")
-        fn(seg["text"], path)
+        fn(seg["text"], path, ref_audio=seg_ref_audio, ref_text=seg_ref_text)
         outs.append(path)
     return outs

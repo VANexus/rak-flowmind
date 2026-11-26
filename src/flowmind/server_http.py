@@ -35,6 +35,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+import anyio
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 
@@ -262,6 +263,29 @@ def _wrap_streamable_lifespan() -> None:
 
         @contextlib.asynccontextmanager
         async def lifespan(app):
+            # 启动预热（2026-10-31 SaaS 化）：
+            # 1) anyio to_thread 上限默认 40，MCP tools/call 与全部 REST 的
+            #    PG 调用共享之——高并发下最先打满的是这个隐形天花板。
+            #    FLOWMIND_THREAD_POOL_TOKENS 可调（默认 100）。
+            # 2) MQTT 首连确认（≤2s）挪到启动期，首个任务发布不再阻塞 worker。
+            try:
+                import anyio.to_thread as _to_thread
+
+                tokens = max(40, int(
+                    os.environ.get("FLOWMIND_THREAD_POOL_TOKENS", "100")))
+                _to_thread.current_default_thread_limiter().total_tokens = tokens
+                logger.info("anyio to_thread 上限 = %s", tokens)
+            except Exception as exc:  # noqa: BLE001  预热失败不阻断启动
+                logger.warning("to_thread 上限调整失败（保持默认 40）: %s", exc)
+            try:
+                from flowmind.tasks.manager import get_task_manager
+
+                await anyio.to_thread.run_sync(get_task_manager)
+                from flowmind.tasks.events import get_event_publisher
+
+                get_event_publisher().warmup()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("任务引擎/MQTT 预热失败（首个请求再惰性初始化）: %s", exc)
             async with orig_lifespan(app):
                 yield
                 if _federation_stop is not None:

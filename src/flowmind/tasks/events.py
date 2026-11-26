@@ -97,6 +97,13 @@ class TaskEventPublisher:
     def enabled(self) -> bool:
         return self._enabled
 
+    def warmup(self) -> None:
+        """启动预热：后台线程提前建连，首个任务发布不再等 ≤2s 连接确认。"""
+        if not self._enabled:
+            return
+        threading.Thread(target=self._get_client,
+                         name="mqtt-warmup", daemon=True).start()
+
     def status(self) -> str:
         """健康探针用：disabled（未配置）/ connected / connecting。"""
         if not self._enabled:
@@ -140,19 +147,28 @@ class TaskEventPublisher:
         self._connected.clear()
         logger.warning("MQTT 断开（paho 自动重连中）")
 
-    def publish(self, task_id: str, *, status: str, stage: str = "",
-                pct: float = 0.0, message: str = "") -> bool:
-        """发布一条任务事件。终态 retain=True。失败返回 False（绝不抛）。"""
+    def publish(self, task_id: str, *, status: str, stage: str | None = "",
+                pct: float | None = 0.0, message: str = "",
+                steps: list[dict] | None = None) -> bool:
+        """发布一条任务事件。终态 retain=True。失败返回 False（绝不抛）。
+
+        steps（2026-10-31）：步骤全量快照（pipeline_steps.StepTracker.build()
+        的 steps 数组）。随事件下发，前端步骤面板一次拿全；未提供时不带该
+        字段（向后兼容旧消费者）。
+        """
         if not self._enabled:
             return False
-        payload = json.dumps({
+        body: dict = {
             "task_id": task_id,
-            "stage": stage,
-            "pct": round(float(pct), 2),
+            "stage": stage or "",
+            "pct": round(float(pct), 2) if pct is not None else None,
             "message": message,
             "status": status,
             "ts": datetime.now(timezone.utc).isoformat(),
-        }, ensure_ascii=False)
+        }
+        if steps is not None:
+            body["steps"] = steps
+        payload = json.dumps(body, ensure_ascii=False)
         topic = f"{_TOPIC_PREFIX}/{task_id}/events"
         retain = status in TERMINAL_STATUSES
         try:
@@ -185,3 +201,18 @@ class TaskEventPublisher:
             except Exception:  # noqa: BLE001
                 pass
             self._client = None
+
+
+# 进程级单例：manager / server_http 预热 / 健康探针共享同一客户端与连接
+_publisher: TaskEventPublisher | None = None
+_publisher_lock = threading.Lock()
+
+
+def get_event_publisher() -> TaskEventPublisher:
+    """进程级单例访问器（惰性；配置解析失败由调用方兜底降级）。"""
+    global _publisher
+    if _publisher is None:
+        with _publisher_lock:
+            if _publisher is None:
+                _publisher = TaskEventPublisher()
+    return _publisher

@@ -1,7 +1,7 @@
 """字幕区定位：百炼 qwen3.5-ocr（云优先，零本地模型）。
 
-策略：对抽样帧调 qwen3.5-ocr 检测底部字幕条 bbox；多帧聚合取包围盒
-并集（外扩 padding），作为 ffmpeg delogo 擦除区域。
+策略：对抽样帧调 qwen3.5-ocr 检测叠加文字（字幕/水印/角标）bbox；
+多帧聚合取包围盒并集（外扩 padding），作为擦除区域。
 
 坐标系（实测校准）：qwen3.5-ocr 返回 rotate_rect=[cx, cy, w, h, angle]，
 四个几何量各自按图片对应维度归一化到 0-1000：
@@ -30,7 +30,12 @@ class OCRError(Exception):
         self.retriable = retriable
 
 
-_PROMPT = "检测图中底部字幕条文本的边界框，输出JSON。"
+_PROMPT = "检测图中所有叠加文字（字幕、水印、角标）的边界框，输出JSON。"
+
+# 同一文本行的纵向合并判据：两框中心距 ≤ 文字高度 × 本系数。取 <1 使
+# 纵向相邻但相互独立的两行（或"字幕 + 游走水印"）不被并成一个擦除区/一个
+# 行高样本。见 _aggregate_regions 注释中的实测数据。
+_LINE_MERGE_RATIO = 0.8
 
 
 def _ocr_frame(frame_path: str, api_key: str) -> list[dict]:
@@ -138,36 +143,50 @@ def _aggregate_regions(
     返回多个独立区域：竖排视频里标题（顶部）与歌词（底部）可能落在同一
     垂直线上但 y 位置分开，需分别擦除，避免全屏高的一条竖带误伤画面主体。
     空 boxes 返回空列表。云/本地 OCR 后端共用本聚合逻辑。
+
+    此处不再按横向距离丢弃"孤立簇"：候选去留已由 _passes_region_prior
+    （底部带/顶部带/贴边缘）与 _is_white_subtitle 决定，横向再丢弃会把
+    贴右边缘的账号水印（与居中字幕 cx 相差 >0.35W）整块漏擦——正是要擦的
+    目标（水印逐帧漂移但始终 hug 边缘）。
     """
     if not boxes:
         return []
 
-    # 保留全部横向簇（不再只选画面中央簇）：输入框已过"底部 40%"先验，
-    # 边缘簇几乎总是字幕的行首/行尾碎片而非水印；只留中央簇会漏擦边缘
-    # 残字（鬼影）。底部水印被顺带擦除可接受（LaMa/修复本就为去内容）。
-    all_boxes: list[tuple[int, int, int, int]] = []
-    prev_cx: float | None = None
-    for b in sorted(boxes, key=lambda b: (b[0] + b[2]) / 2):
-        cur_cx = (b[0] + b[2]) / 2
-        if prev_cx is not None and cur_cx - prev_cx >= (frame_width or 0) * 0.35:
-            continue  # 仅丢弃远离字幕主体的孤立簇（真正边缘水印）
-        all_boxes.append(b)
-        prev_cx = cur_cx
-
-    # 按 y 中心聚类成"文本行"：每行一个紧贴框（x 取行内最小/最大），
-    # 擦除区不再是全宽大横带，LaMa/修复只处理真实文字覆盖的范围。
-    y_gap = frame_height * 0.06 if frame_height else 0
-    y_sorted = sorted(all_boxes, key=lambda b: (b[1] + b[3]) / 2)
+    # 按 y 聚类成"文本行"：仅当两框垂直间距小于文字自身高度（_LINE_MERGE_RATIO）
+    # 才算同一行。绝不能只按"中心距 < 固定比例画高"——漂移水印会纵向游走到
+    # 字幕附近（实测参考片水印 cy 1189/1237 vs 字幕 cy 1328，间距 91px < 115px
+    # 阈值），一旦并成一行，该区高度会从"单行 ≈103px"膨胀到 215px，下游
+    # _match_original_style 据此推出的字号会虚大（215×1.16→被钳到画高 9%）。
+    y_sorted = sorted(boxes, key=lambda b: (b[1] + b[3]) / 2)
     y_clusters: list[list[tuple[int, int, int, int]]] = [[y_sorted[0]]]
     for b in y_sorted[1:]:
-        prev_cy = (y_clusters[-1][-1][1] + y_clusters[-1][-1][3]) / 2
+        prev = y_clusters[-1][-1]
+        prev_cy = (prev[1] + prev[3]) / 2
         cur_cy = (b[1] + b[3]) / 2
-        if cur_cy - prev_cy < y_gap:
+        ref_h = min(prev[3] - prev[1], b[3] - b[1])
+        if cur_cy - prev_cy <= ref_h * _LINE_MERGE_RATIO:
             y_clusters[-1].append(b)
         else:
             y_clusters.append([b])
 
-    regions = [_bbox(c) for c in y_clusters if len(c) >= 1]
+    # 行内再按横向连续性切分：同一 y 上相距过远的两段文字（左角标 + 右角标，
+    # 或画面两侧的招牌）若并成一个横跨全宽的擦除区，会把中间的画质一起抹掉。
+    # 实测反例：两个同 y 的角标框（x≈0 与 x≈1079）曾并出 (0,715,1080,93) 全宽带。
+    # 门槛取 0.15 画宽——字幕内部词间距远小于此，不会把一行字幕切开。
+    x_gap_max = (frame_width or 0) * 0.15
+    rows: list[list[tuple[int, int, int, int]]] = []
+    for cluster in y_clusters:
+        cluster.sort(key=lambda b: b[0])
+        run = [cluster[0]]
+        for b in cluster[1:]:
+            if b[0] - max(x[2] for x in run) <= x_gap_max:
+                run.append(b)
+            else:
+                rows.append(run)
+                run = [b]
+        rows.append(run)
+
+    regions = [_bbox(c) for c in rows]
     if frame_width is not None:
         for r in regions:
             r["w"] = min(r["w"], frame_width - r["x"])
@@ -204,14 +223,41 @@ def _is_white_subtitle(frame_path: str, box: tuple[int, int, int, int]) -> bool:
     return not (white > 0.60 and dark < 0.10)
 
 
+def _passes_region_prior(
+    box: tuple[int, int, int, int],
+    frame_width: int,
+    frame_height: int,
+) -> bool:
+    """候选框位置先验：叠加文字常落的三类区域，命中任一即保留。
+
+    尺寸先验（长边 ≥4% 画宽）由调用方先行过滤。三类区域：
+    - 底部带（y2 ≥ 0.6H）：常规底部字幕条（旧实现唯一保留的区域）；
+    - 顶部带（y1 ≤ 0.12H）：顶部免责声明/台标文字（如"此视频仅以娱乐为
+      目的，无不良引导"）——旧实现只留底部带会整体漏擦；
+    - 贴左右边缘（x1 ≤ 0.06W 或 x2 ≥ 0.94W）：账号水印/角标。该类文字
+      逐帧漂移（y 变化大）但水平方向始终 hug 画面边缘；场景内实体 logo
+      不贴边，据此可区分，避免误擦画面主体。
+
+    实测依据（1080×1920 参考片）：免责声明 y29-63/x644-1047（命中顶部带）、
+    水印 x2=1022~1079（命中贴右缘）、场景 MANGO logo x250-377/y747-820
+    （三类都不命中 → 正确排除）。
+    """
+    x1, y1, x2, y2 = box
+    if y2 >= frame_height * 0.6:
+        return True
+    if y1 <= frame_height * 0.12:
+        return True
+    return x1 <= frame_width * 0.06 or x2 >= frame_width * 0.94
+
+
 def locate_subtitle_region(
     frame_paths: list[str], *, api_key: str,
     frame_width: int | None = None, frame_height: int | None = None,
 ) -> list[dict]:
     """多帧聚合出字幕擦除区列表 [{x,y,w,h}, ...]（外扩 padding 防描边残留）。
 
-    云路径：抽样帧 → qwen3.5-ocr 检测底部字幕条 bbox → 白字外观先验 →
-    共享聚合逻辑。全部帧无字幕返回空列表。
+    云路径：抽样帧 → qwen3.5-ocr 检测叠加文字 bbox → 位置先验 →
+    白字外观先验 → 共享聚合逻辑。全部帧无文字返回空列表。
     """
     if not api_key:
         raise ValueError("收到空 API key。请检查 AI_SPEECH_API_KEY 是否设置（项目 .env）。")
@@ -229,11 +275,10 @@ def locate_subtitle_region(
             # 尺寸先验：取长边（兼容竖排字幕——宽 23px 但高 477px）。
             # 短边可能是旋转 90° 的细高文字，不应因"窄"被丢弃。
             # 0.04：容忍句尾短碎片（原 0.1 会漏掉边缘残字，擦除后留鬼影）
-            if frame_width is not None and max(bw, bh) < frame_width * 0.04:
+            if max(bw, bh) < frame_width * 0.04:
                 continue
-            # 底部区域先验：bbox 底边应进入画面下部 40%（用 y2 而非 y1，
-            # 否则顶部起始的竖排标题 y1=760 刚好落在阈值 768 之上被误杀）。
-            if frame_height is not None and y2 < frame_height * 0.6:
+            # 位置先验：底部带 ∪ 顶部带 ∪ 贴左右边缘（见 _passes_region_prior）。
+            if not _passes_region_prior((x1, y1, x2, y2), frame_width, frame_height):
                 continue
             candidates.append((path, (x1, y1, x2, y2)))
 

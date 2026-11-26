@@ -79,6 +79,14 @@ class SubmitInput(BaseModel):
     erase_backend: str | None = Field(
         default=None, description="字幕擦除后端 auto/local/delogo；None=任务执行时读 config",
     )
+    # 步骤选择（2026-10-31 SaaS 化）：九阶段流水线可裁剪，语义同 localize_video
+    steps: list[str] | None = Field(
+        default=None,
+        description="只执行这些步骤（白名单）；None=全部执行。依赖不满足 422",
+    )
+    skip_steps: list[str] | None = Field(
+        default=None, description="从全集中剔除这些步骤；必需步骤不可跳过",
+    )
 
     @field_validator("videos")
     @classmethod
@@ -126,8 +134,13 @@ class SubmitReport(BaseModel):
 # ── 预检：沙箱 + 扩展名分桶 ──
 
 def _uploads_root() -> Path:
-    """本地路径沙箱根：data_dir/uploads（服务器上传目录，部署方约定）。"""
-    return (Path(load_config().localizer.data_dir) / "uploads").resolve()
+    """本地路径沙箱根：data_dir/uploads（服务器上传目录，部署方约定）。
+
+    expanduser() 必须先于 resolve()：data_dir 默认 "~/flowmind-data"，
+    Path.resolve() 不展开 ~（会被当成 cwd 下的字面 "~" 目录），与
+    TaskManager 的 data_dir 展开行为（expanduser().resolve()）对齐。
+    """
+    return (Path(load_config().localizer.data_dir) / "uploads").expanduser().resolve()
 
 
 def _sandbox_reject(p: str) -> bool:
@@ -184,7 +197,8 @@ def _task_args(video: str, inp: SubmitInput) -> dict:
         "keep_background_audio": inp.keep_background_audio,
     }
     for key in ("target_lang", "source_lang", "voice_id", "tts_backend",
-                "voice_ref_audio", "voice_ref_text", "erase_backend"):
+                "voice_ref_audio", "voice_ref_text", "erase_backend",
+                "steps", "skip_steps"):
         val = getattr(inp, key)
         if val is not None:
             args[key] = val
