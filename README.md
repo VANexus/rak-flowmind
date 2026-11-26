@@ -324,13 +324,18 @@ python scripts/ocr_sidecar_dev.py --down     # 停
 
 ## 验证
 
-本仓库无单测（用户决策：验证靠真实运行）：
+flowmind 主体无单测（用户决策：验证靠真实运行）。**修正（2026-11-03 P0 核验）**：`tests/` 下
+实际存在 **590 个 pytest 用例**，是 **CyberCut 接入（3 个提交）带进来的**，不覆盖本包技能层，
+也未在 `environment.yml` 声明依赖；「本仓库无单测」的说法只对 flowmind 主体成立。
+
+- **技能 / 服务验证** = `examples/*_demo.py` 冒烟（**23 个**）：用 P0 建的可重复入口跑，
+  含 offline / needs-ffmpeg 分类与 known-fail 机制；
+- **契约比对** = `scripts/contract_check.py`（对 `docs/contracts/contracts.snapshot.json`）。
 
 ```bash
-conda run -n flowmind ruff check src                       # lint（唯一质量门）
-for f in examples/*_demo.py; do
-  PYTHONPATH=$PWD/src conda run -n flowmind python "$f"    # 18 个 demo 全 PASS
-done
+conda run -n flowmind ruff check src                                        # lint（唯一质量门）
+PYTHONPATH=$PWD/src conda run -n flowmind python scripts/smoke_examples.py  # 23 个 demo 冒烟
+PYTHONPATH=$PWD/src conda run -n flowmind python scripts/contract_check.py  # 契约快照比对
 ```
 
 ## License

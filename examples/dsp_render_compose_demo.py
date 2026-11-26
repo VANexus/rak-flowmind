@@ -65,6 +65,13 @@ def _install_fakes() -> None:
     def get_bytes(key: str) -> bytes:
         return f"bytes:{key}".encode()
 
+    def presign_get_public(key: str, ttl_s: int | None = None) -> str:
+        # 字幕 SRT 的引用形态（ADR-126）：优先公网预签名 URL。真实现依赖
+        # FLOWMIND_DSP_S3_PUBLIC_ENDPOINT，未配则如实降级为「上传 MediaKit + mediakit://」
+        # ——那时上传数变 4、本节断言随之改变（P0 冒烟基线实测：本机未配该端点即走降级）。
+        # demo 要确定性，故把预签名固定为可用（与本节「3 个媒体素材」的意图一致）。
+        return f"https://cdn.example/{key}"
+
     def upload_media(cfg, data: bytes, content_type: str) -> str:  # noqa: ANN001
         key = data.decode().removeprefix("bytes:")
         _UPLOADS.append((key, content_type))
@@ -75,6 +82,7 @@ def _install_fakes() -> None:
     storage.fetch_to_file = fetch_to_file
     storage.put_file = put_file
     storage.get_bytes = get_bytes
+    storage.presign_get_public = presign_get_public
 
 
 def _edl() -> dict:

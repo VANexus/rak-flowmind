@@ -1,0 +1,1251 @@
+{
+  "adr": "ECO-ADR-0029 §2（重构期对外契约冻结）",
+  "invariants": {
+    "INV1_mcp_wire_and_tools": {
+      "count": 21,
+      "default_selection": [
+        "localize",
+        "edit",
+        "dsp",
+        "packaging"
+      ],
+      "families": {
+        "dsp": [
+          "dsp_bgm_match",
+          "dsp_cart_sticker",
+          "dsp_cover_pick",
+          "dsp_image_to_video",
+          "dsp_render_compose",
+          "dsp_subtitle_build",
+          "dsp_timeline_build",
+          "dsp_tts_generate"
+        ],
+        "edit": [
+          "edit_assets",
+          "edit_pipeline",
+          "edit_project",
+          "edit_review",
+          "edit_status"
+        ],
+        "localize": [
+          "localize_cancel",
+          "localize_download",
+          "localize_retry",
+          "localize_search",
+          "localize_status",
+          "localize_submit",
+          "localize_video"
+        ],
+        "packaging": [
+          "packaging_dieline"
+        ]
+      },
+      "locator": "src/flowmind/skills/__init__.py#FAMILIES",
+      "prefix_default": {
+        "locator": "src/flowmind/config.py#FederationBackendConfig.prefix",
+        "value": "video_localizer"
+      },
+      "skills": [
+        {
+          "category": "通用",
+          "id": "localize_cancel",
+          "input_props": [
+            "task_id"
+          ],
+          "input_required": [
+            "task_id"
+          ],
+          "name": "取消本地化任务",
+          "output_props": [
+            "cancelled",
+            "failure_category",
+            "message",
+            "previous_status",
+            "retriable",
+            "task_id",
+            "warning"
+          ],
+          "tags": [],
+          "version": "0.2.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_download",
+          "input_props": [
+            "task_id"
+          ],
+          "input_required": [
+            "task_id"
+          ],
+          "name": "获取任务产物清单与下载链接",
+          "output_props": [
+            "degraded",
+            "failure_category",
+            "files",
+            "retriable",
+            "status",
+            "task_id",
+            "warning"
+          ],
+          "tags": [],
+          "version": "0.2.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_retry",
+          "input_props": [
+            "task_id"
+          ],
+          "input_required": [
+            "task_id"
+          ],
+          "name": "重提本地化任务",
+          "output_props": [
+            "failure_category",
+            "message",
+            "new_task_id",
+            "original_status",
+            "original_task_id",
+            "retriable",
+            "skill_id",
+            "source_video",
+            "target_lang"
+          ],
+          "tags": [],
+          "version": "0.2.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_search",
+          "input_props": [
+            "query",
+            "task_id",
+            "top_k"
+          ],
+          "input_required": [
+            "query"
+          ],
+          "name": "字幕语义检索",
+          "output_props": [
+            "count",
+            "hits",
+            "query",
+            "task_id",
+            "top_k"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_status",
+          "input_props": [
+            "stall_threshold_seconds",
+            "task_ids"
+          ],
+          "input_required": [
+            "task_ids"
+          ],
+          "name": "本地化任务状态查询",
+          "output_props": [
+            "all_terminal",
+            "cancelled",
+            "failed",
+            "failure_category",
+            "interrupted",
+            "not_found",
+            "queued",
+            "retriable",
+            "running",
+            "stalled",
+            "succeeded",
+            "tasks",
+            "warning"
+          ],
+          "tags": [],
+          "version": "0.2.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_submit",
+          "input_props": [
+            "erase_backend",
+            "keep_background_audio",
+            "skip_steps",
+            "source_lang",
+            "steps",
+            "target_lang",
+            "tts_backend",
+            "videos",
+            "voice_id",
+            "voice_ref_audio",
+            "voice_ref_text"
+          ],
+          "input_required": [
+            "videos"
+          ],
+          "name": "批量提交视频本地化任务",
+          "output_props": [
+            "accepted",
+            "failure_category",
+            "rejected_count",
+            "rejected_paths",
+            "retriable",
+            "skill_id",
+            "task_ids",
+            "warning"
+          ],
+          "tags": [],
+          "version": "0.2.0"
+        },
+        {
+          "category": "通用",
+          "id": "localize_video",
+          "input_props": [
+            "diarize_backend",
+            "erase_backend",
+            "keep_background_audio",
+            "output_path",
+            "skip_steps",
+            "source_lang",
+            "speaker_voices",
+            "steps",
+            "target_lang",
+            "tts_backend",
+            "video_path",
+            "voice_id",
+            "voice_ref_audio",
+            "voice_ref_text",
+            "watermark_bbox"
+          ],
+          "input_required": [
+            "video_path"
+          ],
+          "name": "视频本地化流水线（本地优先）",
+          "output_props": [
+            "asr_backend",
+            "asr_segment_count",
+            "diarize_backend",
+            "duration_seconds",
+            "erase_backend",
+            "failure_category",
+            "ocr_backend",
+            "output_path",
+            "quality",
+            "retriable",
+            "subtitle_region_erased",
+            "vectorized",
+            "voice_used",
+            "warning",
+            "watermark_removed"
+          ],
+          "stage_schema_ids": [
+            "extract_audio",
+            "asr",
+            "diarize",
+            "ocr",
+            "translate",
+            "erase",
+            "tts",
+            "mix",
+            "vectorize"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "edit_assets",
+          "input_props": [
+            "action",
+            "kind",
+            "limit",
+            "path",
+            "tags",
+            "tags_to_add"
+          ],
+          "input_required": [],
+          "name": "剪辑素材库（登记/列出）",
+          "output_props": [
+            "action",
+            "assets",
+            "registered_id"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "edit_pipeline",
+          "input_props": [
+            "feedback",
+            "project_id",
+            "review_action",
+            "review_stage"
+          ],
+          "input_required": [
+            "project_id"
+          ],
+          "name": "剪辑项目流水线执行器（内部）",
+          "output_props": [
+            "artifact_dir",
+            "message",
+            "project_id",
+            "stage",
+            "state"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "edit_project",
+          "input_props": [
+            "aspect_ratio",
+            "assets",
+            "extra_brief",
+            "review_stages",
+            "style",
+            "subtitle",
+            "target_duration_s",
+            "theme",
+            "voiceover",
+            "watermark_bbox"
+          ],
+          "input_required": [
+            "assets",
+            "theme"
+          ],
+          "name": "智能剪辑项目创建（全链路）",
+          "output_props": [
+            "assets_accepted",
+            "assets_rejected",
+            "next",
+            "project_id",
+            "review_stages",
+            "skill_id",
+            "state",
+            "task_id"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "edit_review",
+          "input_props": [
+            "action",
+            "feedback",
+            "project_id",
+            "stage"
+          ],
+          "input_required": [
+            "action",
+            "project_id",
+            "stage"
+          ],
+          "name": "剪辑项目审批（approve/revise/reject）",
+          "output_props": [
+            "action",
+            "message",
+            "project_id",
+            "state",
+            "task_id"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "通用",
+          "id": "edit_status",
+          "input_props": [
+            "project_ids"
+          ],
+          "input_required": [
+            "project_ids"
+          ],
+          "name": "剪辑项目状态查询",
+          "output_props": [
+            "projects"
+          ],
+          "tags": [],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "bgm_match",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "mood",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "背景音乐",
+          "output_props": [
+            "bgmKey",
+            "degraded",
+            "ducking",
+            "durationMs",
+            "note",
+            "reason",
+            "warnings"
+          ],
+          "tags": [
+            "dsp",
+            "bgm"
+          ],
+          "version": "0.2.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "cart_sticker",
+          "input_props": [
+            "atMs",
+            "cachePrefix",
+            "deps",
+            "durationMs",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "position",
+            "productInfo",
+            "productRef",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "小黄车贴片",
+          "output_props": [
+            "stickers",
+            "warnings"
+          ],
+          "tags": [
+            "dsp",
+            "cart"
+          ],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "cover_pick",
+          "input_props": [
+            "cachePrefix",
+            "coverKey",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "switches",
+            "targetSec",
+            "title"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "封面取帧",
+          "output_props": [
+            "aspect",
+            "atMs",
+            "coverKey",
+            "titleSlot",
+            "warnings"
+          ],
+          "tags": [
+            "dsp",
+            "cover"
+          ],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "image_to_video",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "maxShots",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "preflightOnly",
+            "productInfo",
+            "profileId",
+            "regenerateShotIds",
+            "runId",
+            "shots",
+            "skipExisting",
+            "stepId",
+            "stopOnAuthError",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "图生视频",
+          "output_props": [
+            "clips",
+            "shots",
+            "summary",
+            "warnings"
+          ],
+          "tags": [
+            "dsp",
+            "video"
+          ],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "render_compose",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "subtitleFontSize",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "合成渲染",
+          "output_props": [
+            "durationMs",
+            "editSegments",
+            "height",
+            "note",
+            "storedKey",
+            "warnings",
+            "width"
+          ],
+          "tags": [
+            "dsp",
+            "render",
+            "video"
+          ],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "subtitle_build",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "style",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "字幕 SRT",
+          "output_props": [
+            "srtKey",
+            "style",
+            "subtitles",
+            "warnings",
+            "wordsSrtKey"
+          ],
+          "tags": [
+            "dsp",
+            "subtitle"
+          ],
+          "version": "0.1.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "timeline_build",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "stepId",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "素材对齐·切镜收口·时间线锁定",
+          "output_props": [
+            "durationSource",
+            "edl",
+            "edlKey",
+            "notes"
+          ],
+          "tags": [
+            "dsp",
+            "timeline"
+          ],
+          "version": "0.4.0"
+        },
+        {
+          "category": "抖音成片",
+          "id": "tts_generate",
+          "input_props": [
+            "cachePrefix",
+            "deps",
+            "idempotencyKey",
+            "materials",
+            "materialsNote",
+            "mode",
+            "outputPrefix",
+            "platform",
+            "productInfo",
+            "profileId",
+            "runId",
+            "shots",
+            "speaker",
+            "speechRate",
+            "stepId",
+            "switches",
+            "targetSec"
+          ],
+          "input_required": [
+            "cachePrefix",
+            "mode",
+            "outputPrefix",
+            "runId",
+            "stepId"
+          ],
+          "name": "口播配音",
+          "output_props": [
+            "audioKey",
+            "durationMs",
+            "voSegments",
+            "voice",
+            "warnings"
+          ],
+          "tags": [
+            "dsp",
+            "tts",
+            "voice"
+          ],
+          "version": "0.2.0"
+        },
+        {
+          "category": "包装刀板",
+          "id": "packaging_dieline",
+          "input_props": [
+            "blanks",
+            "bleedMm",
+            "box",
+            "brand",
+            "minFeatureMm",
+            "outputs",
+            "page",
+            "productName",
+            "schema",
+            "style",
+            "tolerancePct"
+          ],
+          "input_required": [],
+          "name": "包装刀板复核与印刷级出图",
+          "output_props": [
+            "artifacts",
+            "blankCount",
+            "blanks",
+            "bleedMm",
+            "blockers",
+            "findings",
+            "missing",
+            "notes",
+            "page",
+            "schemaName",
+            "style",
+            "totals",
+            "warnings"
+          ],
+          "tags": [
+            "packaging",
+            "dieline",
+            "print"
+          ],
+          "version": "0.1.0"
+        }
+      ],
+      "tool_full_name": "{prefix}__{tool}",
+      "tool_ids": [
+        "bgm_match",
+        "cart_sticker",
+        "cover_pick",
+        "edit_assets",
+        "edit_pipeline",
+        "edit_project",
+        "edit_review",
+        "edit_status",
+        "image_to_video",
+        "localize_cancel",
+        "localize_download",
+        "localize_retry",
+        "localize_search",
+        "localize_status",
+        "localize_submit",
+        "localize_video",
+        "packaging_dieline",
+        "render_compose",
+        "subtitle_build",
+        "timeline_build",
+        "tts_generate"
+      ]
+    },
+    "INV2_response_shapes": {
+      "manifest_entry": {
+        "keys": [
+          "category",
+          "confidence",
+          "description",
+          "deterministic",
+          "emits_reasoning_chain",
+          "id",
+          "input_schema",
+          "name",
+          "output_schema",
+          "reliability_profile",
+          "tags",
+          "typical_latency_ms",
+          "version"
+        ],
+        "locator": "src/flowmind/discover.py#skill_entry",
+        "note": "manifest = {\"skills\": [entry, ...]}；有流水线的技能额外带 stage_schema"
+      },
+      "models": {
+        "Evidence": {
+          "fields": {
+            "comparison": "<class 'str'>",
+            "metric": "<class 'str'>",
+            "threshold": "float | str | None",
+            "value": "float | str",
+            "window": "str | None"
+          },
+          "locator": "src/flowmind/contracts.py#Evidence",
+          "required": [
+            "comparison",
+            "metric",
+            "value"
+          ]
+        },
+        "ReasoningChain": {
+          "fields": {
+            "causal_analysis": "<class 'str'>",
+            "conclusion": "<class 'str'>",
+            "confidence": "<class 'float'>",
+            "evidence": "list[flowmind.contracts.Evidence]",
+            "risk_note": "<class 'str'>",
+            "triggered_rules": "list[flowmind.contracts.RuleHit]"
+          },
+          "locator": "src/flowmind/contracts.py#ReasoningChain",
+          "required": [
+            "causal_analysis",
+            "conclusion",
+            "risk_note"
+          ]
+        },
+        "ReliabilityMetrics": {
+          "fields": {
+            "confidence": "<class 'float'>",
+            "degradation_reason": "str | None",
+            "degraded": "<class 'bool'>",
+            "latency_ms": "<class 'float'>",
+            "sample_size": "<class 'int'>"
+          },
+          "locator": "src/flowmind/contracts.py#ReliabilityMetrics",
+          "required": [
+            "confidence",
+            "latency_ms",
+            "sample_size"
+          ]
+        },
+        "RuleHit": {
+          "fields": {
+            "expression": "<class 'str'>",
+            "hit": "<class 'bool'>",
+            "name": "<class 'str'>",
+            "rule_id": "<class 'str'>"
+          },
+          "locator": "src/flowmind/contracts.py#RuleHit",
+          "required": [
+            "expression",
+            "hit",
+            "name",
+            "rule_id"
+          ]
+        },
+        "SkillError": {
+          "fields": {
+            "code": "<class 'str'>",
+            "details": "dict | None",
+            "message": "<class 'str'>",
+            "retriable": "<class 'bool'>"
+          },
+          "locator": "src/flowmind/contracts.py#SkillError",
+          "required": [
+            "code",
+            "message"
+          ]
+        },
+        "SkillOutput": {
+          "fields": {
+            "confidence": "<class 'float'>",
+            "data": "~T",
+            "degradation_reason": "str | None",
+            "degraded": "<class 'bool'>",
+            "reasoning": "list[flowmind.contracts.ReasoningChain]",
+            "sample_size": "<class 'int'>"
+          },
+          "locator": "src/flowmind/contracts.py#SkillOutput",
+          "required": [
+            "data"
+          ]
+        },
+        "SkillResult": {
+          "fields": {
+            "data": "Optional[~T]",
+            "error": "flowmind.contracts.SkillError | None",
+            "metrics": "<class 'flowmind.contracts.ReliabilityMetrics'>",
+            "ok": "<class 'bool'>",
+            "reasoning": "list[flowmind.contracts.ReasoningChain]",
+            "skill": "<class 'str'>",
+            "trace": "<class 'flowmind.contracts.TraceContext'>",
+            "version": "<class 'str'>"
+          },
+          "locator": "src/flowmind/contracts.py#SkillResult",
+          "required": [
+            "metrics",
+            "ok",
+            "skill",
+            "trace",
+            "version"
+          ]
+        },
+        "TraceContext": {
+          "fields": {
+            "source": "<class 'str'>",
+            "target": "<class 'str'>",
+            "timestamp": "<class 'str'>",
+            "trace_id": "<class 'str'>"
+          },
+          "locator": "src/flowmind/contracts.py#TraceContext",
+          "required": [
+            "timestamp",
+            "trace_id"
+          ]
+        }
+      }
+    },
+    "INV3_rest_tasks_contract": {
+      "health": {
+        "always_200": true,
+        "components": [
+          "pg",
+          "mqtt",
+          "milvus"
+        ],
+        "keys": [
+          "components",
+          "skill_count",
+          "status",
+          "version"
+        ],
+        "locator": "src/flowmind/server_tasks.py#health",
+        "status_values": [
+          "ok",
+          "degraded"
+        ]
+      },
+      "locator": "src/flowmind/server_tasks.py + src/flowmind/server_rest.py",
+      "polling": {
+        "args_opt_in": "GET /api/v1/tasks/{id}?include=args",
+        "locator": "src/flowmind/server_tasks.py#task_get + tasks/store.py#_row_to_dict",
+        "row_keys": [
+          "created_at",
+          "error",
+          "finished_at",
+          "output_paths",
+          "progress",
+          "skill_id",
+          "stage",
+          "started_at",
+          "status",
+          "steps",
+          "task_id",
+          "tenant_id"
+        ]
+      },
+      "routes": [
+        {
+          "error_codes": [
+            "invalid_json",
+            "queue_full",
+            "steps_invalid",
+            "unknown_skill",
+            "validation"
+          ],
+          "methods": [
+            "POST"
+          ],
+          "path": "/api/v1/tasks",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": [
+            202,
+            400,
+            404,
+            422,
+            429
+          ]
+        },
+        {
+          "error_codes": [
+            "unknown_task"
+          ],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/tasks/{task_id}",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": [
+            404
+          ]
+        },
+        {
+          "error_codes": [
+            "not_cancellable",
+            "unknown_task"
+          ],
+          "methods": [
+            "DELETE"
+          ],
+          "path": "/api/v1/tasks/{task_id}",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": [
+            404,
+            409
+          ]
+        },
+        {
+          "error_codes": [
+            "not_retryable",
+            "queue_full",
+            "unknown_task"
+          ],
+          "methods": [
+            "POST"
+          ],
+          "path": "/api/v1/tasks/{task_id}/retry",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": [
+            202,
+            404,
+            409,
+            429
+          ]
+        },
+        {
+          "error_codes": [
+            "file_not_found",
+            "missing_file_param",
+            "unknown_task"
+          ],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/tasks/{task_id}/download",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": [
+            400,
+            404
+          ]
+        },
+        {
+          "error_codes": [],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/health",
+          "source": "src/flowmind/server_tasks.py",
+          "status_codes": []
+        },
+        {
+          "error_codes": [],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/manifest",
+          "source": "src/flowmind/server_rest.py",
+          "status_codes": []
+        },
+        {
+          "error_codes": [
+            "unknown_skill"
+          ],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/manifest/{skill_id}",
+          "source": "src/flowmind/server_rest.py",
+          "status_codes": [
+            404
+          ]
+        },
+        {
+          "error_codes": [
+            "unknown_skill"
+          ],
+          "methods": [
+            "GET"
+          ],
+          "path": "/api/v1/skills/{skill_id}/steps",
+          "source": "src/flowmind/server_rest.py",
+          "status_codes": [
+            404
+          ]
+        }
+      ],
+      "server_version": "0.2.0",
+      "single_port": 8002,
+      "status_machine": {
+        "locator": "src/flowmind/tasks/__init__.py#STATUS_*",
+        "non_terminal": [
+          "queued",
+          "running"
+        ],
+        "states": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "interrupted"
+        ],
+        "terminal": [
+          "cancelled",
+          "failed",
+          "interrupted",
+          "succeeded"
+        ]
+      }
+    },
+    "INV4_pg_tables": {
+      "editing": {
+        "flowmind.editing_assets": [
+          "asset_id",
+          "tenant_id",
+          "kind",
+          "path",
+          "tags",
+          "project_id",
+          "created_at"
+        ],
+        "flowmind.editing_projects": [
+          "project_id",
+          "tenant_id",
+          "state",
+          "stage",
+          "payload",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "flowmind.tasks": {
+        "columns": [
+          "task_id",
+          "skill_id",
+          "args_json",
+          "status",
+          "stage",
+          "progress",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "tenant_id",
+          "output_paths",
+          "steps_json"
+        ],
+        "indexes": [
+          "idx_tasks_finished",
+          "idx_tasks_pending",
+          "idx_tasks_status_created",
+          "idx_tasks_tenant_created"
+        ]
+      },
+      "locator": "src/flowmind/tasks/store.py#_DDL + src/flowmind/editing/store.py#_DDL",
+      "policy": "列集向前兼容，不删列（ADR-0029 §2.4）"
+    },
+    "INV5_federation_contract": {
+      "mqtt": {
+        "locator": "src/flowmind/federation/mqtt.py#TOPIC_*",
+        "qos": {
+          "heartbeat": 0,
+          "register": 1,
+          "unregister": 1
+        },
+        "task_events": {
+          "locator": "src/flowmind/tasks/events.py#_TOPIC_PREFIX",
+          "payload_keys": [
+            "message",
+            "pct",
+            "stage",
+            "status",
+            "task_id",
+            "ts"
+          ],
+          "qos": 1,
+          "retain": "terminal statuses only",
+          "template": "mcp-base-gpu/tasks/{task_id}/events"
+        },
+        "topics": {
+          "HEARTBEAT": "mcp-base-gpu/federation/heartbeat",
+          "REGISTER": "mcp-base-gpu/federation/register",
+          "UNREGISTER": "mcp-base-gpu/federation/unregister"
+        }
+      },
+      "pg": {
+        "columns": [
+          "backend_id",
+          "version",
+          "url",
+          "transport",
+          "prefix",
+          "capabilities",
+          "status",
+          "registered_at",
+          "last_heartbeat",
+          "auth_config"
+        ],
+        "locator": "src/flowmind/federation/pg.py#_DDL_BACKENDS",
+        "owner": "go-kernel 注册表；flowmind 只写自身一行（最小写）",
+        "sync_note": "与 go-kernel/internal/pgstore 同 DDL，改动双侧同步",
+        "table": "mcp.federation_backends"
+      },
+      "registration_payload_keys": [
+        "backend_id",
+        "capabilities",
+        "prefix",
+        "transport",
+        "ts",
+        "url",
+        "version"
+      ]
+    },
+    "INV6_consumers_zero_change": {
+      "backends": [
+        {
+          "name": "video_localizer",
+          "note": "缺省进程（localize+edit+packaging）",
+          "port": 8002
+        },
+        {
+          "name": "dsp",
+          "note": "独立进程/部署，prefix=dsp",
+          "port": 8003
+        }
+      ],
+      "consumers": [
+        "go-kernel（MCP 联邦网关，:8090）",
+        "cross-dashboard（BFF）"
+      ],
+      "locator": "README.md#MCP 客户端接入 + docs/architecture/greenfield/design.md §12",
+      "zero_change_contract": [
+        "{prefix}__{tool} 工具全名",
+        "SkillResult / manifest 响应形状",
+        "REST /api/v1/tasks 提交-轮询-下载语义",
+        "MQTT 任务进度 topic 与终态 retain"
+      ]
+    }
+  },
+  "schema": "flowmind-contract-snapshot/1"
+}
